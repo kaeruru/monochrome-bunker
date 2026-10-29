@@ -1,5 +1,12 @@
 @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Rajdhani:wght@500;600;700&display=swap');
 
+:root {
+  --joystick-size: 130px;
+  --touch-btn-size: 60px;
+  --touch-interact-size: 72px;
+  --touch-opacity: 0.85;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -414,7 +421,7 @@ html, body {
   background: #ff4444;
 }
 
-/* 모바일 가상 터치 컨트롤러 (터치 디바이스 전용) */
+/* 모바일/태블릿 가상 터치 컨트롤러 (인체공학적 부채꼴 배치 & 완전 커스텀 지원) */
 #touch-controls {
   position: absolute;
   top: 0;
@@ -423,94 +430,307 @@ html, body {
   height: 100%;
   pointer-events: none;
   z-index: 20;
+  opacity: var(--touch-opacity, 0.85);
+  transition: opacity 0.2s ease;
 }
 
 #touch-controls.hidden {
   display: none !important;
 }
 
+/* 터치 조작 요소 공통 드래그 & 인터랙션 스타일 */
+.hud-touch-item {
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+/* 1. 좌측 가상 조이스틱 */
 #joystick-zone {
   position: absolute;
   bottom: 28px;
   left: 28px;
-  width: 120px;
-  height: 120px;
-  pointer-events: auto;
+  width: var(--joystick-size, 130px);
+  height: var(--joystick-size, 130px);
   cursor: pointer;
-  touch-action: none;
+  z-index: 22;
 }
 
 #joystick-base {
   width: 100%;
   height: 100%;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  background: radial-gradient(circle, rgba(20, 26, 32, 0.82) 0%, rgba(8, 12, 16, 0.94) 100%);
+  border: 2px solid rgba(85, 204, 238, 0.45);
   border-radius: 50%;
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.8), inset 0 0 12px rgba(85, 204, 238, 0.15);
 }
 
 #joystick-thumb {
-  width: 46px;
-  height: 46px;
-  background: rgba(255, 255, 255, 0.65);
-  border: 1px solid #fff;
+  width: calc(var(--joystick-size, 130px) * 0.38);
+  height: calc(var(--joystick-size, 130px) * 0.38);
+  background: radial-gradient(circle, #ffffff 10%, #7799aa 80%);
+  border: 2px solid #55ccee;
   border-radius: 50%;
   position: absolute;
   pointer-events: none;
+  box-shadow: 0 0 12px rgba(85, 204, 238, 0.6);
 }
 
 .joystick-caption {
   text-align: center;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.45);
-  margin-top: 4px;
-  letter-spacing: 1px;
+  font-family: 'Share Tech Mono', monospace;
+  color: #55ccee;
+  margin-top: 5px;
+  letter-spacing: 1.5px;
+  text-shadow: 0 1px 3px #000;
 }
 
-#action-buttons {
-  position: absolute;
-  bottom: 28px;
-  right: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  align-items: flex-end;
-  pointer-events: auto;
-  z-index: 25;
-}
-
+/* 2. 우측 터치 액션 버튼군 (인체공학적 부채꼴 배치 기본 좌표) */
 .touch-btn {
-  width: 58px;
-  height: 58px;
+  position: absolute;
+  width: var(--touch-btn-size, 60px);
+  height: var(--touch-btn-size, 60px);
   border-radius: 50%;
-  background: rgba(14, 18, 22, 0.88);
-  border: 1.5px solid rgba(255, 255, 255, 0.45);
-  color: #ffffff;
+  background: radial-gradient(circle, rgba(24, 30, 36, 0.92) 0%, rgba(10, 14, 18, 0.96) 100%);
+  border: 1.8px solid rgba(255, 255, 255, 0.35);
+  color: #e4e7eb;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.7);
-  transition: all 0.12s ease;
-  touch-action: none;
+  box-shadow: 0 5px 16px rgba(0, 0, 0, 0.75), inset 0 0 8px rgba(255, 255, 255, 0.05);
+  transition: transform 0.08s ease, background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+  z-index: 25;
+}
+
+.touch-btn .btn-sub {
+  font-size: 9px;
+  font-family: 'Share Tech Mono', monospace;
+  color: rgba(255, 255, 255, 0.5);
+  line-height: 1;
+  letter-spacing: 0.5px;
 }
 
 .touch-btn .btn-label {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.5px;
+  font-family: 'Chakra Petch', sans-serif;
+  letter-spacing: 0.8px;
+  margin-top: 1px;
 }
 
 .touch-btn:active, .touch-btn.active {
   background: #ffffff;
-  color: #000000;
-  border-color: #ffffff;
-  box-shadow: 0 0 14px rgba(255, 255, 255, 0.7);
+  color: #05070a;
+  border-color: #55ccee;
+  transform: scale(0.94);
+  box-shadow: 0 0 18px rgba(85, 204, 238, 0.8);
+}
+
+.touch-btn:active .btn-sub, .touch-btn.active .btn-sub {
+  color: #05070a;
+}
+
+/* 주 상호작용(USE) 버튼 - 엄지손가락 기본 위치에 대형 강조 배치 */
+#btn-touch-interact {
+  bottom: 28px;
+  right: 28px;
+  width: var(--touch-interact-size, 72px);
+  height: var(--touch-interact-size, 72px);
+  border: 2.2px solid #55ccee;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.8), 0 0 12px rgba(85, 204, 238, 0.35);
+}
+
+#btn-touch-interact .btn-label {
+  font-size: 13px;
+  font-weight: 800;
+  color: #55ccee;
+}
+
+#btn-touch-interact:active {
+  color: #000;
+}
+
+#btn-touch-interact:active .btn-label {
+  color: #000;
+}
+
+/* 달리기(SPRINT) 버튼 - 상호작용 바로 위 */
+#btn-touch-sprint {
+  bottom: 116px;
+  right: 30px;
+}
+
+/* 손전등(LIGHT) 버튼 - 상호작용 좌측 */
+#btn-touch-flashlight {
+  bottom: 30px;
+  right: 116px;
+}
+
+/* 조명탄 점화 및 아이템 버리기(DROP) 버튼 - 상호작용 대각선 위 */
+#btn-touch-drop {
+  bottom: 110px;
+  right: 110px;
+  border-color: rgba(255, 170, 51, 0.6);
+}
+
+#btn-touch-drop .btn-label {
+  color: #ffaa33;
+}
+
+/* CCTV 보안 관제 버튼 - 달리기 위 */
+#btn-touch-cctv {
+  bottom: 190px;
+  right: 32px;
+  width: calc(var(--touch-btn-size, 60px) * 0.9);
+  height: calc(var(--touch-btn-size, 60px) * 0.9);
+}
+
+/* 좌우 스왑 모드 (왼손잡이 / 오른손잡이 반전) */
+#touch-controls.swap-hands #joystick-zone {
+  left: auto;
+  right: 28px;
+}
+
+#touch-controls.swap-hands #btn-touch-interact {
+  right: auto;
+  left: 28px;
+}
+
+#touch-controls.swap-hands #btn-touch-sprint {
+  right: auto;
+  left: 30px;
+}
+
+#touch-controls.swap-hands #btn-touch-flashlight {
+  right: auto;
+  left: 116px;
+}
+
+#touch-controls.swap-hands #btn-touch-drop {
+  right: auto;
+  left: 110px;
+}
+
+#touch-controls.swap-hands #btn-touch-cctv {
+  right: auto;
+  left: 32px;
+}
+
+/* HUD 자유 편집 / 재배치 모드 활성화 시 스타일 */
+#touch-controls.hud-editing {
+  opacity: 1 !important;
+  z-index: 95;
+}
+
+#touch-controls.hud-editing .hud-touch-item {
+  border: 2px dashed #55ccee !important;
+  box-shadow: 0 0 16px rgba(85, 204, 238, 0.7) !important;
+  cursor: grab !important;
+  animation: hudPulse 1.4s infinite ease-in-out;
+}
+
+#touch-controls.hud-editing .hud-touch-item:active {
+  cursor: grabbing !important;
+  box-shadow: 0 0 24px rgba(85, 204, 238, 1) !important;
+}
+
+@keyframes hudPulse {
+  0%, 100% { border-color: #55ccee; }
+  50% { border-color: #ffffff; }
+}
+
+/* HUD 재배치 오버레이 배너 및 완료 컨트롤 */
+#hud-edit-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 90;
+  background: rgba(3, 7, 12, 0.45);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px;
+}
+
+.hud-edit-banner {
+  background: rgba(10, 14, 18, 0.94);
+  border: 1.5px solid #55ccee;
+  padding: 12px 24px;
+  border-radius: 4px;
+  text-align: center;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.85);
+  pointer-events: auto;
+  max-width: 620px;
+}
+
+.hud-edit-banner .edit-badge {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 13px;
+  color: #55ccee;
+  letter-spacing: 1.5px;
+  margin-bottom: 4px;
+  font-weight: 700;
+}
+
+.hud-edit-banner .edit-instruction {
+  font-size: 13px;
+  color: #e4e7eb;
+}
+
+.hud-edit-actions {
+  display: flex;
+  gap: 14px;
+  pointer-events: auto;
+  margin-bottom: 20px;
+}
+
+.hud-edit-btn {
+  padding: 10px 22px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  border: 1.5px solid rgba(255, 255, 255, 0.4);
+  background: rgba(14, 18, 24, 0.92);
+  color: #ffffff;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.hud-edit-btn.primary {
+  background: #55ccee;
+  color: #030405;
+  border-color: #55ccee;
+  box-shadow: 0 0 14px rgba(85, 204, 238, 0.5);
+}
+
+.hud-edit-btn.primary:hover {
+  background: #ffffff;
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.8);
+}
+
+.hud-edit-btn.danger {
+  border-color: #ff4444;
+  color: #ff6666;
+}
+
+.hud-edit-btn.danger:hover {
+  background: #ff4444;
+  color: #fff;
 }
 
 /* 3D CCTV 전체화면 모니터 */
@@ -1486,4 +1706,92 @@ html, body {
   box-shadow: 0 0 24px rgba(85, 204, 238, 0.5);
   transform: translateY(-1px);
 }
+
+/* 터치 컨트롤 설정 그리드 & 버튼 스타일 */
+.control-mode-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin-top: 5px;
+}
+
+.ctrl-mode-btn, .swap-btn {
+  background: rgba(18, 24, 30, 0.85);
+  border: 1px solid rgba(85, 204, 238, 0.25);
+  color: #a4b4c4;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px;
+  padding: 8px 6px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.12s ease;
+  text-align: center;
+}
+
+.ctrl-mode-btn:hover, .swap-btn:hover {
+  border-color: #55ccee;
+  color: #fff;
+  background: rgba(85, 204, 238, 0.12);
+}
+
+.ctrl-mode-btn.active, .swap-btn.active {
+  background: rgba(85, 204, 238, 0.25);
+  border-color: #55ccee;
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: 0 0 10px rgba(85, 204, 238, 0.35);
+}
+
+.swap-preset-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 5px;
+}
+
+.hud-edit-trigger-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.hud-reposition-btn {
+  flex: 1;
+  background: linear-gradient(135deg, rgba(85, 204, 238, 0.2) 0%, rgba(30, 50, 70, 0.5) 100%);
+  border: 1px solid #55ccee;
+  color: #55ccee;
+  font-family: 'Chakra Petch', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 12px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.hud-reposition-btn:hover {
+  background: #55ccee;
+  color: #030405;
+  box-shadow: 0 0 14px rgba(85, 204, 238, 0.6);
+}
+
+.hud-reset-btn {
+  background: rgba(20, 24, 30, 0.85);
+  border: 1px solid rgba(255, 100, 100, 0.4);
+  color: #ff8888;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 14px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.hud-reset-btn:hover {
+  background: #ff4444;
+  color: #fff;
+  border-color: #ff4444;
+}
+
 

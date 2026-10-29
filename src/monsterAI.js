@@ -108,6 +108,12 @@ export class MonsterAI {
     this.bioSignEl = document.getElementById('obj-monster-status');
     this.vignetteEl = document.getElementById('vignette-overlay');
 
+    // 멀티플레이 원격 제어 및 보간 상태
+    this.isRemoteControlled = false;
+    this.targetSyncPos = new THREE.Vector3(0, -10, 0);
+    this.targetSyncYaw = 0;
+    this.syncAnimMode = 'stalk';
+
     this.resetForNewMatch();
   }
 
@@ -166,16 +172,19 @@ export class MonsterAI {
 
   applySyncData(data) {
     if (this.isKillingPlayer) return;
+    this.isRemoteControlled = true;
     this.state = data.state;
     if (data.pos) {
-      this.pos.set(data.pos.x, data.pos.y, data.pos.z);
+      this.targetSyncPos.set(data.pos.x, data.pos.y, data.pos.z);
     }
     if (data.yaw !== undefined) {
-      this.yaw = data.yaw;
+      this.targetSyncYaw = data.yaw;
     }
-    this.monster.root.position.copy(this.pos);
-    this.monster.root.rotation.y = this.yaw;
-    this.monster.update(0.016, data.animMode || 'stalk');
+    if (data.animMode) {
+      this.syncAnimMode = data.animMode;
+    }
+    if (data.currentVent !== undefined) this.currentVentIdx = data.currentVent;
+    if (data.targetVent !== undefined) this.targetVentIdx = data.targetVent;
     this.updateBioSignHUD();
   }
 
@@ -657,6 +666,22 @@ export class MonsterAI {
    */
   update(dt, playerPos, playerCamera, flashlightOn, isSprinting, isMoving) {
     if (this.interactionSystem && this.interactionSystem.isGameCleared) return;
+
+    if (this.isRemoteControlled) {
+      // 비-호스트 멀티플레이 클라이언트: 무거운 AI 길찾기/레이캐스트를 건너뛰고 부드러운 위치/회전 보간만 처리
+      this.pos.lerp(this.targetSyncPos, Math.min(1, dt * 14));
+      let diff = this.targetSyncYaw - this.yaw;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      this.yaw += diff * Math.min(1, dt * 14);
+
+      this.monster.root.position.copy(this.pos);
+      this.monster.root.rotation.y = this.yaw;
+      this.monster.root.visible = (this.state !== 'VENT_MOVE');
+      this.monster.update(dt, this.syncAnimMode || 'stalk');
+      this.updateBioSignHUD();
+      return;
+    }
 
     if (this.stunCooldown > 0) this.stunCooldown -= dt;
     if (this.sabotageCooldown > 0) this.sabotageCooldown -= dt;

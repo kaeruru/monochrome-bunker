@@ -55,33 +55,52 @@
       <span id="prompt-desc">CCTV 콘솔 접속</span>
     </div>
 
-    <!-- 모바일/태블릿 가상 터치 컨트롤러 UI (터치 디바이스에서만 자동 표시) -->
+    <!-- 모바일/태블릿 가상 터치 컨트롤러 UI (터치 디바이스 자동 감지 또는 설정 강제 활성) -->
     <div id="touch-controls" class="hidden">
-      <!-- 좌측 가상 조이스틱 영역 -->
-      <div id="joystick-zone">
+      <!-- 가상 조이스틱 영역 -->
+      <div id="joystick-zone" class="hud-touch-item" data-hud-id="joystick">
         <div id="joystick-base">
           <div id="joystick-thumb"></div>
         </div>
         <div class="joystick-caption">MOVE</div>
       </div>
 
-      <!-- 우측 터치 액션 버튼들 -->
-      <div id="action-buttons">
-        <button id="btn-touch-cctv" class="touch-btn" style="display: none;">
-          <span class="btn-label">CCTV</span>
-        </button>
-        <button id="btn-touch-drop" class="touch-btn" style="display: none;">
-          <span class="btn-label">DROP [Q]</span>
-        </button>
-        <button id="btn-touch-sprint" class="touch-btn">
-          <span class="btn-label">SPRINT</span>
-        </button>
-        <button id="btn-touch-interact" class="touch-btn">
-          <span class="btn-label">USE [E]</span>
-        </button>
-        <button id="btn-touch-flashlight" class="touch-btn active">
-          <span class="btn-label">LIGHT [F]</span>
-        </button>
+      <!-- 터치 액션 버튼들 (인체공학적 부채꼴 배치 및 자유 드래그 재배치 지원) -->
+      <button id="btn-touch-interact" class="touch-btn hud-touch-item primary-touch" data-hud-id="interact" title="상호작용 / 물품 습득">
+        <span class="btn-sub">[ E ]</span>
+        <span class="btn-label">USE</span>
+      </button>
+
+      <button id="btn-touch-sprint" class="touch-btn hud-touch-item" data-hud-id="sprint" title="달리기 토글">
+        <span class="btn-sub">[ SHIFT ]</span>
+        <span class="btn-label">RUN</span>
+      </button>
+
+      <button id="btn-touch-flashlight" class="touch-btn hud-touch-item active" data-hud-id="flashlight" title="손전등 온/오프">
+        <span class="btn-sub">[ F ]</span>
+        <span class="btn-label">LIGHT</span>
+      </button>
+
+      <button id="btn-touch-drop" class="touch-btn hud-touch-item" data-hud-id="drop" title="조명탄 점화 투척 및 아이템 버리기">
+        <span class="btn-sub">[ Q ]</span>
+        <span class="btn-label">DROP</span>
+      </button>
+
+      <button id="btn-touch-cctv" class="touch-btn hud-touch-item" data-hud-id="cctv" title="보안 콘솔 CCTV">
+        <span class="btn-sub">[ CAM ]</span>
+        <span class="btn-label">CCTV</span>
+      </button>
+    </div>
+
+    <!-- HUD 버튼 재배치/자유 편집 모드 오버레이 -->
+    <div id="hud-edit-overlay" class="hidden">
+      <div class="hud-edit-banner">
+        <div class="edit-badge">[HUD LAYOUT EDIT MODE]</div>
+        <div class="edit-instruction">조이스틱과 각 버튼을 손가락이나 마우스로 드래그하여 편한 위치로 이동하십시오.</div>
+      </div>
+      <div class="hud-edit-actions">
+        <button type="button" id="btn-save-hud-layout" class="hud-edit-btn primary">[SAVE // 배치 저장 완료]</button>
+        <button type="button" id="btn-revert-hud-layout" class="hud-edit-btn danger">[RESET // 기본값 복구]</button>
       </div>
     </div>
 
@@ -228,6 +247,51 @@
                 <input type="range" id="setup-audio-vol" min="0" max="100" step="5" value="80">
               </div>
             </div>
+
+            <!-- 모바일/가상 터치 패드 커스터마이징 섹션 -->
+            <div class="setup-section">
+              <div class="section-tag">[CONTROLS & MOBILE HUD] 조작 방식 및 가상 패드 커스텀</div>
+              <div class="setup-field">
+                <label>조작 인터페이스 모드:</label>
+                <div class="control-mode-grid">
+                  <button type="button" class="ctrl-mode-btn" data-mode="auto" id="btn-ctrl-auto">[AUTO] 기기 자동 감지</button>
+                  <button type="button" class="ctrl-mode-btn" data-mode="touch" id="btn-ctrl-touch">[TOUCH] 모바일 패드 강제 활성</button>
+                  <button type="button" class="ctrl-mode-btn" data-mode="pc" id="btn-ctrl-pc">[PC] 마우스/키보드 전용</button>
+                </div>
+              </div>
+              <div class="setup-field range-field">
+                <div class="range-header">
+                  <label for="setup-joystick-size">조이스틱 크기:</label>
+                  <span id="setup-joystick-size-val">130px</span>
+                </div>
+                <input type="range" id="setup-joystick-size" min="80" max="200" step="5" value="130">
+              </div>
+              <div class="setup-field range-field">
+                <div class="range-header">
+                  <label for="setup-btn-size">액션 버튼 크기:</label>
+                  <span id="setup-btn-size-val">60px</span>
+                </div>
+                <input type="range" id="setup-btn-size" min="45" max="90" step="2" value="60">
+              </div>
+              <div class="setup-field range-field">
+                <div class="range-header">
+                  <label for="setup-touch-opacity">터치 컨트롤 투명도:</label>
+                  <span id="setup-opacity-val">85%</span>
+                </div>
+                <input type="range" id="setup-touch-opacity" min="30" max="100" step="5" value="85">
+              </div>
+              <div class="setup-field">
+                <label>조작부 좌우 배치 (손잡이 스왑):</label>
+                <div class="swap-preset-grid">
+                  <button type="button" class="swap-btn active" id="btn-swap-normal" data-swap="false">[DEFAULT] 좌:이동 · 우:액션</button>
+                  <button type="button" class="swap-btn" id="btn-swap-reverse" data-swap="true">[SWAP] 좌:액션 · 우:이동</button>
+                </div>
+              </div>
+              <div class="hud-edit-trigger-row">
+                <button type="button" id="btn-trigger-hud-edit" class="hud-reposition-btn">[HUD LAYOUT EDIT] 화면에서 버튼 직접 드래그 재배치</button>
+                <button type="button" id="btn-reset-hud-layout" class="hud-reset-btn" title="버튼 위치를 기본 인체공학 배치로 되돌립니다">[RESET] 위치 초기화</button>
+              </div>
+            </div>
           </div>
 
           <!-- 우측 열: 작전 모드 및 협동 서버 로비 -->
@@ -296,6 +360,6 @@
     </div>
   </div>
 
-  <script type="module" src="./src/main.js?v=2.5"></script>
+  <script type="module" src="./src/main.js?v=2.6"></script>
 </body>
 </html>

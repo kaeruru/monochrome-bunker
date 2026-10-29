@@ -18,6 +18,8 @@ export class NetworkManager {
     this.remotePlayers = new Map(); // id -> { entity, nametag, targetPos, targetYaw, isMoving, isSprinting }
     this.lastSyncTime = 0;
     this.syncInterval = 50; // 20Hz (50ms)
+    this.lastMonsterSyncTime = 0;
+    this.monsterSyncInterval = 50; // 20Hz (50ms)
 
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     if (window.location.port === '5173') {
@@ -210,6 +212,9 @@ export class NetworkManager {
 
         case 'host_promoted': {
           this.isHost = true;
+          if (this.callbacks.onHostPromoted) {
+            this.callbacks.onHostPromoted();
+          }
           if (this.callbacks.onToast) {
             this.callbacks.onToast('[NET] 귀하가 작전 지휘관(호스트)으로 승격되었습니다. 괴물 AI 통제 권한을 획득합니다.', 'success');
           }
@@ -301,11 +306,11 @@ export class NetworkManager {
 
     this.ws.send(JSON.stringify({
       type: 'player_sync',
-      x: pos.x,
-      y: pos.y,
-      z: pos.z,
-      yaw,
-      pitch,
+      x: Math.round(pos.x * 100) / 100,
+      y: Math.round(pos.y * 100) / 100,
+      z: Math.round(pos.z * 100) / 100,
+      yaw: Math.round(yaw * 100) / 100,
+      pitch: Math.round(pitch * 100) / 100,
       isMoving,
       isSprinting,
       heldItem
@@ -360,11 +365,19 @@ export class NetworkManager {
 
   sendMonsterSync(state, pos, yaw, animMode, targetVent, currentVent) {
     if (!this.isConnected || !this.ws || !this.roomId || !this.isHost) return;
+    const now = performance.now();
+    if (now - this.lastMonsterSyncTime < this.monsterSyncInterval) return;
+    this.lastMonsterSyncTime = now;
+
     this.ws.send(JSON.stringify({
       type: 'monster_sync',
       state,
-      pos: { x: pos.x, y: pos.y, z: pos.z },
-      yaw,
+      pos: {
+        x: Math.round(pos.x * 100) / 100,
+        y: Math.round(pos.y * 100) / 100,
+        z: Math.round(pos.z * 100) / 100
+      },
+      yaw: Math.round(yaw * 100) / 100,
       animMode,
       targetVent,
       currentVent

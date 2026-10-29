@@ -103,6 +103,8 @@ class MonochromeBunker3D {
     this.locationTextEl = document.getElementById('location-text');
     this.hudHintEl = document.getElementById('hud-hint-text');
     this.btnTouchCCTV = document.getElementById('btn-touch-cctv');
+    this.btnTouchDrop = document.getElementById('btn-touch-drop');
+    this.btnTouchInteract = document.getElementById('btn-touch-interact');
     this.btnTouchFlashlight = document.getElementById('btn-touch-flashlight');
     this.btnTriggerBlackout = document.getElementById('btn-trigger-blackout');
     this.btnOpenModelViewer = document.getElementById('btn-open-model-viewer');
@@ -148,6 +150,16 @@ class MonochromeBunker3D {
     this.roomPlayerCount = document.getElementById('room-player-count');
     this.roomPlayerList = document.getElementById('room-player-list');
     this.setupStatusMsg = document.getElementById('setup-status-msg');
+
+    // 모바일 터치 패드 커스텀 컨트롤 DOM
+    this.sliderJoystickSize = document.getElementById('setup-joystick-size');
+    this.valJoystickSize = document.getElementById('setup-joystick-size-val');
+    this.sliderBtnSize = document.getElementById('setup-btn-size');
+    this.valBtnSize = document.getElementById('setup-btn-size-val');
+    this.sliderTouchOpacity = document.getElementById('setup-touch-opacity');
+    this.valTouchOpacity = document.getElementById('setup-opacity-val');
+    this.btnTriggerHudEdit = document.getElementById('btn-trigger-hud-edit');
+    this.btnResetHudLayout = document.getElementById('btn-reset-hud-layout');
 
     this.showGameToast = (msg, level = 'info') => {
       if (!this.gameToastEl) {
@@ -229,7 +241,15 @@ class MonochromeBunker3D {
           this.monsterAI.applySyncData(data);
         }
       },
+      onHostPromoted: () => {
+        if (this.monsterAI) {
+          this.monsterAI.isRemoteControlled = false;
+        }
+      },
       onRoomJoined: (info) => {
+        if (this.monsterAI) {
+          this.monsterAI.isRemoteControlled = !info.isHost;
+        }
         if (this.roomInfoBox) this.roomInfoBox.classList.remove('hidden');
         if (this.roomCodeDisplay) this.roomCodeDisplay.textContent = info.roomId;
         if (this.roomPlayerCount) this.roomPlayerCount.textContent = (info.players?.length || 1);
@@ -536,6 +556,89 @@ class MonochromeBunker3D {
       });
     }
 
+    // 터치/모바일 조작 모드 선택 버튼
+    const activePref = this.controls.controlPref || 'auto';
+    document.querySelectorAll('.ctrl-mode-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.mode === activePref);
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.ctrl-mode-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const mode = btn.dataset.mode;
+        this.controls.setControlPref(mode);
+        const labels = {
+          'auto': '[CONTROLS] 기기 자동 감지 모드가 적용되었습니다.',
+          'touch': '[CONTROLS] 모바일/가상 패드 강제 활성화 모드가 적용되었습니다.',
+          'pc': '[CONTROLS] PC 마우스/키보드 전용 모드가 적용되었습니다.'
+        };
+        this.showGameToast(labels[mode] || '[CONTROLS] 조작 방식이 변경되었습니다.', 'info');
+      });
+    });
+
+    // 조이스틱 크기 조절 슬라이더
+    if (this.sliderJoystickSize && this.controls.touchConfig) {
+      this.sliderJoystickSize.value = this.controls.touchConfig.joystickSize || 130;
+      if (this.valJoystickSize) this.valJoystickSize.textContent = `${this.sliderJoystickSize.value}px`;
+      this.sliderJoystickSize.addEventListener('input', (e) => {
+        const val = parseInt(e.target.value, 10);
+        if (this.valJoystickSize) this.valJoystickSize.textContent = `${val}px`;
+        this.controls.applyTouchConfig({ joystickSize: val });
+      });
+    }
+
+    // 액션 버튼 크기 조절 슬라이더
+    if (this.sliderBtnSize && this.controls.touchConfig) {
+      this.sliderBtnSize.value = this.controls.touchConfig.btnSize || 60;
+      if (this.valBtnSize) this.valBtnSize.textContent = `${this.sliderBtnSize.value}px`;
+      this.sliderBtnSize.addEventListener('input', (e) => {
+        const val = parseInt(e.target.value, 10);
+        if (this.valBtnSize) this.valBtnSize.textContent = `${val}px`;
+        this.controls.applyTouchConfig({ btnSize: val });
+      });
+    }
+
+    // 터치 투명도 조절 슬라이더
+    if (this.sliderTouchOpacity && this.controls.touchConfig) {
+      this.sliderTouchOpacity.value = this.controls.touchConfig.opacity || 85;
+      if (this.valTouchOpacity) this.valTouchOpacity.textContent = `${this.sliderTouchOpacity.value}%`;
+      this.sliderTouchOpacity.addEventListener('input', (e) => {
+        const val = parseInt(e.target.value, 10);
+        if (this.valTouchOpacity) this.valTouchOpacity.textContent = `${val}%`;
+        this.controls.applyTouchConfig({ opacity: val });
+      });
+    }
+
+    // 좌우 손잡이 스왑 버튼
+    const isSwapped = Boolean(this.controls.touchConfig?.isSwapped);
+    document.querySelectorAll('.swap-btn').forEach(btn => {
+      btn.classList.toggle('active', (btn.dataset.swap === 'true') === isSwapped);
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.swap-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const swap = btn.dataset.swap === 'true';
+        this.controls.applyTouchConfig({ isSwapped: swap });
+        this.showGameToast(swap ? '[CONTROLS] 왼손잡이 배치(좌:액션/우:이동)로 스왑되었습니다.' : '[CONTROLS] 기본 배치(좌:이동/우:액션)로 복원되었습니다.', 'info');
+      });
+    });
+
+    // 화면 직접 드래그 HUD 재배치 모드 진입
+    if (this.btnTriggerHudEdit) {
+      this.btnTriggerHudEdit.addEventListener('click', () => {
+        if (this.gameSetupModalEl) {
+          this.gameSetupModalEl.classList.add('hidden');
+        }
+        this.controls.openHudEditor();
+        this.showGameToast('[HUD EDIT] 조이스틱과 각 버튼을 손가락이나 마우스로 드래그하여 편한 위치로 이동하십시오.', 'info');
+      });
+    }
+
+    // HUD 재배치 기본값 복원 버튼
+    if (this.btnResetHudLayout) {
+      this.btnResetHudLayout.addEventListener('click', () => {
+        this.controls.resetTouchLayout();
+        this.showGameToast('[HUD RESET] 기본 인체공학적 부채꼴 배치로 초기화되었습니다.', 'success');
+      });
+    }
+
     window.addEventListener('keydown', (e) => {
       if (e.target && (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT')) return;
       if (e.code === 'KeyM') {
@@ -826,6 +929,22 @@ class MonochromeBunker3D {
     if (this.networkManager) {
       this.networkManager.update(dt);
     }
+
+    // 모바일 터치 DROP 버튼 상태 및 라벨 동적 갱신
+    if (this.btnTouchDrop && this.interactionSystem) {
+      const held = this.interactionSystem.getHeldItemType();
+      if (held) {
+        this.btnTouchDrop.style.opacity = '1';
+        this.btnTouchDrop.style.borderColor = (held === 'flare') ? '#ffaa33' : '#55ccee';
+        const label = this.btnTouchDrop.querySelector('.btn-label');
+        if (label) label.textContent = (held === 'flare') ? 'IGNITE' : 'DROP';
+      } else {
+        this.btnTouchDrop.style.opacity = '0.45';
+        this.btnTouchDrop.style.borderColor = 'rgba(255, 255, 255, 0.25)';
+        const label = this.btnTouchDrop.querySelector('.btn-label');
+        if (label) label.textContent = 'DROP';
+      }
+    }
   }
 
   updateLocationHUD() {
@@ -913,9 +1032,15 @@ class MonochromeBunker3D {
         this.showPrompt(this.nearInteractable.keyText || '[ E / USE ]', this.nearInteractable.descText || '상호작용');
         if (this.btnTouchCCTV) this.btnTouchCCTV.style.display = 'none';
       }
+      if (this.btnTouchInteract) {
+        this.btnTouchInteract.classList.add('active');
+      }
     } else {
       this.hidePrompt();
       if (this.btnTouchCCTV) this.btnTouchCCTV.style.display = 'none';
+      if (this.btnTouchInteract) {
+        this.btnTouchInteract.classList.remove('active');
+      }
     }
   }
 

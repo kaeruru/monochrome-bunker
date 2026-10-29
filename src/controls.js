@@ -2,8 +2,8 @@ import * as THREE from 'three';
 
 /**
  * PC(마우스 락 + 키보드) & 모바일/태블릿(가상 조이스틱 + 터치 드래그) 통합 컨트롤러
- * - Pointer Events(pointerdown/move/up) 기반으로 구현되어,
- *   PC에서도 마우스로 가상 조이스틱과 터치 버튼을 직접 눌러 모바일 환경을 완벽히 테스트할 수 있습니다.
+ * - 가상 조이스틱, 인체공학적 부채꼴 액션 버튼 클러스터, 자유 드래그 HUD 재배치 모드 지원
+ * - 설정에 따른 컨트롤 모드 강제(자동 / 모바일 강제 / PC 강제) 및 localStorage 영구 기억
  */
 export class FPSControls {
   constructor(camera, domElement) {
@@ -20,20 +20,25 @@ export class FPSControls {
     this.disabled = false;
     this.mouseSensitivity = 1.0;
 
-    // PC vs 모바일/태블릿 정밀 환경 감지
-    // Windows/Mac PC에서 터치스크린이나 펜 디스플레이가 감지되더라도 마우스/키보드가 있는 데스크톱은 PC 모드로 동작
+    // 조작 인터페이스 환경 설정 불러오기 ('auto' | 'touch' | 'pc')
+    this.controlPref = localStorage.getItem('monochrome_control_pref') || 'auto';
+
+    // 기본 모바일/태블릿 환경 감지
     const ua = (navigator.userAgent || '') + ' ' + (navigator.platform || '');
     const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(ua) ||
       (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const hasTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
     const isTouchOnly = window.matchMedia && window.matchMedia('(pointer: coarse) and (hover: none)').matches;
     const isMobileClient = Boolean(navigator.userAgentData && navigator.userAgentData.mobile);
 
-    const isActualMobile = isMobileUA || isTouchOnly || isMobileClient;
-    this.deviceMode = isActualMobile ? 'tablet' : 'pc';
+    this.isDeviceMobile = isMobileUA || isTouchOnly || isMobileClient || (hasTouch && window.innerWidth <= 1024);
 
-    const touchUI = document.getElementById('touch-controls');
-    if (touchUI) {
-      touchUI.classList.toggle('hidden', !isActualMobile);
+    if (this.controlPref === 'touch') {
+      this.deviceMode = 'tablet';
+    } else if (this.controlPref === 'pc') {
+      this.deviceMode = 'pc';
+    } else {
+      this.deviceMode = this.isDeviceMobile ? 'tablet' : 'pc';
     }
 
     this.interactRequested = false;
@@ -47,7 +52,7 @@ export class FPSControls {
     this.joystickActive = false;
     this.joystickPointerId = null;
     this.joystickOrigin = { x: 0, y: 0 };
-    this.maxJoystickRadius = 46;
+    this.maxJoystickRadius = 48;
 
     // 화면 시점 드래그 포인터 상태 (마우스 드래그 & 터치 스와이프 공용)
     this.lookPointerId = null;
@@ -55,10 +60,45 @@ export class FPSControls {
 
     this.keys = {};
 
+    // HUD 자유 배치 편집 상태
+    this.isHudEditing = false;
+    this.draggingHudItem = null;
+    this.hudDragOffset = { x: 0, y: 0 };
+
+    // 저장된 터치 설정 불러오기
+    this.touchConfig = {
+      joystickSize: 130,
+      btnSize: 60,
+      opacity: 85,
+      isSwapped: false
+    };
+    try {
+      const savedConfig = localStorage.getItem('monochrome_touch_config');
+      if (savedConfig) {
+        Object.assign(this.touchConfig, JSON.parse(savedConfig));
+      }
+    } catch (_) {}
+
     this.initPointerAndMouse();
     this.initKeyboard();
     this.initVirtualPad();
+    this.initHudEditor();
+    this.applyTouchConfig(this.touchConfig);
+    this.loadSavedPositions();
+    this.setDeviceMode(this.deviceMode);
     this.updateCameraRotation();
+  }
+
+  setControlPref(pref) {
+    this.controlPref = pref;
+    localStorage.setItem('monochrome_control_pref', pref);
+    if (pref === 'touch') {
+      this.setDeviceMode('tablet');
+    } else if (pref === 'pc') {
+      this.setDeviceMode('pc');
+    } else {
+      this.setDeviceMode(this.isDeviceMobile ? 'tablet' : 'pc');
+    }
   }
 
   setDeviceMode(mode) {
@@ -79,13 +119,15 @@ export class FPSControls {
   }
 
   ensurePcMode() {
+    // 사용자가 명시적으로 터치 모드를 활성화했거나 편집 모드인 경우 PC 모드로 강제 변경 금지
+    if (this.controlPref === 'touch' || this.isHudEditing) return;
     if (this.deviceMode !== 'pc') {
       this.setDeviceMode('pc');
     }
   }
 
   requestPointerLock() {
-    if (this.disabled || this.isLocked) return;
+    if (this.disabled || this.isLocked || this.deviceMode === 'tablet' || this.controlPref === 'touch' || this.isHudEditing) return;
     if (this.domElement && this.domElement.requestPointerLock) {
       try {
         const promise = this.domElement.requestPointerLock();
@@ -130,9 +172,10 @@ export class FPSControls {
   initPointerAndMouse() {
     // 1. PC 모드에서 게임 캔버스/컨테이너 클릭 시 마우스 포인터 락
     const onCanvasOrContainerClick = (e) => {
-      if (this.disabled) return;
+      if (this.disabled || this.isHudEditing) return;
+      if (this.controlPref === 'touch' || this.deviceMode === 'tablet') return;
       if (e.pointerType === 'touch') return;
-      if (e.target && e.target.closest && e.target.closest('button, input, select, textarea, .inv-slot, #model-viewer-modal, #escape-success-modal, #game-over-modal, #cctv-overlay, #game-setup-modal, #jumpscare-overlay')) {
+      if (e.target && e.target.closest && e.target.closest('button, input, select, textarea, .inv-slot, .hud-touch-item, #model-viewer-modal, #escape-success-modal, #game-over-modal, #cctv-overlay, #game-setup-modal, #jumpscare-overlay, #hud-edit-overlay')) {
         return;
       }
       this.ensurePcMode();
@@ -147,7 +190,7 @@ export class FPSControls {
 
     document.addEventListener('pointerlockchange', () => {
       this.isLocked = (document.pointerLockElement === this.domElement);
-      if (this.isLocked) {
+      if (this.isLocked && this.controlPref !== 'touch') {
         this.ensurePcMode();
       }
       if (this.disabled && this.isLocked) {
@@ -157,9 +200,9 @@ export class FPSControls {
 
     // 2. 마우스 포인터 락 상태에서의 시점 회전
     window.addEventListener('mousemove', (e) => {
-      if (this.disabled) return;
+      if (this.disabled || this.isHudEditing) return;
       if (Math.abs(e.movementX) > 0 || Math.abs(e.movementY) > 0) {
-        if (!this.isLocked && e.buttons === 0) {
+        if (!this.isLocked && e.buttons === 0 && this.controlPref !== 'touch') {
           this.ensurePcMode();
         }
       }
@@ -175,10 +218,16 @@ export class FPSControls {
       this.updateCameraRotation();
     });
 
-    // 3. 태블릿/모바일 터치 또는 PC 마우스 드래그 시점 회전 (마우스 클릭 시 즉시 락 시도)
+    // 3. 태블릿/모바일 터치 또는 PC 마우스 드래그 시점 회전
     this.domElement.addEventListener('pointerdown', (e) => {
-      if (this.disabled) return;
-      if (e.pointerType === 'mouse' && !this.isLocked) {
+      if (this.disabled || this.isHudEditing) return;
+
+      // 터치 버튼 또는 UI 클릭 시 시점 회전 드래그 무시
+      if (e.target && e.target.closest && e.target.closest('.hud-touch-item, button, input, select, textarea, .inv-slot')) {
+        return;
+      }
+
+      if (e.pointerType === 'mouse' && !this.isLocked && this.controlPref !== 'touch' && this.deviceMode === 'pc') {
         this.ensurePcMode();
         this.requestPointerLock();
       }
@@ -191,14 +240,14 @@ export class FPSControls {
     });
 
     window.addEventListener('pointermove', (e) => {
-      if (this.disabled) return;
+      if (this.disabled || this.isHudEditing) return;
 
       if (e.pointerId === this.lookPointerId && !this.isLocked) {
         const dx = e.clientX - this.lastLookPos.x;
         const dy = e.clientY - this.lastLookPos.y;
         this.lastLookPos = { x: e.clientX, y: e.clientY };
 
-        const dragSens = e.pointerType === 'touch' ? 0.0045 : 0.0032;
+        const dragSens = (e.pointerType === 'touch' ? 0.0042 : 0.0030) * (this.mouseSensitivity || 1.0);
         this.yaw -= dx * dragSens;
         this.pitch -= dy * dragSens;
 
@@ -219,10 +268,12 @@ export class FPSControls {
 
   initKeyboard() {
     window.addEventListener('keydown', (e) => {
-      if (this.disabled) return;
+      if (this.disabled || this.isHudEditing) return;
       if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
 
-      this.ensurePcMode();
+      if (this.controlPref !== 'touch') {
+        this.ensurePcMode();
+      }
       this.keys[e.code] = true;
 
       if (e.code === 'KeyE' || e.code === 'Space') {
@@ -253,7 +304,7 @@ export class FPSControls {
   }
 
   /**
-   * 가상 조이스틱 및 우측 터치 액션 버튼 (마우스 클릭/드래그 & 모바일 멀티터치 완벽 호환)
+   * 가상 조이스틱 및 우측 터치 액션 버튼
    */
   initVirtualPad() {
     const joystickZone = document.getElementById('joystick-zone');
@@ -262,7 +313,7 @@ export class FPSControls {
 
     if (joystickZone && joystickBase && joystickThumb) {
       joystickZone.addEventListener('pointerdown', (e) => {
-        if (this.disabled) return;
+        if (this.disabled || this.isHudEditing) return;
         e.preventDefault();
         e.stopPropagation();
 
@@ -281,7 +332,7 @@ export class FPSControls {
       });
 
       joystickZone.addEventListener('pointermove', (e) => {
-        if (this.disabled) return;
+        if (this.disabled || this.isHudEditing) return;
         if (!this.joystickActive || e.pointerId !== this.joystickPointerId) return;
         e.preventDefault();
         this.updateJoystick(e.clientX, e.clientY, joystickThumb);
@@ -300,7 +351,7 @@ export class FPSControls {
       const btn = document.getElementById(id);
       if (!btn) return;
       btn.addEventListener('pointerdown', (e) => {
-        if (this.disabled) return;
+        if (this.disabled || this.isHudEditing) return;
         e.preventDefault();
         e.stopPropagation();
         callback();
@@ -350,6 +401,189 @@ export class FPSControls {
     const factor = clampedDist / this.maxJoystickRadius;
     this.moveRight = Math.cos(angle) * factor;
     this.moveForward = -Math.sin(angle) * factor;
+  }
+
+  /**
+   * HUD 버튼 크기, 조이스틱 크기, 불투명도 및 좌우 스왑 적용
+   */
+  applyTouchConfig(config) {
+    if (!config) return;
+    this.touchConfig = Object.assign(this.touchConfig || {}, config);
+    try {
+      localStorage.setItem('monochrome_touch_config', JSON.stringify(this.touchConfig));
+    } catch (_) {}
+
+    const root = document.documentElement;
+    if (this.touchConfig.joystickSize) {
+      root.style.setProperty('--joystick-size', `${this.touchConfig.joystickSize}px`);
+      this.maxJoystickRadius = Math.round(this.touchConfig.joystickSize * 0.38);
+    }
+    if (this.touchConfig.btnSize) {
+      root.style.setProperty('--touch-btn-size', `${this.touchConfig.btnSize}px`);
+      root.style.setProperty('--touch-interact-size', `${Math.round(this.touchConfig.btnSize * 1.2)}px`);
+    }
+    if (this.touchConfig.opacity) {
+      root.style.setProperty('--touch-opacity', `${this.touchConfig.opacity / 100}`);
+    }
+
+    const touchUI = document.getElementById('touch-controls');
+    if (touchUI) {
+      touchUI.classList.toggle('swap-hands', Boolean(this.touchConfig.isSwapped));
+    }
+  }
+
+  /**
+   * 저장된 커스텀 위치 좌표 불러오기
+   */
+  loadSavedPositions() {
+    try {
+      const raw = localStorage.getItem('monochrome_touch_positions');
+      if (!raw) return;
+      const positions = JSON.parse(raw);
+      document.querySelectorAll('.hud-touch-item').forEach(el => {
+        const hudId = el.dataset.hudId;
+        if (hudId && positions[hudId]) {
+          const p = positions[hudId];
+          if (p.left !== undefined) el.style.left = p.left;
+          if (p.top !== undefined) el.style.top = p.top;
+          if (p.right !== undefined) el.style.right = p.right;
+          if (p.bottom !== undefined) el.style.bottom = p.bottom;
+        }
+      });
+    } catch (_) {}
+  }
+
+  /**
+   * 현재 화면의 각 터치 요소 위치를 localStorage에 저장
+   */
+  saveTouchPositions() {
+    const positions = {};
+    document.querySelectorAll('.hud-touch-item').forEach(el => {
+      const hudId = el.dataset.hudId;
+      if (!hudId) return;
+      positions[hudId] = {
+        left: el.style.left || '',
+        top: el.style.top || '',
+        right: el.style.right || '',
+        bottom: el.style.bottom || ''
+      };
+    });
+    try {
+      localStorage.setItem('monochrome_touch_positions', JSON.stringify(positions));
+    } catch (_) {}
+  }
+
+  /**
+   * 커스텀 위치를 기본 인체공학적 부채꼴 배치로 리셋
+   */
+  resetTouchLayout() {
+    document.querySelectorAll('.hud-touch-item').forEach(el => {
+      el.style.left = '';
+      el.style.top = '';
+      el.style.right = '';
+      el.style.bottom = '';
+    });
+    try {
+      localStorage.removeItem('monochrome_touch_positions');
+    } catch (_) {}
+  }
+
+  /**
+   * HUD 레이아웃 자유 편집 드래그 & 드롭 시스템 초기화
+   */
+  initHudEditor() {
+    const editOverlay = document.getElementById('hud-edit-overlay');
+    const btnSave = document.getElementById('btn-save-hud-layout');
+    const btnRevert = document.getElementById('btn-revert-hud-layout');
+
+    if (btnSave) {
+      btnSave.addEventListener('click', () => {
+        this.saveTouchPositions();
+        this.closeHudEditor();
+      });
+    }
+
+    if (btnRevert) {
+      btnRevert.addEventListener('click', () => {
+        this.resetTouchLayout();
+        this.closeHudEditor();
+      });
+    }
+
+    // 각 .hud-touch-item 요소에 편집 모드 드래그 핸들러 연결
+    document.querySelectorAll('.hud-touch-item').forEach(item => {
+      item.addEventListener('pointerdown', (e) => {
+        if (!this.isHudEditing) return;
+        e.preventDefault();
+        e.stopPropagation();
+
+        this.draggingHudItem = item;
+        try {
+          item.setPointerCapture(e.pointerId);
+        } catch (_) {}
+
+        const rect = item.getBoundingClientRect();
+        this.hudDragOffset = {
+          x: e.clientX - rect.left,
+          y: e.clientY - rect.top
+        };
+      });
+
+      item.addEventListener('pointermove', (e) => {
+        if (!this.isHudEditing || this.draggingHudItem !== item) return;
+        e.preventDefault();
+
+        const rect = item.getBoundingClientRect();
+        const newLeft = e.clientX - this.hudDragOffset.x;
+        const newTop = e.clientY - this.hudDragOffset.y;
+
+        const clampLeft = Math.max(8, Math.min(window.innerWidth - rect.width - 8, newLeft));
+        const clampTop = Math.max(8, Math.min(window.innerHeight - rect.height - 8, newTop));
+
+        item.style.left = `${clampLeft}px`;
+        item.style.top = `${clampTop}px`;
+        item.style.right = 'auto';
+        item.style.bottom = 'auto';
+      });
+
+      const stopDrag = (e) => {
+        if (this.draggingHudItem === item) {
+          this.draggingHudItem = null;
+        }
+      };
+      item.addEventListener('pointerup', stopDrag);
+      item.addEventListener('pointercancel', stopDrag);
+    });
+  }
+
+  openHudEditor() {
+    this.isHudEditing = true;
+    this.unlock();
+    const touchUI = document.getElementById('touch-controls');
+    if (touchUI) {
+      touchUI.classList.remove('hidden');
+      touchUI.classList.add('hud-editing');
+    }
+    const editOverlay = document.getElementById('hud-edit-overlay');
+    if (editOverlay) {
+      editOverlay.classList.remove('hidden');
+    }
+  }
+
+  closeHudEditor() {
+    this.isHudEditing = false;
+    this.draggingHudItem = null;
+    const touchUI = document.getElementById('touch-controls');
+    if (touchUI) {
+      touchUI.classList.remove('hud-editing');
+      if (this.deviceMode !== 'tablet') {
+        touchUI.classList.add('hidden');
+      }
+    }
+    const editOverlay = document.getElementById('hud-edit-overlay');
+    if (editOverlay) {
+      editOverlay.classList.add('hidden');
+    }
   }
 
   updateCameraRotation() {
