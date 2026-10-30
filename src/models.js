@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { heightToNormalCanvas } from './textures.js';
 import { sound } from './audio.js';
 
 // ============================================================================
@@ -69,13 +68,7 @@ function createBiomechanicalMaterials() {
   exoColorTex.repeat.set(2, 2);
   exoColorTex.colorSpace = THREE.SRGBColorSpace;
 
-  const exoNormalCanvas = heightToNormalCanvas(exoCanvas, 4.4);
-  const exoNormalTex = new THREE.CanvasTexture(exoNormalCanvas);
-  exoNormalTex.wrapS = THREE.RepeatWrapping;
-  exoNormalTex.wrapT = THREE.RepeatWrapping;
-  exoNormalTex.repeat.set(2, 2);
-
-  // 성인 대원 전술 전투복(Tactical Ripstop Fabric) 텍스처 + 노멀맵
+  // 성인 대원 전술 전투복(Tactical Ripstop Fabric) 실사 텍스처
   const suitCanvas = document.createElement('canvas');
   suitCanvas.width = 512;
   suitCanvas.height = 512;
@@ -105,100 +98,56 @@ function createBiomechanicalMaterials() {
   suitColorTex.wrapT = THREE.RepeatWrapping;
   suitColorTex.colorSpace = THREE.SRGBColorSpace;
 
-  const suitNormalTex = new THREE.CanvasTexture(heightToNormalCanvas(suitCanvas, 2.8));
-  suitNormalTex.wrapS = THREE.RepeatWrapping;
-  suitNormalTex.wrapT = THREE.RepeatWrapping;
-
   return {
-    // 외골격 주 갑피
-    exoChitin: new THREE.MeshStandardMaterial({
+    // [산안드레아스풍 레트로 로우폴리 머티리얼 세트]
+    // 외골격 주 갑피 (매트한 생체 키틴질)
+    exoChitin: new THREE.MeshLambertMaterial({
       color: 0x585e66,
-      map: exoColorTex,
-      normalMap: exoNormalTex,
-      normalScale: new THREE.Vector2(1.4, 1.4),
-      roughnessMap: exoColorTex,
-      roughness: 0.7,
-      metalness: 0.42
+      map: exoColorTex
     }),
     // 엔도스켈레톤 금속 갈비뼈 / 피스톤 / 척추 프레임
-    endoSteel: new THREE.MeshStandardMaterial({
-      color: 0x9aa2aa,
-      map: exoColorTex,
-      normalMap: exoNormalTex,
-      normalScale: new THREE.Vector2(0.95, 0.95),
-      roughness: 0.46,
-      metalness: 0.78
+    endoSteel: new THREE.MeshLambertMaterial({
+      color: 0x8a929a,
+      map: exoColorTex
     }),
     // 어두운 생체 전선 및 근육 다발
-    exoSinew: new THREE.MeshStandardMaterial({
-      color: 0x2c3034,
-      map: exoColorTex,
-      normalMap: exoNormalTex,
-      normalScale: new THREE.Vector2(1.6, 1.6),
-      roughness: 0.82,
-      metalness: 0.25
+    exoSinew: new THREE.MeshLambertMaterial({
+      color: 0x24282c,
+      map: exoColorTex
     }),
     // 두개골 전면 스모크 돔
-    exoCarapaceDome: new THREE.MeshStandardMaterial({
-      color: 0x24282c,
-      normalMap: exoNormalTex,
-      normalScale: new THREE.Vector2(0.35, 0.35),
-      roughness: 0.35,
-      metalness: 0.65
+    exoCarapaceDome: new THREE.MeshLambertMaterial({
+      color: 0x1c2024
     }),
     // 크롬 금속 이빨 & 꼬리 칼날 & 발톱
-    exoChromeTeeth: new THREE.MeshStandardMaterial({
-      color: 0xd8dee4,
-      roughness: 0.32,
-      metalness: 0.88
+    exoChromeTeeth: new THREE.MeshLambertMaterial({
+      color: 0xd8dee4
     }),
-    // 흉곽 내부 맥동하는 심장 코어(Heart Core) 발광 재질
-    heartCoreMat: new THREE.MeshStandardMaterial({
-      color: 0xffffff,
-      emissive: 0xe8f0ff,
-      emissiveIntensity: 1.8,
-      roughness: 0.25,
-      metalness: 0.1
+    // 흉곽 내부 맥동하는 심장 코어(Heart Core) - 어둠 속에서 뚜렷하게 발광
+    heartCoreMat: new THREE.MeshBasicMaterial({
+      color: 0xffffff
     }),
-    // 심장 코어 혈관/케이블 발광선
-    heartVeinMat: new THREE.MeshStandardMaterial({
-      color: 0x8899aa,
-      emissive: 0x99aabb,
-      emissiveIntensity: 0.6,
-      roughness: 0.5,
-      metalness: 0.5
+    // 심장 코어 혈관/케이블
+    heartVeinMat: new THREE.MeshLambertMaterial({
+      color: 0x667788
     }),
 
-    // 성인 특수 대원(Tactical CBRN Operative) 재질
-    suitFabric: new THREE.MeshStandardMaterial({
+    // 성인 특수 대원(Tactical CBRN Operative) 방호복 재질
+    suitFabric: new THREE.MeshLambertMaterial({
       color: 0x5c6064,
-      map: suitColorTex,
-      normalMap: suitNormalTex,
-      normalScale: new THREE.Vector2(0.9, 0.9),
-      roughness: 0.86,
-      metalness: 0.08
+      map: suitColorTex
     }),
-    suitArmor: new THREE.MeshStandardMaterial({
-      color: 0x282b2e,
-      normalMap: suitNormalTex,
-      normalScale: new THREE.Vector2(0.5, 0.5),
-      roughness: 0.72,
-      metalness: 0.48
+    suitArmor: new THREE.MeshLambertMaterial({
+      color: 0x282b2e
     }),
-    suitWebbing: new THREE.MeshStandardMaterial({
-      color: 0x181a1c,
-      roughness: 0.92,
-      metalness: 0.08
+    suitWebbing: new THREE.MeshLambertMaterial({
+      color: 0x181a1c
     }),
-    suitMetal: new THREE.MeshStandardMaterial({
-      color: 0x888e94,
-      roughness: 0.48,
-      metalness: 0.78
+    suitMetal: new THREE.MeshLambertMaterial({
+      color: 0x888e94
     }),
-    visorGlass: new THREE.MeshStandardMaterial({
-      color: 0x101214,
-      roughness: 0.18,
-      metalness: 0.85
+    visorGlass: new THREE.MeshLambertMaterial({
+      color: 0x101214
     }),
     visorHudSlit: new THREE.MeshBasicMaterial({
       color: 0xd8e4ec
