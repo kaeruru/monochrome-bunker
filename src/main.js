@@ -828,6 +828,175 @@ class MonochromeBunker3D {
       });
     }
 
+    // -------------------------------------------------------------------------
+    // 미니멀 레트로 호러 메인 메뉴 네비게이션 제어기 (Lost Tunnel Style)
+    // -------------------------------------------------------------------------
+    const menuNavItems = document.querySelectorAll('.menu-nav-item');
+    const menuCards = document.querySelectorAll('.menu-card');
+    const menuCategoryTitle = document.getElementById('menu-current-category');
+    const menuCategoryDesc = document.getElementById('menu-current-desc');
+
+    const switchMenuTab = (target) => {
+      menuNavItems.forEach(item => {
+        item.classList.toggle('active', item.dataset.target === target);
+      });
+      menuCards.forEach(card => card.classList.add('hidden'));
+
+      if (target === 'campaign') {
+        const c = document.getElementById('card-campaign');
+        if (c) c.classList.remove('hidden');
+        if (menuCategoryTitle) menuCategoryTitle.textContent = '캠페인';
+        if (menuCategoryDesc) {
+          menuCategoryDesc.textContent = '폐쇄된 지하 연구 단지에서 생존하십시오. 비상 발전기를 복구하고 환기구의 위협을 피해 탈출해야 합니다.';
+        }
+      } else if (target === 'coop') {
+        const c = document.getElementById('card-coop');
+        if (c) c.classList.remove('hidden');
+        if (menuCategoryTitle) menuCategoryTitle.textContent = '협동 플레이';
+        if (menuCategoryDesc) {
+          menuCategoryDesc.textContent = '다른 대원들과 세션을 공유하여 함께 벙커를 수색하십시오. 방호문 제어와 코어 수리가 실시간 동기화됩니다.';
+        }
+        if (!this.networkManager.isConnected) {
+          this.networkManager.connect().then(connected => {
+            if (this.serverStatusPill) {
+              this.serverStatusPill.className = connected ? 'status-pill online' : 'status-pill offline';
+              this.serverStatusPill.textContent = connected ? '서버 연결됨' : '서버 대기 중';
+            }
+          });
+        }
+      } else if (target === 'settings') {
+        const c = document.getElementById('card-settings');
+        if (c) c.classList.remove('hidden');
+        if (menuCategoryTitle) menuCategoryTitle.textContent = '설정';
+        if (menuCategoryDesc) {
+          menuCategoryDesc.textContent = '대원 호출 부호, 방호복 도장, 마우스 시점 감도, 터치 컨트롤러 및 오디오 환경을 조정합니다.';
+        }
+      } else if (target === 'showcase') {
+        this.openModelViewer();
+      }
+    };
+
+    menuNavItems.forEach(item => {
+      item.addEventListener('click', () => {
+        switchMenuTab(item.dataset.target);
+      });
+    });
+
+    // 협동 플레이 내부 서브탭 (세션 개설 vs 참가)
+    document.querySelectorAll('[data-coop-tab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('[data-coop-tab]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const tab = btn.dataset.coopTab;
+        const createView = document.getElementById('coop-tab-create-view');
+        const joinView = document.getElementById('coop-tab-join-view');
+        if (createView) createView.classList.toggle('hidden', tab !== 'create');
+        if (joinView) joinView.classList.toggle('hidden', tab !== 'join');
+      });
+    });
+
+    // 설정 내부 서브탭 (일반 vs 조작 vs 오디오)
+    document.querySelectorAll('[data-settings-tab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('[data-settings-tab]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const tab = btn.dataset.settingsTab;
+        const genView = document.getElementById('settings-tab-general-view');
+        const ctrlView = document.getElementById('settings-tab-controls-view');
+        const audioView = document.getElementById('settings-tab-audio-view');
+        if (genView) genView.classList.toggle('hidden', tab !== 'general');
+        if (ctrlView) ctrlView.classList.toggle('hidden', tab !== 'controls');
+        if (audioView) audioView.classList.toggle('hidden', tab !== 'audio');
+      });
+    });
+
+    // 챕터 데이터 및 네비게이션 제어
+    const CHAPTERS = [
+      {
+        num: 1,
+        diff: 'easy',
+        badge: 'CHAPTER 01',
+        title: '제1장: 버려진 식당 벙커',
+        desc: '비상 발전기가 침묵한 중앙 식당. 환기구의 신호음이 감지됩니다.',
+        artBg: 'radial-gradient(circle at 50% 50%, #1e1a0a 0%, #0d0c06 50%, #020202 90%)',
+        mistColor: 'rgba(255, 190, 80, 0.45)'
+      },
+      {
+        num: 2,
+        diff: 'normal',
+        badge: 'CHAPTER 02',
+        title: '제2장: 어둠 속의 심연 터널',
+        desc: '정전이 발생한 중앙 식당과 통로. 환기구 덕트에서 기어나오는 괴물을 피해 코어를 복구하십시오.',
+        artBg: 'radial-gradient(circle at 50% 50%, #07192a 0%, #030a12 50%, #010204 90%)',
+        mistColor: 'rgba(120, 210, 255, 0.45)'
+      },
+      {
+        num: 3,
+        diff: 'hard',
+        badge: 'CHAPTER 03',
+        title: '제3장: 심연의 괴물과 사투',
+        desc: '괴물이 상시 폭주하며 배전반을 파괴합니다. 조명탄과 방호문으로 생존하십시오.',
+        artBg: 'radial-gradient(circle at 50% 50%, #2a0707 0%, #120303 50%, #040101 90%)',
+        mistColor: 'rgba(255, 80, 80, 0.5)'
+      }
+    ];
+
+    let curChapterIdx = 1; // 기본 제2장 (표준)
+
+    const updateChapterUI = (idx) => {
+      curChapterIdx = (idx + CHAPTERS.length) % CHAPTERS.length;
+      const ch = CHAPTERS[curChapterIdx];
+
+      document.querySelectorAll('.chapter-tab').forEach((tab, i) => {
+        tab.classList.toggle('active', i === curChapterIdx);
+      });
+
+      const badgeEl = document.getElementById('chapter-badge-text');
+      const titleEl = document.getElementById('chapter-title-text');
+      const descEl = document.getElementById('chapter-desc-text');
+      const artEl = document.getElementById('viewport-art');
+      const mistEl = document.querySelector('.tunnel-mist');
+
+      if (badgeEl) badgeEl.textContent = ch.badge;
+      if (titleEl) titleEl.textContent = ch.title;
+      if (descEl) descEl.textContent = ch.desc;
+      if (artEl) artEl.style.background = ch.artBg;
+      if (mistEl) mistEl.style.background = `radial-gradient(circle, ${ch.mistColor} 0%, transparent 75%)`;
+
+      this.difficulty = ch.diff;
+      if (this.monsterAI) {
+        this.monsterAI.setDifficulty(this.difficulty);
+      }
+    };
+
+    const btnChapPrev = document.getElementById('btn-chapter-prev');
+    const btnChapNext = document.getElementById('btn-chapter-next');
+    if (btnChapPrev) btnChapPrev.addEventListener('click', () => updateChapterUI(curChapterIdx - 1));
+    if (btnChapNext) btnChapNext.addEventListener('click', () => updateChapterUI(curChapterIdx + 1));
+
+    document.querySelectorAll('.chapter-tab').forEach((tab, i) => {
+      tab.addEventListener('click', () => updateChapterUI(i));
+    });
+
+    // 뒤로가기 버튼
+    document.querySelectorAll('.btn-minimal-back').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (this.isDeployed) {
+          this.toggleSettingsModal();
+        } else {
+          switchMenuTab('campaign');
+        }
+      });
+    });
+
+    // 제작진 크레딧
+    const btnCredits = document.getElementById('btn-show-credits');
+    if (btnCredits) {
+      btnCredits.addEventListener('click', () => {
+        this.showGameToast('MONOCHROME // LOST BUNKER - 개발: KAERURU STUDIO', 'info');
+      });
+    }
+
     // 상단 HUD 설정 열기/닫기 버튼
     if (this.btnOpenSettings) {
       this.btnOpenSettings.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -1074,6 +1243,9 @@ class MonochromeBunker3D {
       this.gameSetupModalEl.classList.remove('hidden');
       this.controls.setDisabled(true);
       this.controls.unlock();
+      // 인게임에서 열 때 설정 탭으로 전환
+      const settingsNav = document.querySelector('.menu-nav-item[data-target="settings"]');
+      if (settingsNav) settingsNav.click();
     } else {
       this.gameSetupModalEl.classList.add('hidden');
       this.controls.setDisabled(false);

@@ -4,10 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>MONOCHROME // BUNKER (모노크롬 벙커)</title>
-  <link rel="stylesheet" href="./src/style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+  <link rel="stylesheet" href="./src/style.css">
 </head>
 <body>
   <div id="game-container">
@@ -266,171 +267,210 @@
       <div class="jumpscare-glitch-lines"></div>
     </div>
 
-    <!-- 작전 투입 전 게임 환경 및 멀티플레이어 설정 모달 (Tactical Briefing & Session Setup) -->
+    <!-- 미니멀 레트로 호러 메인 메뉴 & 설정 모달 (Lost Tunnel / Retro Minimal Layout) -->
     <div id="game-setup-modal">
-      <div class="setup-modal-backdrop"></div>
-      <div class="setup-modal-container">
-        <div class="setup-header">
-          <div class="setup-badge">[TACTICAL BRIEFING // DEPLOYMENT TERMINAL]</div>
-          <h1 class="setup-title">MONOCHROME // BUNKER</h1>
-          <div class="setup-sub">SKELD SUB-SURFACE RESEARCH FACILITY - SYSTEM V2.4</div>
-        </div>
-
-        <div class="setup-body">
-          <!-- 좌측 열: 대원 프로필 및 환경 옵션 -->
-          <div class="setup-col">
-            <div class="setup-section">
-              <div class="section-tag">[OPERATIVE PROFILE] 대원 식별 정보</div>
-              <div class="setup-field">
-                <label for="setup-callsign">호출 부호 (CALLSIGN):</label>
-                <input type="text" id="setup-callsign" value="OPERATIVE-01" maxlength="16" spellcheck="false" autocomplete="off">
-              </div>
-              <div class="setup-field">
-                <label>수트 방호복 도장:</label>
-                <div class="suit-preset-grid">
-                  <button type="button" class="preset-btn active" data-suit="steel">[STEEL GREY]</button>
-                  <button type="button" class="preset-btn" data-suit="black">[MIDNIGHT BLACK]</button>
-                  <button type="button" class="preset-btn" data-suit="khaki">[DESERT KHAKI]</button>
-                  <button type="button" class="preset-btn" data-suit="hazmat">[HAZMAT YELLOW]</button>
-                </div>
-              </div>
+      <div class="menu-backdrop"></div>
+      
+      <div class="menu-screen-layout">
+        <!-- 좌측: 브랜드 로고 및 메인 네비게이션 목록 -->
+        <div class="menu-sidebar">
+          <div class="menu-brand">
+            <h1 class="menu-game-title">LOST<span class="title-sub">BUNKER</span></h1>
+            <div class="menu-category-header">
+              <span class="category-dash">—</span>
+              <span id="menu-current-category">캠페인</span>
+              <span class="category-dash">—</span>
             </div>
-
-            <div class="setup-section">
-              <div class="section-tag">[OPERATION CONFIG] 작전 환경 설정</div>
-              <div class="setup-field">
-                <label>괴물 위협 수준 (THREAT LEVEL):</label>
-                <div class="difficulty-grid">
-                  <button type="button" class="diff-btn" data-diff="easy" title="괴물 속도 -15%, 환기구 체류 시간 증가">[RECON] 정찰</button>
-                  <button type="button" class="diff-btn active" data-diff="normal" title="표준 밸런스 (환기구 잠복 및 방호문/조명탄 카운터플레이)">[STANDARD] 표준</button>
-                  <button type="button" class="diff-btn danger" data-diff="hard" title="괴물 속도 +20%, 잦은 정전, 스턴 시간 3초">[NIGHTMARE] 악몽</button>
-                </div>
-              </div>
-              <div class="setup-field range-field">
-                <div class="range-header">
-                  <label for="setup-mouse-sens">마우스 시점 감도:</label>
-                  <span id="setup-sens-val">1.0x</span>
-                </div>
-                <input type="range" id="setup-mouse-sens" min="0.4" max="2.5" step="0.1" value="1.0">
-              </div>
-              <div class="setup-field range-field">
-                <div class="range-header">
-                  <label for="setup-audio-vol">작전 오디오 볼륨:</label>
-                  <span id="setup-vol-val">80%</span>
-                </div>
-                <input type="range" id="setup-audio-vol" min="0" max="100" step="5" value="80">
-              </div>
-            </div>
-
-            <!-- 모바일/가상 터치 패드 커스터마이징 섹션 -->
-            <div class="setup-section">
-              <div class="section-tag">[CONTROLS & MOBILE HUD] 조작 방식 및 가상 패드 커스텀</div>
-              <div class="setup-field">
-                <label>조작 인터페이스 모드:</label>
-                <div class="control-mode-grid">
-                  <button type="button" class="ctrl-mode-btn" data-mode="auto" id="btn-ctrl-auto">[AUTO] 기기 자동 감지</button>
-                  <button type="button" class="ctrl-mode-btn" data-mode="touch" id="btn-ctrl-touch">[TOUCH] 모바일 패드 강제 활성</button>
-                  <button type="button" class="ctrl-mode-btn" data-mode="pc" id="btn-ctrl-pc">[PC] 마우스/키보드 전용</button>
-                </div>
-              </div>
-              <div class="setup-field range-field">
-                <div class="range-header">
-                  <label for="setup-joystick-size">조이스틱 크기:</label>
-                  <span id="setup-joystick-size-val">130px</span>
-                </div>
-                <input type="range" id="setup-joystick-size" min="80" max="200" step="5" value="130">
-              </div>
-              <div class="setup-field range-field">
-                <div class="range-header">
-                  <label for="setup-btn-size">액션 버튼 크기:</label>
-                  <span id="setup-btn-size-val">60px</span>
-                </div>
-                <input type="range" id="setup-btn-size" min="45" max="90" step="2" value="60">
-              </div>
-              <div class="setup-field range-field">
-                <div class="range-header">
-                  <label for="setup-touch-opacity">터치 컨트롤 투명도:</label>
-                  <span id="setup-opacity-val">85%</span>
-                </div>
-                <input type="range" id="setup-touch-opacity" min="30" max="100" step="5" value="85">
-              </div>
-              <div class="setup-field">
-                <label>조작부 좌우 배치 (손잡이 스왑):</label>
-                <div class="swap-preset-grid">
-                  <button type="button" class="swap-btn active" id="btn-swap-normal" data-swap="false">[DEFAULT] 좌:이동 · 우:액션</button>
-                  <button type="button" class="swap-btn" id="btn-swap-reverse" data-swap="true">[SWAP] 좌:액션 · 우:이동</button>
-                </div>
-              </div>
-              <div class="hud-edit-trigger-row">
-                <button type="button" id="btn-trigger-hud-edit" class="hud-reposition-btn">[HUD LAYOUT EDIT] 화면에서 버튼 직접 드래그 재배치</button>
-                <button type="button" id="btn-reset-hud-layout" class="hud-reset-btn" title="버튼 위치를 기본 인체공학 배치로 되돌립니다">[RESET] 위치 초기화</button>
-              </div>
+            <div class="menu-category-desc-box">
+              <p id="menu-current-desc">
+                폐쇄된 지하 연구 단지에서 생존하십시오. 비상 발전기를 복구하고 환기구의 위협을 피해 탈출해야 합니다.
+              </p>
             </div>
           </div>
 
-          <!-- 우측 열: 작전 모드 및 협동 서버 로비 -->
-          <div class="setup-col">
-            <div class="setup-section">
-              <div class="section-tag">[MISSION MODE] 작전 투입 방식</div>
-              <div class="mode-select-grid">
-                <button type="button" class="mode-btn active" id="btn-mode-solo">
-                  <span class="mode-name">[SOLO OPERATION]</span>
-                  <span class="mode-desc">벙커 단독 침투 및 탈출 작전</span>
-                </button>
-                <button type="button" class="mode-btn" id="btn-mode-coop">
-                  <span class="mode-name">[CO-OP MULTIPLAYER]</span>
-                  <span class="mode-desc">서버 연동 다인 협동 탈출 작전</span>
-                </button>
-              </div>
-            </div>
+          <nav class="menu-nav-list">
+            <button type="button" class="menu-nav-item active" data-target="campaign">스토리모드</button>
+            <button type="button" class="menu-nav-item" data-target="coop">이어서하기 (협동)</button>
+            <button type="button" class="menu-nav-item" data-target="settings">설정</button>
+            <button type="button" class="menu-nav-item" data-target="showcase">3D 쇼케이스</button>
+          </nav>
 
-            <!-- 멀티플레이어 협동 로비 통제 패널 -->
-            <div class="setup-section coop-section" id="coop-panel" style="display: none;">
-              <div class="section-tag">
-                <span>[CO-OP LOBBY] 통신 세션 통제</span>
-                <span id="server-status-pill" class="status-pill offline">[SERVER: STANDBY]</span>
-              </div>
-              <div class="coop-controls-row">
-                <button type="button" id="btn-host-room" class="coop-action-btn primary">[NEW SESSION] 세션 개설</button>
-                <div class="join-group">
-                  <input type="text" id="setup-room-code-input" placeholder="세션 코드 (예: SKELD-101)" maxlength="12">
-                  <button type="button" id="btn-join-room" class="coop-action-btn">[JOIN] 참가</button>
-                </div>
-              </div>
-
-              <div id="room-info-box" class="room-info-card hidden">
-                <div class="room-code-row">
-                  <span class="card-label">작전 세션 코드:</span>
-                  <span id="current-room-code-display" class="code-badge">SKELD-000</span>
-                  <button type="button" id="btn-copy-room-code" class="copy-btn">[COPY]</button>
-                </div>
-                <div class="room-players-header">투입 대원 명단 (<span id="room-player-count">1</span>/4):</div>
-                <div id="room-player-list" class="roster-list">
-                  <div class="roster-item">[HOST] OPERATIVE-01 (대기 중)</div>
-                </div>
-              </div>
-            </div>
-
-            <!-- 작전 브리핑 팁 -->
-            <div class="setup-section brief-tips">
-              <div class="section-tag">[SURVIVAL DIRECTIVES] 생존 수칙</div>
-              <ul class="directive-list">
-                <li>괴물은 천장 환기구(Vent)를 기어 다니며 쿵쿵 소리를 냅니다.</li>
-                <li>손전등[F]을 끄면 괴물 시야 감지 거리가 대폭 축소됩니다.</li>
-                <li>추격 시 벙커 방호문[D]을 닫거나 조명탄[Q]을 투척하십시오.</li>
-              </ul>
-            </div>
+          <div class="menu-footer-meta">
+            <button type="button" id="btn-show-credits" class="meta-link">제작진</button>
+            <span class="meta-label">심의등급 15세</span>
           </div>
         </div>
 
-        <div class="setup-footer">
-          <div class="footer-left">
-            <span class="status-indicator"></span>
-            <span id="setup-status-msg">작전 준비 완료. 설정을 확인한 후 투입하십시오.</span>
+        <!-- 우측: 인터랙티브 플로팅 모달 카드 -->
+        <div class="menu-card-panel">
+          <!-- 1. 캠페인 (스토리 모드) 카드 -->
+          <div class="menu-card active" id="card-campaign">
+            <div class="card-title">캠페인</div>
+            
+            <div class="card-tabs">
+              <button type="button" class="chapter-tab diff-btn" data-diff="easy" data-chapter="1">chapter 1</button>
+              <button type="button" class="chapter-tab diff-btn active" data-diff="normal" data-chapter="2">chapter 2</button>
+              <button type="button" class="chapter-tab diff-btn danger" data-diff="hard" data-chapter="3">chapter 3</button>
+            </div>
+
+            <div class="card-viewport-frame">
+              <button type="button" class="viewport-arrow arrow-left" id="btn-chapter-prev" title="이전 챕터">&lt;</button>
+              <div class="viewport-screen" id="chapter-viewport-screen">
+                <div class="viewport-tunnel-art" id="viewport-art">
+                  <div class="tunnel-rings"></div>
+                  <div class="tunnel-mist"></div>
+                  <div class="tunnel-vignette"></div>
+                </div>
+                <div class="viewport-info-bar">
+                  <div class="chapter-badge" id="chapter-badge-text">CHAPTER 02</div>
+                  <div class="chapter-headline" id="chapter-title-text">어둠 속의 식당과 비상 발전기</div>
+                  <div class="chapter-subtext" id="chapter-desc-text">정전이 발생한 중앙 식당. 환기구 덕트에서 기어나오는 괴물을 피해 코어를 복구하십시오.</div>
+                </div>
+              </div>
+              <button type="button" class="viewport-arrow arrow-right" id="btn-chapter-next" title="다음 챕터">&gt;</button>
+            </div>
+
+            <div class="card-action-row">
+              <button type="button" id="btn-deploy-mission" class="btn-primary-action">
+                <span>심연 속으로..</span>
+              </button>
+            </div>
+
+            <button type="button" class="btn-minimal-back" id="btn-menu-back">뒤로</button>
           </div>
-          <button type="button" id="btn-deploy-mission" class="deploy-btn">[DEPLOY TO BUNKER // 작전 구역 투입]</button>
+
+          <!-- 2. 협동 멀티플레이 카드 -->
+          <div class="menu-card hidden" id="card-coop">
+            <div class="card-title">협동 플레이</div>
+            
+            <div class="card-tabs">
+              <button type="button" class="sub-tab-btn active" data-coop-tab="create" id="btn-mode-solo">세션 개설</button>
+              <button type="button" class="sub-tab-btn" data-coop-tab="join" id="btn-mode-coop">세션 참가</button>
+            </div>
+
+            <div class="coop-body-panel">
+              <div id="coop-tab-create-view" class="coop-subview">
+                <div class="coop-status-row">
+                  <span class="status-dot"></span>
+                  <span id="server-status-pill" class="status-pill offline">서버 대기 중</span>
+                </div>
+                <button type="button" id="btn-host-room" class="btn-minimal-submit">새 세션 개설</button>
+                
+                <div id="room-info-box" class="room-info-box hidden">
+                  <div class="room-code-display-row">
+                    <span>세션 코드:</span>
+                    <strong id="current-room-code-display">SKELD-000</strong>
+                    <button type="button" id="btn-copy-room-code" class="btn-micro">복사</button>
+                  </div>
+                  <div class="room-roster-title">참가 대원 (<span id="room-player-count">1</span>/4):</div>
+                  <div id="room-player-list" class="roster-list"></div>
+                </div>
+              </div>
+
+              <div id="coop-tab-join-view" class="coop-subview hidden">
+                <div class="input-minimal-group">
+                  <label for="setup-room-code-input">초대 코드</label>
+                  <input type="text" id="setup-room-code-input" placeholder="세션 코드 입력 (예: SKELD-101)" maxlength="12">
+                  <button type="button" id="btn-join-room" class="btn-minimal-submit">참가하기</button>
+                </div>
+              </div>
+            </div>
+
+            <button type="button" class="btn-minimal-back" data-back-to="campaign">뒤로</button>
+          </div>
+
+          <!-- 3. 설정 카드 -->
+          <div class="menu-card hidden" id="card-settings">
+            <div class="card-title">설정</div>
+            
+            <div class="card-tabs">
+              <button type="button" class="sub-tab-btn active" data-settings-tab="general">일반 &amp; 대원</button>
+              <button type="button" class="sub-tab-btn" data-settings-tab="controls">조작 &amp; 모바일</button>
+              <button type="button" class="sub-tab-btn" data-settings-tab="audio">오디오</button>
+            </div>
+
+            <div class="settings-body-panel">
+              <!-- 일반 설정 -->
+              <div id="settings-tab-general-view" class="settings-subview">
+                <div class="minimal-field">
+                  <label for="setup-callsign">호출 부호</label>
+                  <input type="text" id="setup-callsign" value="OPERATIVE-01" maxlength="16">
+                </div>
+                <div class="minimal-field">
+                  <label>수트 방호복 도장</label>
+                  <div class="suit-preset-grid">
+                    <button type="button" class="preset-btn active" data-suit="steel">스틸 그레이</button>
+                    <button type="button" class="preset-btn" data-suit="black">미드나잇 블랙</button>
+                    <button type="button" class="preset-btn" data-suit="khaki">데저트 카키</button>
+                    <button type="button" class="preset-btn" data-suit="hazmat">해즈맷 옐로우</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 조작 설정 -->
+              <div id="settings-tab-controls-view" class="settings-subview hidden">
+                <div class="minimal-field">
+                  <div class="field-label-row">
+                    <label for="setup-mouse-sens">시점 감도</label>
+                    <span id="setup-sens-val">1.0x</span>
+                  </div>
+                  <input type="range" id="setup-mouse-sens" min="0.4" max="2.5" step="0.1" value="1.0">
+                </div>
+                <div class="minimal-field">
+                  <label>인터페이스 모드</label>
+                  <div class="control-mode-grid">
+                    <button type="button" class="ctrl-mode-btn" data-mode="auto" id="btn-ctrl-auto">자동 감지</button>
+                    <button type="button" class="ctrl-mode-btn" data-mode="touch" id="btn-ctrl-touch">터치 패드</button>
+                    <button type="button" class="ctrl-mode-btn" data-mode="pc" id="btn-ctrl-pc">마우스/키보드</button>
+                  </div>
+                </div>
+                <div class="minimal-field">
+                  <div class="field-label-row">
+                    <label for="setup-touch-opacity">터치 컨트롤 투명도</label>
+                    <span id="setup-opacity-val">85%</span>
+                  </div>
+                  <input type="range" id="setup-touch-opacity" min="30" max="100" step="5" value="85">
+                </div>
+                <div class="minimal-field">
+                  <div class="field-label-row">
+                    <label for="setup-joystick-size">조이스틱 크기</label>
+                    <span id="setup-joystick-size-val">130px</span>
+                  </div>
+                  <input type="range" id="setup-joystick-size" min="80" max="200" step="5" value="130">
+                </div>
+                <div class="minimal-field">
+                  <div class="field-label-row">
+                    <label for="setup-btn-size">버튼 크기</label>
+                    <span id="setup-btn-size-val">60px</span>
+                  </div>
+                  <input type="range" id="setup-btn-size" min="45" max="90" step="2" value="60">
+                </div>
+                <div class="minimal-btn-row">
+                  <button type="button" id="btn-trigger-hud-edit" class="btn-micro">패드 위치 편집</button>
+                  <button type="button" id="btn-reset-hud-layout" class="btn-micro">기본값 복원</button>
+                </div>
+              </div>
+
+              <!-- 오디오 설정 -->
+              <div id="settings-tab-audio-view" class="settings-subview hidden">
+                <div class="minimal-field">
+                  <div class="field-label-row">
+                    <label for="setup-audio-vol">마스터 볼륨</label>
+                    <span id="setup-vol-val">80%</span>
+                  </div>
+                  <input type="range" id="setup-audio-vol" min="0" max="100" step="5" value="80">
+                </div>
+              </div>
+            </div>
+
+            <button type="button" class="btn-minimal-back" data-back-to="campaign">뒤로</button>
+          </div>
         </div>
       </div>
+      
+      <!-- 보이지 않는 숨김 필드 (기존 JS 상태 호환성 유지) -->
+      <div id="coop-panel" style="display: none;"></div>
+      <div id="setup-status-msg" style="display: none;"></div>
     </div>
   </div>
 
