@@ -8,13 +8,13 @@
     "build": "vite build",
     "preview": "vite preview",
     "start": "node server.js",
-    "server": "node server.js"
-  },
-  "devDependencies": {
-    "vite": "^6.0.0"
+    "server": "node server.js",
+    "render-build": "npm run build",
+    "postinstall": "npm run build"
   },
   "dependencies": {
     "three": "^0.186.1",
+    "vite": "^6.0.0",
     "ws": "^8.22.0"
   }
 }

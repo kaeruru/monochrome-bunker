@@ -91,7 +91,7 @@ export class MonsterAI {
     this.bashingDoor = null;
     this.bashHitTimer = 0;
     this.stunCooldown = 0;
-    this.sabotageCooldown = 95; // 초반 95초 동안은 괴물 직접 정전 습격 유예
+    this.sabotageCooldown = 45; // 초반 45초 동안은 괴물 직접 정전 습격 유예
 
     // 처형 연출 상태
     this.isKillingPlayer = false;
@@ -947,15 +947,15 @@ export class MonsterAI {
           this.pos.y = 0;
           if (vm) vm.gratePivot.rotation.x = 0;
 
-          // 만약 전기실(vent_elec)에 출현했고 정전 쿨다운이 끝났다면 35% 확률로 전력망 습격
+          // 만약 전기실(vent_elec)에 출현했고 정전 쿨다운이 끝났다면 60% 확률로 전력망 습격
           if (
             this.currentVentIdx === 3 &&
             this.sabotageCooldown <= 0 &&
             this.interactionSystem &&
             !this.interactionSystem.isBlackout &&
-            Math.random() < 0.35
+            Math.random() < 0.6
           ) {
-            this.sabotageCooldown = 240;
+            this.sabotageCooldown = 80;
             this.interactionSystem.triggerBlackout('전기실 환기구에서 출현한 괴물이 주 배전반을 습격하여 정전이 발생했습니다!');
           }
 

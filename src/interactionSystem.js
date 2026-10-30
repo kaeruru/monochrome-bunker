@@ -106,8 +106,8 @@ export class InteractionAndEscapeSystem {
       statusLed: null
     };
 
-    // 자동 정전 이벤트 타이머 (약 4.5분~5.5분 간격으로 완화)
-    this.autoBlackoutTimer = 280 + Math.random() * 80;
+    // 자동 정전 이벤트 타이머 (약 60초~85초 간격으로 발생)
+    this.autoBlackoutTimer = 65 + Math.random() * 20;
     this.blackoutCount = 0;
 
     this.time = 0;
@@ -171,7 +171,7 @@ export class InteractionAndEscapeSystem {
     this.isEscapeOpen = false;
     this.isGameCleared = false;
     this.isBlackout = false;
-    this.autoBlackoutTimer = 280 + Math.random() * 80;
+    this.autoBlackoutTimer = 65 + Math.random() * 20;
 
     // 1. 중앙 코어 부품 장착 슬롯 4개 생성 (벙커 중앙 발전기 주변)
     this.buildCentralCoreReceptors();
@@ -618,7 +618,7 @@ export class InteractionAndEscapeSystem {
         sound.playPowerRestore();
         sound.setBlackout(false);
         this.map.setBlackoutState(false);
-        this.autoBlackoutTimer = 280 + Math.random() * 80;
+        this.autoBlackoutTimer = 75 + Math.random() * 25;
 
         if (this.breakerState.statusLed) {
           this.breakerState.statusLed.material.color.setHex(0xd8fff0);
@@ -1037,11 +1037,11 @@ export class InteractionAndEscapeSystem {
   update(dt) {
     this.time += dt;
 
-    // 1. 자동 정전 타이머 (완화된 간격으로 발생)
+    // 1. 자동 정전 타이머 (긴장감을 유지하는 주기적 정전 이벤트)
     if (!this.isBlackout && !this.isGameCleared) {
       this.autoBlackoutTimer -= dt;
       if (this.autoBlackoutTimer <= 0) {
-        this.autoBlackoutTimer = 280 + Math.random() * 80;
+        this.autoBlackoutTimer = 75 + Math.random() * 25;
         this.triggerBlackout('괴물이 전기실 배전 선로를 파손하여 시설 전체가 정전되었습니다.');
       }
     }

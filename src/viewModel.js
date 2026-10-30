@@ -524,12 +524,19 @@ export class FirstPersonViewModel {
     let bobX = 0;
     let bobY = 0;
     let sprintTilt = 0;
+    let sprintDropY = 0;
+    let sprintArmPump = 0;
+
     if (isMoving) {
-      const ampX = isSprinting ? 0.022 : 0.011;
-      const ampY = isSprinting ? 0.024 : 0.012;
+      const ampX = isSprinting ? 0.032 : 0.011;
+      const ampY = isSprinting ? 0.034 : 0.012;
       bobX = Math.cos(walkCycle * 0.5) * ampX;
       bobY = Math.abs(Math.sin(walkCycle)) * ampY;
-      if (isSprinting) sprintTilt = 0.16;
+      if (isSprinting) {
+        sprintTilt = 0.28; // 전력 질주 시 상체 전방 숙임
+        sprintDropY = -0.055; // 손을 살짝 내려 시야 확보 및 로우-레디
+        sprintArmPump = Math.sin(walkCycle * 0.5) * 0.045; // 보폭에 맞춘 격렬한 팔 펌핑
+      }
     }
 
     // 3. 왼손(손전등 + PDA) 위치/각도 애니메이션
@@ -540,14 +547,14 @@ export class FirstPersonViewModel {
     }
 
     this.leftArmGroup.position.set(
-      -0.26 + breathX + bobX * 0.8 + this.swayX,
-      -0.23 + breathY - bobY * 0.8 + this.swayY - torchClickOffset * 0.5,
-      -0.42 + torchClickOffset
+      -0.26 + breathX + bobX * 0.9 + this.swayX,
+      -0.23 + sprintDropY + breathY - bobY * 1.1 + this.swayY - torchClickOffset * 0.5,
+      -0.42 + torchClickOffset + sprintArmPump
     );
     this.leftArmGroup.rotation.set(
-      -sprintTilt * 0.5 + this.swayY * 1.4,
+      -sprintTilt * 0.6 + this.swayY * 1.4,
       this.swayX * 1.5,
-      bobX * 1.2
+      bobX * 1.5 - (isSprinting ? 0.12 : 0)
     );
 
     // 4. 오른손(아이템 파지 손) 장착 & 액션 & 아이들 모션
@@ -575,13 +582,13 @@ export class FirstPersonViewModel {
 
     this.rightArmGroup.position.set(
       0.26 - breathX + bobX + this.swayX,
-      baseRightY + breathY - bobY + this.swayY + equipDropY + actionReachY,
-      -0.43 + actionReachZ
+      baseRightY + sprintDropY + breathY - bobY * 1.1 + this.swayY + equipDropY + actionReachY,
+      -0.43 + actionReachZ - sprintArmPump
     );
     this.rightArmGroup.rotation.set(
-      actionPitchX - sprintTilt * 0.7 + Math.sin(this.time * 1.8) * 0.025,
+      actionPitchX - sprintTilt * 0.75 + Math.sin(this.time * 1.8) * 0.025,
       this.swayX * 1.6,
-      equipRollZ - bobX * 1.4
+      equipRollZ - bobX * 1.6 + (isSprinting ? 0.14 : 0)
     );
 
     // 들고 있는 아이템 자체의 발광/스캔 애니메이션 업데이트

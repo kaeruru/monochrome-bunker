@@ -1848,7 +1848,31 @@ export class PlayerCharacterEntity {
     this.time += dt;
     const t = this.time;
 
-    if (mode === 'walk') {
+    if (mode === 'sprint') {
+      const freq = 8.6;
+      const phase = t * freq;
+      const s = Math.sin(phase);
+
+      // 전술 전력 질주: 상체를 20도 가량 숙이고 격렬한 보폭 펌핑
+      this.hipsGroup.position.y = 0.98 + Math.abs(Math.cos(phase)) * 0.058;
+      this.torsoGroup.rotation.y = -s * 0.16;
+      this.torsoGroup.rotation.x = 0.22;
+
+      this.leftLeg.hipGroup.rotation.x = s * 0.88;
+      this.leftLeg.kneeGroup.rotation.x = Math.max(0, -Math.cos(phase)) * 0.95;
+
+      this.rightLeg.hipGroup.rotation.x = -s * 0.88;
+      this.rightLeg.kneeGroup.rotation.x = Math.max(0, Math.cos(phase)) * 0.95;
+
+      this.leftArm.shoulderGroup.rotation.x = -s * 0.72;
+      this.leftArm.elbowGroup.rotation.x = -0.75;
+
+      this.rightArm.shoulderGroup.rotation.x = -0.42 + s * 0.62;
+      this.rightArm.elbowGroup.rotation.x = -1.22;
+
+      this.headGroup.rotation.y = Math.sin(t * 1.5) * 0.08;
+      this.headGroup.rotation.x = -0.12 + Math.abs(Math.sin(phase)) * 0.04;
+    } else if (mode === 'walk') {
       const freq = 4.8;
       const phase = t * freq;
       const s = Math.sin(phase);
