@@ -1243,6 +1243,375 @@ html, body {
 }
 
 /* ==========================================================================
+   사망 직후 CCTV 감시 시점 HUD & 좌측 상단 군용 터미널 타이핑 연출
+   ========================================================================== */
+#death-surveillance-hud {
+  position: fixed;
+  inset: 0;
+  z-index: 9500;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+#death-surveillance-hud.hidden {
+  display: none !important;
+}
+
+.cctv-scanlines {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0) 0px,
+    rgba(0, 0, 0, 0) 2px,
+    rgba(10, 30, 15, 0.28) 3px,
+    rgba(0, 0, 0, 0.45) 4px
+  );
+  pointer-events: none;
+  z-index: 1;
+}
+
+.cctv-noise-grain {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, transparent 40%, rgba(0, 15, 5, 0.55) 100%);
+  pointer-events: none;
+  z-index: 2;
+  box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.85);
+}
+
+.death-cctv-status {
+  position: absolute;
+  top: 24px;
+  right: 28px;
+  z-index: 10;
+  text-align: right;
+  font-family: 'Rajdhani', monospace;
+  text-shadow: 0 0 6px rgba(80, 255, 120, 0.6);
+}
+
+.rec-indicator {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: #ff3b3b;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.rec-pulsing-dot {
+  width: 10px;
+  height: 10px;
+  background: #ff2222;
+  border-radius: 50%;
+  box-shadow: 0 0 10px #ff2222;
+  animation: recBlink 0.9s infinite alternate ease-in-out;
+}
+
+@keyframes recBlink {
+  0% { opacity: 0.2; transform: scale(0.85); }
+  100% { opacity: 1; transform: scale(1.15); }
+}
+
+.cctv-meta-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: #72cca0;
+  letter-spacing: 1px;
+  margin-top: 4px;
+}
+
+/* 좌측 상단 군용 터미널 타이핑 박스 */
+.death-terminal-container {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  z-index: 10;
+  width: 440px;
+  max-width: calc(100vw - 48px);
+  background: rgba(8, 14, 10, 0.88);
+  border: 1px solid rgba(80, 220, 140, 0.45);
+  box-shadow: 0 0 28px rgba(0, 30, 15, 0.7), inset 0 0 18px rgba(0, 20, 10, 0.5);
+  padding: 16px 18px;
+  border-radius: 2px;
+  backdrop-filter: blur(4px);
+}
+
+.terminal-banner {
+  font-family: 'Rajdhani', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2.5px;
+  color: #6ee69e;
+  border-bottom: 1px solid rgba(80, 220, 140, 0.25);
+  padding-bottom: 6px;
+  margin-bottom: 10px;
+  text-shadow: 0 0 6px rgba(110, 230, 158, 0.4);
+}
+
+.terminal-screen {
+  font-family: 'Rajdhani', monospace;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: #bcecd0;
+  min-height: 110px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.terminal-line {
+  word-break: break-all;
+  text-shadow: 0 0 4px rgba(80, 220, 140, 0.35);
+}
+
+.terminal-line.danger {
+  color: #ffbe44;
+  text-shadow: 0 0 6px rgba(255, 190, 68, 0.5);
+}
+
+.terminal-line.fatal {
+  color: #ff4b4b;
+  font-weight: 700;
+  text-shadow: 0 0 8px rgba(255, 75, 75, 0.7);
+}
+
+/* ==========================================================================
+   작전 실패 / 대원 전사 판단 모달 (Analog Military Incident Dossier)
+   ========================================================================== */
+#tactical-death-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: deathModalFadeIn 0.35s ease-out;
+}
+
+#tactical-death-modal.hidden {
+  display: none !important;
+}
+
+@keyframes deathModalFadeIn {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1.0); }
+}
+
+.tactical-death-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(3, 5, 4, 0.78);
+  backdrop-filter: blur(5px);
+}
+
+.tactical-death-box {
+  position: relative;
+  z-index: 10;
+  background: #101314;
+  border: 2px solid #5a2626;
+  border-top: 4px solid #d43838;
+  box-shadow: 0 0 45px rgba(212, 56, 56, 0.32), inset 0 0 35px rgba(0, 0, 0, 0.95);
+  border-radius: 2px;
+  padding: 28px 32px;
+  max-width: 580px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  font-family: 'Rajdhani', sans-serif;
+}
+
+.tactical-death-stamp {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  border: 1px solid rgba(220, 60, 60, 0.65);
+  color: #ff4d4d;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  padding: 3px 8px;
+  transform: rotate(-2deg);
+  background: rgba(40, 10, 10, 0.45);
+}
+
+.tactical-death-header {
+  border-bottom: 1px solid rgba(160, 50, 50, 0.3);
+  padding-bottom: 12px;
+}
+
+.death-title-badge {
+  color: #ff4d4d;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  margin-bottom: 4px;
+}
+
+.tactical-death-header h2 {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: #f5e8e8;
+  margin: 0;
+}
+
+.death-subtext {
+  font-size: 11px;
+  color: #9c8a8a;
+  letter-spacing: 1px;
+  margin-top: 4px;
+}
+
+.tactical-death-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  background: #090b0c;
+  border: 1px solid #202428;
+  padding: 12px;
+  border-radius: 2px;
+}
+
+.stat-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: #8c8f94;
+  letter-spacing: 0.5px;
+}
+
+.stat-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #e4e6ea;
+  letter-spacing: 1px;
+}
+
+.tactical-death-log-box {
+  background: rgba(30, 12, 12, 0.35);
+  border-left: 3px solid #ff4444;
+  padding: 10px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #d8c6c6;
+}
+
+.log-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #ff7777;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+
+.tactical-death-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.tactical-action-btn {
+  flex: 1;
+  min-height: 52px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border-radius: 2px;
+  cursor: pointer;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  transition: all 0.15s ease;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  padding: 8px 12px;
+}
+
+.tactical-action-btn .btn-tag {
+  font-size: 11px;
+  opacity: 0.8;
+  letter-spacing: 2px;
+}
+
+.tactical-action-btn .btn-name {
+  font-size: 14px;
+}
+
+.tactical-action-btn.redeploy {
+  background: #2a1515;
+  border: 1px solid #d43838;
+  color: #ff8888;
+}
+
+.tactical-action-btn.redeploy:hover,
+.tactical-action-btn.redeploy:active {
+  background: #d43838;
+  color: #ffffff;
+  box-shadow: 0 0 18px rgba(212, 56, 56, 0.55);
+}
+
+.tactical-action-btn.lobby {
+  background: #181d20;
+  border: 1px solid #4a555e;
+  color: #c0c9d2;
+}
+
+.tactical-action-btn.lobby:hover,
+.tactical-action-btn.lobby:active {
+  background: #2d363d;
+  color: #ffffff;
+  border-color: #8c9dae;
+}
+
+.tactical-action-btn.spectate {
+  background: #12241b;
+  border: 1px solid #38b26e;
+  color: #6eed9e;
+}
+
+.tactical-action-btn.spectate:hover,
+.tactical-action-btn.spectate:active {
+  background: #38b26e;
+  color: #0c1811;
+  box-shadow: 0 0 18px rgba(56, 178, 110, 0.5);
+}
+
+.modal-btn-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.modal-btn-row .ed-btn {
+  flex: 1;
+}
+
+.tactical-success-stamp {
+  align-self: flex-start;
+  border: 1px solid rgba(68, 221, 136, 0.6);
+  color: #55ee99;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  padding: 2px 8px;
+  margin-bottom: 6px;
+  background: rgba(10, 30, 20, 0.4);
+}
+
+/* ==========================================================================
    작전 투입 전 게임 환경 & 멀티플레이어 설정 모달 (Tactical Setup Lobby)
    ========================================================================== */
 #game-setup-modal {
@@ -1272,10 +1641,11 @@ html, body {
   width: 92%;
   max-width: 860px;
   max-height: 90vh;
-  background: #0b0f14;
-  border: 1px solid rgba(85, 204, 238, 0.35);
-  box-shadow: 0 0 50px rgba(0, 0, 0, 0.9), 0 0 24px rgba(85, 204, 238, 0.15);
-  border-radius: 4px;
+  background: #101316;
+  border: 2px solid #333d47;
+  border-top: 4px solid #5a6b7a;
+  box-shadow: 0 0 50px rgba(0, 0, 0, 0.95), inset 0 0 40px rgba(0, 0, 0, 0.85);
+  border-radius: 2px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -1284,15 +1654,15 @@ html, body {
 
 .setup-header {
   padding: 18px 24px 14px;
-  background: linear-gradient(90deg, rgba(85, 204, 238, 0.08) 0%, rgba(11, 15, 20, 0.4) 100%);
-  border-bottom: 1px solid rgba(85, 204, 238, 0.2);
+  background: #171d22;
+  border-bottom: 2px solid #28333c;
 }
 
 .setup-badge {
   font-family: 'Share Tech Mono', monospace;
   font-size: 11px;
   letter-spacing: 2px;
-  color: #55ccee;
+  color: #d4a34b;
   margin-bottom: 4px;
 }
 
@@ -1301,9 +1671,9 @@ html, body {
   font-size: 24px;
   font-weight: 700;
   letter-spacing: 3px;
-  color: #ffffff;
+  color: #f0f4f8;
   margin: 0;
-  text-shadow: 0 0 12px rgba(85, 204, 238, 0.3);
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.15);
 }
 
 .setup-sub {
@@ -1336,9 +1706,9 @@ html, body {
 }
 
 .setup-section {
-  background: rgba(18, 24, 32, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 3px;
+  background: #14191e;
+  border: 1px solid #28333c;
+  border-radius: 2px;
   padding: 14px;
   display: flex;
   flex-direction: column;
@@ -1350,11 +1720,11 @@ html, body {
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 1.2px;
-  color: #55ccee;
+  color: #d4a34b;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  border-bottom: 1px solid rgba(85, 204, 238, 0.15);
+  border-bottom: 1px solid rgba(212, 163, 75, 0.25);
   padding-bottom: 6px;
 }
 
@@ -1372,8 +1742,8 @@ html, body {
 }
 
 .setup-field input[type="text"] {
-  background: rgba(10, 14, 18, 0.95);
-  border: 1px solid rgba(85, 204, 238, 0.35);
+  background: #0b0e11;
+  border: 1px solid #3d4a56;
   color: #ffffff;
   padding: 8px 12px;
   font-family: 'Rajdhani', sans-serif;
@@ -1386,8 +1756,8 @@ html, body {
 }
 
 .setup-field input[type="text"]:focus {
-  border-color: #55ccee;
-  box-shadow: 0 0 10px rgba(85, 204, 238, 0.25);
+  border-color: #d4a34b;
+  box-shadow: 0 0 10px rgba(212, 163, 75, 0.25);
 }
 
 .suit-preset-grid,
@@ -1399,8 +1769,8 @@ html, body {
 
 .preset-btn,
 .diff-btn {
-  background: rgba(22, 30, 40, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #182026;
+  border: 1px solid #33404c;
   color: #9cb0c2;
   font-family: 'Rajdhani', sans-serif;
   font-size: 12px;
@@ -1414,24 +1784,24 @@ html, body {
 
 .preset-btn:hover,
 .diff-btn:hover {
-  background: rgba(85, 204, 238, 0.15);
-  border-color: rgba(85, 204, 238, 0.45);
+  background: #25313a;
+  border-color: #556677;
   color: #ffffff;
 }
 
 .preset-btn.active,
 .diff-btn.active {
-  background: rgba(85, 204, 238, 0.22);
-  border-color: #55ccee;
-  color: #55ccee;
-  box-shadow: 0 0 12px rgba(85, 204, 238, 0.2);
+  background: rgba(212, 163, 75, 0.2);
+  border-color: #d4a34b;
+  color: #ffd88a;
+  box-shadow: 0 0 10px rgba(212, 163, 75, 0.25);
 }
 
 .diff-btn.danger.active {
-  background: rgba(255, 68, 68, 0.22);
-  border-color: #ff5555;
-  color: #ff5555;
-  box-shadow: 0 0 12px rgba(255, 68, 68, 0.2);
+  background: rgba(212, 56, 56, 0.25);
+  border-color: #d43838;
+  color: #ff8888;
+  box-shadow: 0 0 10px rgba(212, 56, 56, 0.25);
 }
 
 .range-field {
@@ -1447,12 +1817,12 @@ html, body {
 .range-header span {
   font-family: 'Share Tech Mono', monospace;
   font-size: 12px;
-  color: #55ccee;
+  color: #d4a34b;
   font-weight: 700;
 }
 
 .setup-field input[type="range"] {
-  accent-color: #55ccee;
+  accent-color: #d4a34b;
   cursor: pointer;
   height: 6px;
 }
@@ -1464,12 +1834,12 @@ html, body {
 }
 
 .mode-btn {
-  background: rgba(16, 22, 30, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #151b20;
+  border: 1px solid #33404c;
   color: #8fa2b4;
   padding: 12px 10px;
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: 2px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -1478,14 +1848,14 @@ html, body {
 }
 
 .mode-btn:hover {
-  background: rgba(85, 204, 238, 0.12);
-  border-color: rgba(85, 204, 238, 0.4);
+  background: #202830;
+  border-color: #485b6b;
 }
 
 .mode-btn.active {
-  background: rgba(85, 204, 238, 0.18);
-  border-color: #55ccee;
-  box-shadow: 0 0 16px rgba(85, 204, 238, 0.2);
+  background: rgba(212, 163, 75, 0.18);
+  border-color: #d4a34b;
+  box-shadow: 0 0 14px rgba(212, 163, 75, 0.22);
 }
 
 .mode-name {
@@ -1497,7 +1867,7 @@ html, body {
 }
 
 .mode-btn.active .mode-name {
-  color: #55ccee;
+  color: #ffd88a;
 }
 
 .mode-desc {
@@ -1681,30 +2051,30 @@ html, body {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #55ccee;
-  box-shadow: 0 0 8px #55ccee;
+  background: #d4a34b;
+  box-shadow: 0 0 8px rgba(212, 163, 75, 0.6);
 }
 
 .deploy-btn {
-  background: linear-gradient(135deg, rgba(85, 204, 238, 0.25) 0%, rgba(68, 221, 136, 0.2) 100%);
-  border: 1px solid #55ccee;
-  color: #ffffff;
-  font-family: 'Chakra Petch', sans-serif;
-  font-size: 14px;
+  background: #193822;
+  border: 2px solid #44bb68;
+  color: #92f7b4;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 15px;
   font-weight: 700;
-  letter-spacing: 2px;
-  padding: 10px 22px;
+  letter-spacing: 2.5px;
+  padding: 12px 26px;
   cursor: pointer;
-  border-radius: 3px;
-  box-shadow: 0 0 16px rgba(85, 204, 238, 0.25);
+  border-radius: 2px;
+  box-shadow: 0 0 16px rgba(68, 187, 104, 0.3);
   transition: all 0.15s ease;
 }
 
 .deploy-btn:hover {
-  background: linear-gradient(135deg, rgba(85, 204, 238, 0.45) 0%, rgba(68, 221, 136, 0.35) 100%);
-  border-color: #ffffff;
-  box-shadow: 0 0 24px rgba(85, 204, 238, 0.5);
-  transform: translateY(-1px);
+  background: #234f30;
+  border-color: #62d886;
+  color: #ffffff;
+  box-shadow: 0 0 24px rgba(68, 187, 104, 0.55);
 }
 
 /* 터치 컨트롤 설정 그리드 & 버튼 스타일 */
@@ -1716,30 +2086,30 @@ html, body {
 }
 
 .ctrl-mode-btn, .swap-btn {
-  background: rgba(18, 24, 30, 0.85);
-  border: 1px solid rgba(85, 204, 238, 0.25);
+  background: #182026;
+  border: 1px solid #33404c;
   color: #a4b4c4;
   font-family: 'Share Tech Mono', monospace;
   font-size: 11px;
   padding: 8px 6px;
   cursor: pointer;
-  border-radius: 3px;
+  border-radius: 2px;
   transition: all 0.12s ease;
   text-align: center;
 }
 
 .ctrl-mode-btn:hover, .swap-btn:hover {
-  border-color: #55ccee;
+  border-color: #d4a34b;
   color: #fff;
-  background: rgba(85, 204, 238, 0.12);
+  background: rgba(212, 163, 75, 0.15);
 }
 
 .ctrl-mode-btn.active, .swap-btn.active {
-  background: rgba(85, 204, 238, 0.25);
-  border-color: #55ccee;
-  color: #ffffff;
+  background: rgba(212, 163, 75, 0.22);
+  border-color: #d4a34b;
+  color: #ffd88a;
   font-weight: 700;
-  box-shadow: 0 0 10px rgba(85, 204, 238, 0.35);
+  box-shadow: 0 0 10px rgba(212, 163, 75, 0.25);
 }
 
 .swap-preset-grid {

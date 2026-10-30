@@ -7,6 +7,7 @@ import { FirstPersonViewModel } from './viewModel.js';
 import { InteractionAndEscapeSystem } from './interactionSystem.js';
 import { MonsterAI } from './monsterAI.js';
 import { NetworkManager } from './network.js';
+import { PlayerCharacterEntity } from './models.js';
 import { createIndustrialEnvMap } from './textures.js';
 import { sound } from './audio.js';
 import { worldToTile, getZoneName } from './tilemapData.js';
@@ -124,6 +125,27 @@ class MonochromeBunker3D {
     this.isPlayerDead = false;
     this.toastTimer = null;
 
+    // Phase 3: CCTV 사망 감시 및 전술 판단 시스템
+    this.isDeathCamActive = false;
+    this.deathCamTimer = 0;
+    this.deathCamera = null;
+    this.deathCamLight = null;
+    this.deathCamLightTarget = null;
+    this.fallenOperative = null;
+    this.droppedFlashlight = null;
+    this.droppedFlashlightTarget = null;
+    this.deathTypeInterval = null;
+    this.missionStartTime = performance.now();
+
+    // 신규 모달 및 HUD DOM 요소
+    this.deathSurveillanceHudEl = document.getElementById('death-surveillance-hud');
+    this.deathCctvTimestampEl = document.getElementById('death-cctv-timestamp');
+    this.tacticalDeathModalEl = document.getElementById('tactical-death-modal');
+    this.btnDeathLobby = document.getElementById('btn-death-lobby');
+    this.btnDeathRedeploy = document.getElementById('btn-death-redeploy');
+    this.btnDeathSpectate = document.getElementById('btn-death-spectate');
+    this.btnEscapeLobby = document.getElementById('btn-escape-lobby');
+
     // 작전 환경 설정 및 멀티플레이어 상태
     this.isDeployed = false;
     this.difficulty = 'normal';
@@ -190,14 +212,7 @@ class MonochromeBunker3D {
     };
 
     this.handlePlayerCaught = () => {
-      this.isPlayerDead = true;
-      if (this.cctv && this.cctv.isOpen) {
-        this.cctv.close();
-      }
-      this.controls.setDisabled(true);
-      if (this.gameOverModalEl) {
-        this.gameOverModalEl.classList.remove('hidden');
-      }
+      this.startCinematicDeathSequence();
     };
 
     // 12. 멀티플레이어 네트워크 매니저 초기화
@@ -341,16 +356,37 @@ class MonochromeBunker3D {
     requestAnimationFrame((t) => this.loop(t));
   }
 
+  /**
+   * 새로운 무작위 작전 배치로 재투입 (Redeploy)
+   */
   restartNewRandomMatch() {
+    if (this.tacticalDeathModalEl) this.tacticalDeathModalEl.classList.add('hidden');
+    if (this.deathSurveillanceHudEl) this.deathSurveillanceHudEl.classList.add('hidden');
+    if (this.escapeModalEl) this.escapeModalEl.classList.add('hidden');
+    if (this.gameOverModalEl) this.gameOverModalEl.classList.add('hidden');
+    if (this.jumpscareOverlayEl) this.jumpscareOverlayEl.classList.add('hidden');
+    if (this.cctv && this.cctv.isOpen) this.cctv.close();
+
+    if (this.deathTypeInterval) {
+      clearTimeout(this.deathTypeInterval);
+      this.deathTypeInterval = null;
+    }
+
     this.isPlayerDead = false;
-    if (this.escapeModalEl) {
-      this.escapeModalEl.classList.add('hidden');
+    this.isDeathCamActive = false;
+    this.isDeployed = true;
+
+    if (this.fallenOperative) {
+      this.fallenOperative.root.visible = false;
     }
-    if (this.gameOverModalEl) {
-      this.gameOverModalEl.classList.add('hidden');
+    if (this.droppedFlashlight) {
+      this.droppedFlashlight.visible = false;
     }
-    if (this.jumpscareOverlayEl) {
-      this.jumpscareOverlayEl.classList.add('hidden');
+    if (this.deathCamLight) {
+      this.deathCamLight.visible = false;
+    }
+    if (this.viewModel) {
+      this.viewModel.root.visible = true;
     }
 
     // 암전 해제 및 정상 조명 복구
@@ -368,6 +404,7 @@ class MonochromeBunker3D {
     this.playerCamera.rotation.z = 0;
     this.stamina = this.maxStamina;
     this.staminaExhausted = false;
+
     if (this.interactionSystem) {
       this.interactionSystem.setupNewMatch();
     }
@@ -377,7 +414,305 @@ class MonochromeBunker3D {
     this.cctv.updateDoorButtons(this.map.doors);
     this.controls.setDisabled(false);
     this.controls.requestPointerLock();
-    this.showGameToast('[RESET] 모든 코어 부품 위치 및 괴물 경로가 무작위로 재배치되었습니다.', 'info');
+    this.missionStartTime = performance.now();
+    this.showGameToast('[REDEPLOY] 벙커 재투입 완료. 새로운 무작위 배치로 작전을 개시합니다.', 'success');
+  }
+
+  /**
+   * 작전 사령부 브리핑 룸(로비 메뉴)으로 복귀
+   */
+  returnToLobby() {
+    if (this.tacticalDeathModalEl) this.tacticalDeathModalEl.classList.add('hidden');
+    if (this.deathSurveillanceHudEl) this.deathSurveillanceHudEl.classList.add('hidden');
+    if (this.gameOverModalEl) this.gameOverModalEl.classList.add('hidden');
+    if (this.escapeModalEl) this.escapeModalEl.classList.add('hidden');
+    if (this.jumpscareOverlayEl) this.jumpscareOverlayEl.classList.add('hidden');
+    if (this.cctv && this.cctv.isOpen) this.cctv.close();
+
+    if (this.deathTypeInterval) {
+      clearTimeout(this.deathTypeInterval);
+      this.deathTypeInterval = null;
+    }
+
+    this.isPlayerDead = false;
+    this.isDeathCamActive = false;
+    this.isDeployed = false;
+
+    if (this.fallenOperative) {
+      this.fallenOperative.root.visible = false;
+    }
+    if (this.droppedFlashlight) {
+      this.droppedFlashlight.visible = false;
+    }
+    if (this.deathCamLight) {
+      this.deathCamLight.visible = false;
+    }
+
+    if (this.viewModel) {
+      this.viewModel.root.visible = true;
+    }
+    this.flashlightOn = true;
+    this.flashlight.intensity = this.flashlightMaxIntensity;
+    if (this.playerFillLight) this.playerFillLight.intensity = 1.45;
+    if (this.ambientLight) this.ambientLight.intensity = 0.46;
+    if (this.map.bunkerAmbient) this.map.bunkerAmbient.intensity = 0.45;
+    if (this.map.genLight) this.map.genLight.intensity = 2.2;
+    if (this.map.consoleLight) this.map.consoleLight.intensity = 2.0;
+
+    this.map.setBlackoutState(false);
+    this.playerPos.set(this.map.spawnPos.x, this.playerEyeHeight, this.map.spawnPos.z);
+    this.playerCamera.position.copy(this.playerPos);
+    this.playerCamera.rotation.z = 0;
+    this.stamina = this.maxStamina;
+    this.staminaExhausted = false;
+
+    if (this.interactionSystem) {
+      this.interactionSystem.setupNewMatch();
+    }
+    if (this.monsterAI) {
+      this.monsterAI.resetForNewMatch();
+    }
+    this.cctv.updateDoorButtons(this.map.doors);
+
+    this.controls.setDisabled(true);
+    this.controls.unlock();
+    if (this.gameSetupModalEl) {
+      this.gameSetupModalEl.classList.remove('hidden');
+    }
+
+    this.showGameToast('[LOBBY] 작전 사령부 브리핑 룸으로 복귀했습니다.', 'info');
+  }
+
+  /**
+   * Phase 3: 점프스케어 직후 CCTV 감시 시점 및 사망확인 터미널 연출 개시
+   */
+  startCinematicDeathSequence() {
+    this.isPlayerDead = true;
+    this.isDeathCamActive = true;
+    this.deathCamTimer = 0;
+    this.controls.setDisabled(true);
+    this.controls.unlock();
+
+    // 1. 점프스케어 오버레이 제거
+    if (this.jumpscareOverlayEl) {
+      this.jumpscareOverlayEl.classList.add('hidden');
+    }
+
+    // 2. 1인칭 손 모델 숨김
+    if (this.viewModel) {
+      this.viewModel.root.visible = false;
+    }
+
+    // 3. 쓰러진 대원 3D 모델 현 위치에 배치
+    if (!this.fallenOperative) {
+      this.fallenOperative = new PlayerCharacterEntity(this.callsign || 'OPERATIVE', false);
+      this.scene.add(this.fallenOperative.root);
+    }
+    this.fallenOperative.root.visible = true;
+    this.fallenOperative.root.position.set(this.playerPos.x, 0.12, this.playerPos.z);
+    this.fallenOperative.setFallenPose();
+
+    // 바닥에 떨어진 손전등 조명 (바닥을 비추는 희미한 빛줄기)
+    if (!this.droppedFlashlight) {
+      this.droppedFlashlight = new THREE.SpotLight(0xffecc0, 3.2, 14, Math.PI / 4.5, 0.7, 1.2);
+      this.droppedFlashlightTarget = new THREE.Object3D();
+      this.scene.add(this.droppedFlashlight);
+      this.scene.add(this.droppedFlashlightTarget);
+      this.droppedFlashlight.target = this.droppedFlashlightTarget;
+    }
+    this.droppedFlashlight.visible = true;
+    this.droppedFlashlight.position.set(this.playerPos.x + 0.35, 0.08, this.playerPos.z + 0.35);
+    const dropFwd = new THREE.Vector3(1, 0, 0.8).normalize();
+    this.droppedFlashlightTarget.position.copy(this.droppedFlashlight.position).addScaledVector(dropFwd, 6.0);
+
+    // 4. CCTV 감시 카메라 위치 설정 (벽 관통 방지)
+    if (!this.deathCamera) {
+      this.deathCamera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 80);
+    }
+    this.deathCamera.aspect = window.innerWidth / window.innerHeight;
+    this.deathCamera.updateProjectionMatrix();
+
+    const camPos = this.calculateDeathCamPos(this.playerPos);
+    this.deathCamera.position.copy(camPos);
+    this.deathCamera.lookAt(this.playerPos.x, 0.28, this.playerPos.z);
+
+    // CCTV 야간 투시 스포트라이트
+    if (!this.deathCamLight) {
+      this.deathCamLight = new THREE.SpotLight(0xccffdd, 14.0, 32.0, Math.PI / 2.3, 0.65, 1.1);
+      this.deathCamLightTarget = new THREE.Object3D();
+      this.scene.add(this.deathCamLight);
+      this.scene.add(this.deathCamLightTarget);
+      this.deathCamLight.target = this.deathCamLightTarget;
+    }
+    this.deathCamLight.visible = true;
+    this.deathCamLight.position.copy(camPos);
+    this.deathCamLightTarget.position.set(this.playerPos.x, 0.2, this.playerPos.z);
+
+    // 5. 괴물 사후 대치 및 복도 이탈 상태 진입
+    if (this.monsterAI) {
+      this.monsterAI.enterPostKillStalk(this.playerPos);
+    }
+
+    // 6. 음향 효과: CCTV 화면 전환 치직거림 + 전자기 험 노이즈
+    sound.playCctvSwitch(0.35);
+    sound.playLampFlickerBuzz(0.2);
+
+    // 7. CCTV 감시 화면 HUD 및 좌측 상단 터미널 타이핑 시퀀스 개시
+    if (this.deathSurveillanceHudEl) {
+      this.deathSurveillanceHudEl.classList.remove('hidden');
+    }
+    this.startDeathTerminalTyping();
+  }
+
+  /**
+   * 벽 관통을 방지하는 안전한 천장 CCTV 감시 카메라 위치 탐색
+   */
+  calculateDeathCamPos(targetPos) {
+    const candidates = [
+      { x: -2.4, z: 2.2 },
+      { x: 2.4, z: -2.2 },
+      { x: 2.2, z: 2.2 },
+      { x: -2.2, z: -2.2 },
+      { x: 0, z: 2.8 },
+      { x: 0, z: -2.8 },
+      { x: 2.8, z: 0 },
+      { x: -2.8, z: 0 }
+    ];
+
+    for (const cand of candidates) {
+      const cx = targetPos.x + cand.x;
+      const cz = targetPos.z + cand.z;
+      const { col, row } = worldToTile(cx, cz);
+      if (this.map.grid && this.map.grid[row] && this.map.grid[row][col] !== 1) {
+        return new THREE.Vector3(cx, 3.25, cz);
+      }
+    }
+    return new THREE.Vector3(targetPos.x - 1.2, 3.3, targetPos.z + 1.2);
+  }
+
+  /**
+   * 좌측 상단 군용 터미널 타이핑 연출
+   */
+  startDeathTerminalTyping() {
+    const screenEl = document.getElementById('death-terminal-screen');
+    if (!screenEl) return;
+    screenEl.innerHTML = '';
+
+    const lines = [
+      `>> [SEC_NET] SYSTEM OVERRIDE FEED: ACTIVE`,
+      `>> [BIOMETRICS] OPERATIVE CALLSIGN: ${this.callsign || 'OPERATIVE-01'}`,
+      `>> [TELEMETRY] 생체 바이탈 급감... 38... 11... 0 BPM [FLATLINE]`,
+      `>> [STATUS: 0x4F_FATAL] 사망 확인 // 무전 통신 두절 (M.I.A)`,
+      `>> [PROTOCOL] 벙커 차단 격벽 전면 폐쇄 및 감시망 전환 완료`
+    ];
+
+    let currentLineIdx = 0;
+    let currentCharIdx = 0;
+    let currentLineEl = null;
+
+    if (this.deathTypeInterval) {
+      clearTimeout(this.deathTypeInterval);
+      this.deathTypeInterval = null;
+    }
+
+    const typeNextChar = () => {
+      if (currentLineIdx >= lines.length) {
+        // 모든 라인 출력 완료 후 1.1초 뒤 선택 모달 표시
+        this.deathTypeInterval = setTimeout(() => {
+          this.showTacticalDeathModal();
+        }, 1100);
+        return;
+      }
+
+      if (!currentLineEl) {
+        currentLineEl = document.createElement('div');
+        currentLineEl.className = 'terminal-line';
+        if (currentLineIdx === 2) currentLineEl.classList.add('danger');
+        if (currentLineIdx === 3) currentLineEl.classList.add('fatal');
+        screenEl.appendChild(currentLineEl);
+        screenEl.scrollTop = screenEl.scrollHeight;
+
+        if (currentLineIdx === 2) {
+          sound.playFlatlineBeep(0.2);
+        }
+      }
+
+      const lineText = lines[currentLineIdx];
+      currentLineEl.textContent = lineText.slice(0, currentCharIdx + 1) + '█';
+      currentCharIdx++;
+
+      if (currentCharIdx % 2 === 0) {
+        sound.playTerminalKey(0.04);
+      }
+
+      if (currentCharIdx >= lineText.length) {
+        currentLineEl.textContent = lineText;
+        currentLineIdx++;
+        currentCharIdx = 0;
+        currentLineEl = null;
+        this.deathTypeInterval = setTimeout(typeNextChar, 180);
+      } else {
+        this.deathTypeInterval = setTimeout(typeNextChar, 24);
+      }
+    };
+
+    this.deathTypeInterval = setTimeout(typeNextChar, 350);
+  }
+
+  /**
+   * 사망 후 1초 뒤 표시되는 작전 실패 판단 모달
+   */
+  showTacticalDeathModal() {
+    if (!this.tacticalDeathModalEl) return;
+
+    const callsignEl = document.getElementById('death-stat-callsign');
+    const timeEl = document.getElementById('death-stat-time');
+    const coresEl = document.getElementById('death-stat-cores');
+    const blackoutsEl = document.getElementById('death-stat-blackouts');
+
+    if (callsignEl) callsignEl.textContent = this.callsign || 'OPERATIVE-01';
+    if (timeEl) {
+      const elapsed = Math.floor((performance.now() - (this.missionStartTime || performance.now())) / 1000);
+      const m = Math.floor(elapsed / 60);
+      const s = elapsed % 60;
+      timeEl.textContent = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    }
+    if (coresEl && this.interactionSystem) {
+      coresEl.textContent = `${this.interactionSystem.restoredCores || 0} / 3 개`;
+    }
+    if (blackoutsEl && this.interactionSystem) {
+      blackoutsEl.textContent = `${this.interactionSystem.blackoutCount || 0} 회`;
+    }
+
+    const isCoop = this.networkManager && this.networkManager.roomId;
+    const hasTeammates = isCoop && this.networkManager.remotePlayers && this.networkManager.remotePlayers.size > 0;
+
+    if (this.btnDeathSpectate) {
+      if (hasTeammates) {
+        this.btnDeathSpectate.classList.remove('hidden');
+      } else {
+        this.btnDeathSpectate.classList.add('hidden');
+      }
+    }
+
+    this.tacticalDeathModalEl.classList.remove('hidden');
+  }
+
+  /**
+   * 협동전 사망 시 생존 팀원 CCTV 관전 모드 진입
+   */
+  startSpectateMode() {
+    if (this.tacticalDeathModalEl) {
+      this.tacticalDeathModalEl.classList.add('hidden');
+    }
+    if (this.deathSurveillanceHudEl) {
+      this.deathSurveillanceHudEl.classList.add('hidden');
+    }
+    this.isDeathCamActive = false;
+    if (this.cctv) {
+      this.cctv.open();
+      this.showGameToast('[SPECTATE] 생존 대원 관전 모드 가동. CCTV 및 방호문을 원격 조작하십시오.', 'info');
+    }
   }
 
   syncDeviceModeUI() {
@@ -397,6 +732,10 @@ class MonochromeBunker3D {
       this.playerCamera.aspect = w / h;
       this.playerCamera.updateProjectionMatrix();
       if (this.cctv) this.cctv.resize(w / h);
+      if (this.deathCamera) {
+        this.deathCamera.aspect = w / h;
+        this.deathCamera.updateProjectionMatrix();
+      }
       if (this.modelViewer && this.modelViewer.isOpen) this.modelViewer.resize();
     });
 
@@ -423,6 +762,39 @@ class MonochromeBunker3D {
       this.btnRetryMatch.addEventListener('click', (e) => {
         e.stopPropagation();
         this.restartNewRandomMatch();
+      });
+    }
+
+    // Phase 3 신규 버튼 이벤트 바인딩
+    if (this.btnDeathLobby) {
+      this.btnDeathLobby.addEventListener('pointerdown', (e) => e.stopPropagation());
+      this.btnDeathLobby.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.returnToLobby();
+      });
+    }
+
+    if (this.btnDeathRedeploy) {
+      this.btnDeathRedeploy.addEventListener('pointerdown', (e) => e.stopPropagation());
+      this.btnDeathRedeploy.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.restartNewRandomMatch();
+      });
+    }
+
+    if (this.btnDeathSpectate) {
+      this.btnDeathSpectate.addEventListener('pointerdown', (e) => e.stopPropagation());
+      this.btnDeathSpectate.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.startSpectateMode();
+      });
+    }
+
+    if (this.btnEscapeLobby) {
+      this.btnEscapeLobby.addEventListener('pointerdown', (e) => e.stopPropagation());
+      this.btnEscapeLobby.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.returnToLobby();
       });
     }
 
@@ -681,6 +1053,7 @@ class MonochromeBunker3D {
 
   deployMission() {
     this.isDeployed = true;
+    this.missionStartTime = performance.now();
     this.callsign = (this.callsignInput?.value || 'OPERATIVE-01').trim();
     if (this.monsterAI) {
       this.monsterAI.setDifficulty(this.difficulty);
@@ -741,6 +1114,27 @@ class MonochromeBunker3D {
       this.modelViewer.updateAndRender(dt);
       return;
     }
+
+    // Phase 3: 사망 직후 CCTV 감시 시점 업데이트 (괴물 사후 이탈, 맵 전등 지직거림, CCTV 타임스탬프)
+    if (this.isDeathCamActive) {
+      this.deathCamTimer += dt;
+      this.map.update(dt, this.playerPos, this.monsterAI ? this.monsterAI.pos : null);
+      if (this.monsterAI) {
+        this.monsterAI.update(dt, this.playerPos, this.deathCamera || this.playerCamera, false, false, false);
+      }
+      if (this.deathCamera) {
+        this.deathCamera.rotation.z = Math.sin(this.deathCamTimer * 0.42) * 0.025;
+      }
+      if (this.deathCctvTimestampEl) {
+        const elapsed = Math.floor(this.deathCamTimer);
+        const m = Math.floor(elapsed / 60);
+        const s = elapsed % 60;
+        const ms = Math.floor((this.deathCamTimer % 1) * 100);
+        this.deathCctvTimestampEl.textContent = `TIME: ${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')} | SENSOR: BIO_HAZARD ALERT | IR: ACTIVE`;
+      }
+      return;
+    }
+
     if (this.isPlayerDead) return;
     if (this.interactionSystem && this.interactionSystem.isGameCleared) return;
 
@@ -1102,6 +1496,13 @@ class MonochromeBunker3D {
 
   render() {
     if (this.modelViewer && this.modelViewer.isOpen) return;
+
+    // Phase 3: 사망 시 CCTV 감시 카메라 뷰 렌더링
+    if (this.isDeathCamActive && this.deathCamera) {
+      if (this.viewModel) this.viewModel.root.visible = false;
+      this.renderer.render(this.scene, this.deathCamera);
+      return;
+    }
 
     if (this.cctv && this.cctv.isOpen) {
       const cctvCam = this.cctv.getActiveCamera();

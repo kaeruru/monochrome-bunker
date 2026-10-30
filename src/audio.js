@@ -1046,6 +1046,96 @@ class AudioManager {
     bite.start(t2);
     bite.stop(t2 + 0.26);
   }
+
+  /**
+   * 군용 터미널 타이핑 키스트로크 사운드 (미세한 고주파 기계식 펄스)
+   */
+  playTerminalKey(volume = 0.04) {
+    this.init();
+    if (!this.ctx || this.isMuted) return;
+    const t = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(540 + Math.random() * 280, t);
+    gain.gain.setValueAtTime(volume, t);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.032);
+    osc.connect(gain);
+    gain.connect(this.ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.035);
+  }
+
+  /**
+   * CCTV 감시 카메라 채널 전환 노이즈 및 정전기 지직거림
+   */
+  playCctvSwitch(volume = 0.28) {
+    this.init();
+    if (!this.ctx || this.isMuted) return;
+    const t = this.ctx.currentTime;
+    this.playElectricArc(volume * 0.35);
+
+    const bufferSize = Math.floor(this.ctx.sampleRate * 0.09);
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.35));
+    }
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = buffer;
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1750, t);
+    filter.Q.setValueAtTime(1.6, t);
+
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(volume * 0.45, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+    noise.start(t);
+  }
+
+  /**
+   * 바이탈 모니터 생체 신호 정지 플랫라인 사운드 (경고 펄스 -> 지속 평탄음)
+   */
+  playFlatlineBeep(volume = 0.18) {
+    this.init();
+    if (!this.ctx || this.isMuted) return;
+    const t = this.ctx.currentTime;
+
+    // 2회의 감속 심박 경고음
+    const pulses = [0.0, 0.48];
+    pulses.forEach((dt) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(840, t + dt);
+      gain.gain.setValueAtTime(volume * 0.35, t + dt);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + dt + 0.12);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(t + dt);
+      osc.stop(t + dt + 0.13);
+    });
+
+    // 0.95초 뒤 영구 플랫라인 연속 톤 (680Hz)
+    const flatOsc = this.ctx.createOscillator();
+    const flatGain = this.ctx.createGain();
+    flatOsc.type = 'sine';
+    flatOsc.frequency.setValueAtTime(680, t + 0.95);
+    flatGain.gain.setValueAtTime(0.0001, t + 0.95);
+    flatGain.gain.linearRampToValueAtTime(volume * 0.3, t + 1.02);
+    flatGain.gain.exponentialRampToValueAtTime(0.0001, t + 3.2);
+
+    flatOsc.connect(flatGain);
+    flatGain.connect(this.ctx.destination);
+    flatOsc.start(t + 0.95);
+    flatOsc.stop(t + 3.25);
+  }
 }
 
 export const sound = new AudioManager();

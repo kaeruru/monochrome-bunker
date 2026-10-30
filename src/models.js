@@ -1781,7 +1781,40 @@ export class PlayerCharacterEntity {
     return { hipGroup, kneeGroup };
   }
 
+  /**
+   * 사망 시 복도 바닥에 자연스럽게 쓰러진 자세 (Fallen Ragdoll Posture)
+   */
+  setFallenPose() {
+    this.animMode = 'fallen';
+    this.root.position.y = 0.14;
+    this.root.rotation.set(-Math.PI / 2, 0, (Math.random() - 0.5) * 0.45);
+
+    this.hipsGroup.position.set(0, 0.1, 0);
+    this.torsoGroup.rotation.set(0.08, 0.22, 0.05);
+    this.headGroup.rotation.set(-0.25, 0.55, -0.15);
+
+    if (this.leftArm) {
+      this.leftArm.shoulderGroup.rotation.set(0.42, 0.35, 0.2);
+      this.leftArm.elbowGroup.rotation.set(-0.15, 0, 0);
+    }
+    if (this.rightArm) {
+      this.rightArm.shoulderGroup.rotation.set(0.75, -0.38, -0.22);
+      this.rightArm.elbowGroup.rotation.set(-0.35, 0, 0);
+    }
+    if (this.leftLeg) {
+      this.leftLeg.hipGroup.rotation.set(0.22, 0.28, 0.1);
+      this.leftLeg.kneeGroup.rotation.set(0.35, 0, 0);
+    }
+    if (this.rightLeg) {
+      this.rightLeg.hipGroup.rotation.set(-0.18, -0.2, -0.1);
+      this.rightLeg.kneeGroup.rotation.set(0.15, 0, 0);
+    }
+  }
+
   update(dt, mode = this.animMode) {
+    if (mode === 'fallen' || this.animMode === 'fallen') {
+      return;
+    }
     this.animMode = mode;
     this.time += dt;
     const t = this.time;

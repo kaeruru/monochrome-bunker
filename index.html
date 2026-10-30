@@ -138,19 +138,93 @@
         <h2>[EVACUATION COMPLETED]</h2>
         <p>중앙 코어 4개 부품 장착을 완료하여 주 전력을 가동하고 비상 탈출 게이트를 통해 벙커에서 성공적으로 탈출했습니다.</p>
         <div class="escape-stats" id="escape-stats-text">작전 성공 // 모든 핵심 부품 복구 완료</div>
-        <button id="btn-restart-match" class="ed-btn primary">[RESTART] 새로운 무작위 배치로 재시작</button>
+        <div class="modal-btn-row">
+          <button id="btn-restart-match" class="ed-btn primary">[REDEPLOY] 새로운 무작위 작전</button>
+          <button id="btn-escape-lobby" class="ed-btn secondary">[LOBBY] 작전 사령부 복귀</button>
+        </div>
       </div>
     </div>
 
-    <!-- 괴물 피습 / 작전 실패 모달 -->
-    <div id="game-over-modal" class="hidden">
-      <div class="escape-modal-box danger-modal">
-        <h2>[MIA // OPERATIVE DOWN]</h2>
-        <p>생체-엔도스켈레톤 개체에게 피습되었습니다. 손전등[F]을 소등하여 시야를 차단하거나, 방호문 폐쇄 및 조명탄[Q] 투하로 괴물을 저지하십시오.</p>
-        <div class="escape-stats" id="gameover-stats-text">작전 실패 // 방호문 및 조명탄 카운터플레이 권장</div>
-        <button id="btn-retry-match" class="ed-btn danger">[RETRY] 새로운 무작위 배치로 재투입</button>
+    <!-- 1. CCTV 감시 오버레이 및 좌측 상단 군용 터미널 타이핑 HUD (사망 시 즉시 표시) -->
+    <div id="death-surveillance-hud" class="hidden">
+      <div class="cctv-scanlines"></div>
+      <div class="cctv-noise-grain"></div>
+
+      <!-- 우측 상단 CCTV 상태 인디케이터 -->
+      <div class="death-cctv-status">
+        <div class="rec-indicator"><span class="rec-pulsing-dot"></span> REC ● SEC_CAM [OVERHEAD OVERRIDE]</div>
+        <div class="cctv-meta-text" id="death-cctv-timestamp">TIME: 00:00:00 | SENSOR: BIO_HAZARD ALERT | IR: ACTIVE</div>
+      </div>
+
+      <!-- 좌측 상단 군용 터미널 타이핑 콘솔 -->
+      <div class="death-terminal-container">
+        <div class="terminal-banner">[SEC_NET // BIO-TELEMETRY TERMINAL]</div>
+        <div class="terminal-screen" id="death-terminal-screen">
+          <!-- 타이핑 효과로 텍스트 출력 -->
+        </div>
       </div>
     </div>
+
+    <!-- 2. 1초 뒤 표시되는 작전 실패 / 전술 판단 모달 (복귀, 재투입, 관전) -->
+    <div id="tactical-death-modal" class="hidden">
+      <div class="tactical-death-backdrop"></div>
+      <div class="tactical-death-box">
+        <div class="tactical-death-stamp">[CLASSIFIED // INCIDENT DOSSIER]</div>
+
+        <div class="tactical-death-header">
+          <div class="death-title-badge">[M.I.A // OPERATIVE DOWN]</div>
+          <h2>생체 신호 두절 // 대원 전사 확인</h2>
+          <div class="death-subtext">SKELD SUB-SURFACE FACILITY - CONTAINMENT BREACH PROTOCOL</div>
+        </div>
+
+        <div class="tactical-death-grid">
+          <div class="stat-cell">
+            <span class="stat-label">작전 투입 대원</span>
+            <span class="stat-value" id="death-stat-callsign">OPERATIVE-01</span>
+          </div>
+          <div class="stat-cell">
+            <span class="stat-label">생존 작전 시간</span>
+            <span class="stat-value" id="death-stat-time">00:00</span>
+          </div>
+          <div class="stat-cell">
+            <span class="stat-label">복구한 코어 부품</span>
+            <span class="stat-value" id="death-stat-cores">0 / 3 개</span>
+          </div>
+          <div class="stat-cell">
+            <span class="stat-label">정전 복구 횟수</span>
+            <span class="stat-value" id="death-stat-blackouts">0 회</span>
+          </div>
+        </div>
+
+        <div class="tactical-death-log-box">
+          <div class="log-title">[INCIDENT CAUSE // 원인 분석]</div>
+          <p id="death-cause-text">생체-엔도스켈레톤 개체(괴물)에 의한 물리적 피습. 방호문 전력 관리 실패 또는 환기구 잠복 징후 미식별로 판단됨.</p>
+        </div>
+
+        <div class="tactical-death-actions">
+          <!-- 멀티플레이 시 생존 팀원이 있을 때 표시 -->
+          <button type="button" id="btn-death-spectate" class="tactical-action-btn spectate hidden">
+            <span class="btn-tag">[SPECTATE]</span>
+            <span class="btn-name">잔존 대원 CCTV 관전</span>
+          </button>
+
+          <!-- 벙커 즉시 재투입 -->
+          <button type="button" id="btn-death-redeploy" class="tactical-action-btn redeploy">
+            <span class="btn-tag">[REDEPLOY]</span>
+            <span class="btn-name">벙커 즉시 재투입</span>
+          </button>
+
+          <!-- 작전 사령부(로비/메뉴) 복귀 -->
+          <button type="button" id="btn-death-lobby" class="tactical-action-btn lobby">
+            <span class="btn-tag">[LOBBY]</span>
+            <span class="btn-name">작전 사령부 복귀</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 레거시 호환용 더미 컨테이너 -->
+    <div id="game-over-modal" class="hidden"></div>
 
     <!-- 3D CCTV 보안 관제 모니터 전체화면 오버레이 -->
     <div id="cctv-overlay" class="hidden">
@@ -360,6 +434,6 @@
     </div>
   </div>
 
-  <script type="module" src="./src/main.js?v=2.9"></script>
+  <script type="module" src="./src/main.js?v=3.0"></script>
 </body>
 </html>

@@ -713,6 +713,27 @@ export class MonsterAI {
       return;
     }
 
+    // 1-1. 처형 직후 CCTV 시점 전환 시 괴물의 사후 연출 (시신 주위 위협적 대치 후 복도 이탈)
+    if (this.state === 'POST_KILL') {
+      this.postKillTimer = (this.postKillTimer || 3.6) - dt;
+      let diff = (this.postKillTargetYaw || 0) - this.yaw;
+      while (diff > Math.PI) diff -= Math.PI * 2;
+      while (diff < -Math.PI) diff += Math.PI * 2;
+      this.yaw += diff * Math.min(1, dt * 2.2);
+      this.monster.root.rotation.y = this.yaw;
+
+      if (this.postKillTimer > 1.8) {
+        this.monster.update(dt, 'stalk');
+      } else {
+        const fwd = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw);
+        this.pos.x += fwd.x * dt * 0.95;
+        this.pos.z += fwd.z * dt * 0.95;
+        this.monster.root.position.copy(this.pos);
+        this.monster.update(dt, 'stalk');
+      }
+      return;
+    }
+
     // 2. 플레이어 이동 소음 자동 감지 (달리기: 난이도별 반경, 걷기: 3.6m)
     if (isMoving) {
       if (isSprinting) {
@@ -1101,5 +1122,16 @@ export class MonsterAI {
     }
 
     sound.playJumpscare();
+  }
+
+  /**
+   * 처형 점프스케어 종료 후 CCTV 화면에서 괴물이 대치하다가 천천히 이탈하는 모드 진입
+   */
+  enterPostKillStalk(bodyPos) {
+    this.isKillingPlayer = false;
+    this.state = 'POST_KILL';
+    this.postKillTimer = 3.6;
+    this.postKillTargetYaw = this.yaw + Math.PI * 0.85;
+    this.setHeartCoreColor(0x992200);
   }
 }
