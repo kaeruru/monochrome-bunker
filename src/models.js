@@ -124,8 +124,9 @@ function createBiomechanicalMaterials() {
       color: 0xd8dee4
     }),
     // 흉곽 내부 맥동하는 심장 코어(Heart Core) - 어둠 속에서 뚜렷하게 발광
-    heartCoreMat: new THREE.MeshBasicMaterial({
-      color: 0xffffff
+    heartCoreMat: new THREE.MeshLambertMaterial({
+      color: 0x111111,
+      emissive: 0xdbe8ff
     }),
     // 심장 코어 혈관/케이블
     heartVeinMat: new THREE.MeshLambertMaterial({

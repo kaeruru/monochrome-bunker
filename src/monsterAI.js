@@ -262,8 +262,12 @@ export class MonsterAI {
    */
   setHeartCoreColor(hexColor) {
     if (this.monster.mats && this.monster.mats.heartCoreMat) {
-      this.monster.mats.heartCoreMat.color.setHex(hexColor);
-      this.monster.mats.heartCoreMat.emissive.setHex(hexColor);
+      if (this.monster.mats.heartCoreMat.color) {
+        this.monster.mats.heartCoreMat.color.setHex(hexColor);
+      }
+      if (this.monster.mats.heartCoreMat.emissive) {
+        this.monster.mats.heartCoreMat.emissive.setHex(hexColor);
+      }
     }
     if (this.monster.heartLight) {
       this.monster.heartLight.color.setHex(hexColor);

@@ -65,6 +65,52 @@ function addRealisticNoiseAndScratches(ctx, size, noiseAlpha = 0.12, scratches =
 }
 
 /**
+ * 실사 콘크리트 골재(Aggregate) 자갈 입자 및 미세 기공(Pores) 생성
+ */
+function addConcreteAggregateAndPores(ctx, size, count = 420) {
+  ctx.save();
+  for (let i = 0; i < count; i++) {
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    const r = 0.5 + Math.random() * 2.2;
+    const isDark = Math.random() > 0.42;
+    ctx.fillStyle = isDark
+      ? `rgba(16, 18, 20, ${0.35 + Math.random() * 0.45})`
+      : `rgba(195, 200, 208, ${0.22 + Math.random() * 0.35})`;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/**
+ * 벽면 지하수 흘러내림(Water Seepage) 및 수직 부식 오염선
+ */
+function addWaterSeepageStreaks(ctx, size, count = 8) {
+  ctx.save();
+  for (let i = 0; i < count; i++) {
+    const x = 30 + Math.random() * (size - 60);
+    const w = 14 + Math.random() * 32;
+    const h = size * (0.35 + Math.random() * 0.55);
+    const grad = ctx.createLinearGradient(x, 0, x, h);
+    grad.addColorStop(0, 'rgba(10, 12, 14, 0.7)');
+    grad.addColorStop(0.3, 'rgba(18, 22, 24, 0.5)');
+    grad.addColorStop(0.7, 'rgba(65, 40, 22, 0.3)'); // 지하수 내 철분 부식물
+    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(x - w / 2, 0);
+    ctx.lineTo(x + w / 2, 0);
+    ctx.lineTo(x + w * 0.25, h);
+    ctx.lineTo(x - w * 0.25, h);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/**
  * 씬 기본 환경광 반사맵 (가볍고 차가운 인더스트리얼 톤)
  */
 export function createIndustrialEnvMap(renderer) {
@@ -111,12 +157,18 @@ export function createIndustrialMaterials() {
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, s, s);
 
+    // 실사 콘크리트 미세 골재 및 기공
+    addConcreteAggregateAndPores(ctx, s, 350);
+
     // 모서리 앰비언트 오클루전 (자체 베이킹된 어두운 그림자 테두리)
     const edgeGrad = ctx.createRadialGradient(s / 2, s / 2, s * 0.32, s / 2, s / 2, s * 0.72);
     edgeGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
-    edgeGrad.addColorStop(1, 'rgba(0, 0, 0, 0.55)');
+    edgeGrad.addColorStop(1, 'rgba(0, 0, 0, 0.58)');
     ctx.fillStyle = edgeGrad;
     ctx.fillRect(0, 0, s, s);
+
+    // 지하수 흘러내림 및 수직 오염선
+    addWaterSeepageStreaks(ctx, s, 6);
 
     // 상하좌우 강철 프레임 이음새
     ctx.strokeStyle = '#141618';
@@ -218,6 +270,9 @@ export function createIndustrialMaterials() {
     ctx.fillStyle = '#44484d';
     ctx.fillRect(0, 0, s, s);
 
+    // 실사 콘크리트 골재 및 기공
+    addConcreteAggregateAndPores(ctx, s, 400);
+
     const half = s / 2;
     for (let gy = 0; gy < 2; gy++) {
       for (let gx = 0; gx < 2; gx++) {
@@ -255,6 +310,23 @@ export function createIndustrialMaterials() {
     ctx.moveTo(half, 0); ctx.lineTo(half, s);
     ctx.moveTo(0, half); ctx.lineTo(s, half);
     ctx.stroke();
+
+    // 오일 및 폐수 오염 얼룩 (Dark Oil Stains)
+    const oilSpots = [
+      { x: s * 0.35, y: s * 0.42, r: 44 },
+      { x: s * 0.72, y: s * 0.68, r: 30 },
+      { x: s * 0.22, y: s * 0.78, r: 18 }
+    ];
+    for (const spot of oilSpots) {
+      const oGrad = ctx.createRadialGradient(spot.x, spot.y, 2, spot.x, spot.y, spot.r);
+      oGrad.addColorStop(0, 'rgba(10, 11, 12, 0.7)');
+      oGrad.addColorStop(0.5, 'rgba(18, 20, 22, 0.4)');
+      oGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = oGrad;
+      ctx.beginPath();
+      ctx.arc(spot.x, spot.y, spot.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     addRealisticNoiseAndScratches(ctx, s, 0.15, 24);
   }, 512);
@@ -405,6 +477,26 @@ export function createIndustrialMaterials() {
       ctx.fill();
     }
     ctx.restore();
+
+    // 도어 볼트 및 용접 부식 디테일
+    const doorRivets = [
+      [38, 25], [s - 38, 25], [38, s - 85], [s - 38, s - 85],
+      [s * 0.18 + 12, s * 0.42 + 10], [s * 0.82 - 12, s * 0.42 + 10]
+    ];
+    for (const [rx, ry] of doorRivets) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.beginPath();
+      ctx.arc(rx + 2, ry + 2, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#222528';
+      ctx.beginPath();
+      ctx.arc(rx, ry, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#8a949e';
+      ctx.beginPath();
+      ctx.arc(rx - 1, ry - 1, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     addRealisticNoiseAndScratches(ctx, s, 0.15, 26);
   }, 512);
