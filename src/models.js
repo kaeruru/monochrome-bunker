@@ -250,6 +250,7 @@ export class MonsterEntity {
     this.clawsLeft = [];
     this.clawsRight = [];
     this.coreRings = [];
+    this.walkCyclePhase = 0;
 
     this.buildAnatomy();
   }
@@ -1013,8 +1014,11 @@ export class MonsterEntity {
 
   /**
    * 현실적이고 육중한 생체-엔도스켈레톤 물리 애니메이션 & 사운드 연동
+   * @param {number} dt 델타 타임
+   * @param {string} mode 애니메이션 모드 ('idle', 'stalk', 'chase', 'attack', 'jumpscare')
+   * @param {number|null} moveDist 실제 월드에서 이동한 물리적 거리(m) - 발 미끄러짐 방지 1:1 동기화
    */
-  update(dt, mode = this.animMode) {
+  update(dt, mode = this.animMode, moveDist = null) {
     // 폭주(chase)나 공격(attack) 전환 시 즉각 괴성 포효음 재생!
     if (mode !== this.lastMode) {
       if (this.enableSound && (mode === 'chase' || mode === 'attack')) {
@@ -1170,56 +1174,71 @@ export class MonsterEntity {
 
     // -----------------------------------------------------------------------
     // 5. 무게감 있는 보행(Stalk) vs 짐승 같은 폭주 질주(Chase) vs 처형 공격(Attack)
+    // - 실제 바닥 이동 거리(moveDist)와 발걸음 위상을 1:1로 물리 동기화(Root-Motion)하여
+    //   미끄러짐(스케이트 현상)과 벽에 막혔을 때의 헛발질을 원천 방지합니다.
     // -----------------------------------------------------------------------
     if (mode === 'stalk' || mode === 'chase') {
       const isChase = mode === 'chase';
-      const walkFreq = isChase ? 3.5 : 2.15;
-      const stride = isChase ? 0.72 : 0.44;
-      const phaseL = t * walkFreq;
+      const stride = isChase ? 0.84 : 0.52;
+      const stepMeters = isChase ? 1.45 : 0.95;
+
+      let isMoving = false;
+      if (typeof moveDist === 'number') {
+        if (moveDist > 0.0003) {
+          isMoving = true;
+          this.walkCyclePhase = (this.walkCyclePhase || 0) + (moveDist / stepMeters) * Math.PI;
+        }
+      } else {
+        isMoving = true;
+        const fallbackSpeed = isChase ? 7.6 : 3.15;
+        this.walkCyclePhase = (this.walkCyclePhase || 0) + (dt * fallbackSpeed / stepMeters) * Math.PI;
+      }
+
+      const phaseL = this.walkCyclePhase || 0;
       const phaseR = phaseL + Math.PI;
 
       // 발이 땅을 딛는 순간(sin(phase)가 정점을 지날 때) 사운드 재생 및 쿵 하는 무게 침하(Impact Drop)
       const stepIdx = Math.floor((phaseL + Math.PI / 2) / Math.PI);
-      if (this.enableSound && stepIdx !== this.lastStepIndex) {
+      if (this.enableSound && stepIdx !== this.lastStepIndex && isMoving) {
         this.lastStepIndex = stepIdx;
         sound.playMonsterFootstep(this.soundVolume, isChase);
       }
 
       // 날카로운 착지 충격 곡선 (둥둥 떠다니는 사인파 대신 쿵 찍히는 중량감)
-      const impactWave = Math.pow(Math.abs(Math.sin(phaseL)), 1.8);
+      const impactWave = isMoving ? Math.pow(Math.abs(Math.sin(phaseL)), 1.8) : 0;
       const dropY = isChase ? 0.15 : 0.075;
       this.pelvisGroup.position.y = (isChase ? 1.06 : 1.15) - impactWave * dropY;
-      this.pelvisGroup.rotation.z = Math.sin(phaseL) * (isChase ? 0.13 : 0.075);
-      this.pelvisGroup.rotation.y = Math.sin(phaseL) * (isChase ? 0.16 : 0.09);
+      this.pelvisGroup.rotation.z = isMoving ? Math.sin(phaseL) * (isChase ? 0.13 : 0.075) : 0;
+      this.pelvisGroup.rotation.y = isMoving ? Math.sin(phaseL) * (isChase ? 0.16 : 0.09) : 0;
 
       // 폭주 추격(Chase) 시 상체를 거의 수평에 가깝게 앞으로 숙이고 척추를 꿈틀거리며 질주!
       this.thoraxGroup.rotation.x = isChase
-        ? 0.52 + Math.sin(phaseL * 2) * 0.12
-        : 0.18 + Math.sin(phaseL * 2) * 0.04;
-      this.thoraxGroup.rotation.y = -Math.sin(phaseL) * (isChase ? 0.24 : 0.12);
-      this.thoraxGroup.rotation.z = -Math.sin(phaseL) * (isChase ? 0.1 : 0.04);
+        ? 0.52 + (isMoving ? Math.sin(phaseL * 2) * 0.12 : 0)
+        : 0.18 + (isMoving ? Math.sin(phaseL * 2) * 0.04 : 0);
+      this.thoraxGroup.rotation.y = isMoving ? -Math.sin(phaseL) * (isChase ? 0.24 : 0.12) : 0;
+      this.thoraxGroup.rotation.z = isMoving ? -Math.sin(phaseL) * (isChase ? 0.1 : 0.04) : 0;
 
-      this.animateWeightedLeg(this.leftLeg, phaseL, stride, isChase);
-      this.animateWeightedLeg(this.rightLeg, phaseR, stride, isChase);
+      this.animateWeightedLeg(this.leftLeg, phaseL, stride, isChase, isMoving);
+      this.animateWeightedLeg(this.rightLeg, phaseR, stride, isChase, isMoving);
 
       if (isChase) {
         // 폭주 질주 시 양팔을 앞으로 크게 뻗어 바닥을 할퀴듯 휘젓는 광폭한 모션
-        this.leftArm.shoulderGroup.rotation.x = -0.85 + Math.sin(phaseR) * 0.78;
-        this.leftArm.shoulderGroup.rotation.z = -0.25 - Math.max(0, Math.cos(phaseR)) * 0.2;
-        this.leftArm.elbowGroup.rotation.x = -0.45 + Math.sin(phaseR - 0.6) * 0.45;
+        this.leftArm.shoulderGroup.rotation.x = -0.85 + (isMoving ? Math.sin(phaseR) * 0.78 : 0);
+        this.leftArm.shoulderGroup.rotation.z = -0.25 - (isMoving ? Math.max(0, Math.cos(phaseR)) * 0.2 : 0);
+        this.leftArm.elbowGroup.rotation.x = -0.45 + (isMoving ? Math.sin(phaseR - 0.6) * 0.45 : 0);
 
-        this.rightArm.shoulderGroup.rotation.x = -0.85 + Math.sin(phaseL) * 0.78;
-        this.rightArm.shoulderGroup.rotation.z = 0.25 + Math.max(0, Math.cos(phaseL)) * 0.2;
-        this.rightArm.elbowGroup.rotation.x = -0.45 + Math.sin(phaseL - 0.6) * 0.45;
+        this.rightArm.shoulderGroup.rotation.x = -0.85 + (isMoving ? Math.sin(phaseL) * 0.78 : 0);
+        this.rightArm.shoulderGroup.rotation.z = 0.25 + (isMoving ? Math.max(0, Math.cos(phaseL)) * 0.2 : 0);
+        this.rightArm.elbowGroup.rotation.x = -0.45 + (isMoving ? Math.sin(phaseL - 0.6) * 0.45 : 0);
       } else {
         // 순찰 보행 시 손끝을 늘어뜨린 채 묵직하게 흔들림
-        this.leftArm.shoulderGroup.rotation.x = -0.28 + Math.sin(phaseR) * 0.34;
+        this.leftArm.shoulderGroup.rotation.x = -0.28 + (isMoving ? Math.sin(phaseR) * 0.34 : 0);
         this.leftArm.shoulderGroup.rotation.z = -0.15;
-        this.leftArm.elbowGroup.rotation.x = -0.58 + Math.cos(phaseR) * 0.18;
+        this.leftArm.elbowGroup.rotation.x = -0.58 + (isMoving ? Math.cos(phaseR) * 0.18 : 0);
 
-        this.rightArm.shoulderGroup.rotation.x = -0.28 + Math.sin(phaseL) * 0.34;
+        this.rightArm.shoulderGroup.rotation.x = -0.28 + (isMoving ? Math.sin(phaseL) * 0.34 : 0);
         this.rightArm.shoulderGroup.rotation.z = 0.15;
-        this.rightArm.elbowGroup.rotation.x = -0.58 + Math.cos(phaseL) * 0.18;
+        this.rightArm.elbowGroup.rotation.x = -0.58 + (isMoving ? Math.cos(phaseL) * 0.18 : 0);
       }
     } else if (mode === 'jumpscare') {
       // 점프스케어 모션: 어둠 속에서 상체와 거대한 발톱이 플레이어의 화면 전체를 덮침!
@@ -1298,9 +1317,17 @@ export class MonsterEntity {
 
   /**
    * 비대칭 보행 궤적: 다리를 들어 올릴 때는 빠르게 무릎을 굽히고,
-   * 땅을 딛고 밀어낼 때는 강하게 뻗는 현실적인 역관절 보행 곡선
+   * 땅을 딛고 밀어낼 때는 강하게 뻗는 현실적인 역관절 보행 곡선.
+   * 이동이 멈추었을 때는 바닥에 단단히 발을 디딘 대기 자세를 취합니다.
    */
-  animateWeightedLeg(leg, phase, stride, isChase) {
+  animateWeightedLeg(leg, phase, stride, isChase, isMoving = true) {
+    if (!isMoving) {
+      leg.hipGroup.rotation.x = 0;
+      leg.kneeGroup.rotation.x = isChase ? 0.22 : 0.12;
+      leg.ankleGroup.rotation.x = isChase ? -0.14 : -0.08;
+      return;
+    }
+
     const swing = Math.sin(phase);
     const lift = Math.max(0, Math.cos(phase));
     const kneeFlex = Math.pow(lift, 1.3) * (isChase ? 1.15 : 0.92);

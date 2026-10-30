@@ -372,7 +372,8 @@ export class MonsterAI {
   }
 
   /**
-   * 두 월드 좌표 사이에 벽('#')이나 닫힌 문('D')이 없는지 그리드 레이캐스트 검사
+   * 두 월드 좌표 사이에 벽('#'), 심연(' '), 중앙 발전기 코어('G'), CCTV 콘솔('C'),
+   * 닫힌 문('D') 및 원형 프랍 콜라이더가 없는지 엄격히 레이캐스트 검사
    */
   hasGridLineOfSight(x0, z0, x1, z1) {
     const dx = x1 - x0;
@@ -380,6 +381,24 @@ export class MonsterAI {
     const dist = Math.hypot(dx, dz);
     if (dist < 0.4) return true;
 
+    // 1. 프랍 콜라이더(중앙 발전기 코어, CCTV 콘솔 등) 실린더 차폐 검사
+    if (this.map && this.map.propColliders) {
+      const lenSq = dx * dx + dz * dz;
+      if (lenSq > 0.0001) {
+        for (const prop of this.map.propColliders) {
+          const t = Math.max(0, Math.min(1, ((prop.x - x0) * dx + (prop.z - z0) * dz) / lenSq));
+          const projX = x0 + t * dx;
+          const projZ = z0 + t * dz;
+          const dSq = (projX - prop.x) * (projX - prop.x) + (projZ - prop.z) * (projZ - prop.z);
+          const blockR = prop.r * 0.88;
+          if (dSq < blockR * blockR) {
+            return false; // 거대한 발전기 코어나 콘솔에 시야가 완전히 차단됨!
+          }
+        }
+      }
+    }
+
+    // 2. 타일 그리드 차폐 검사
     const steps = Math.ceil(dist / 0.45);
     for (let i = 1; i < steps; i++) {
       const t = i / steps;
@@ -388,7 +407,7 @@ export class MonsterAI {
       const tile = worldToTile(sx, sz);
       const ch = getTile(tile.col, tile.row);
 
-      if (ch === '#' || ch === ' ') return false;
+      if (ch === '#' || ch === ' ' || ch === 'G' || ch === 'C') return false;
       if (ch === 'D') {
         const door = this.findDoorAtTile(tile.col, tile.row);
         if (door && !door.isOpen) return false;
@@ -442,10 +461,32 @@ export class MonsterAI {
    */
   computePathToWorld(targetX, targetZ, allowClosedDoors = false) {
     const start = worldToTile(this.pos.x, this.pos.z);
-    const goal = worldToTile(targetX, targetZ);
+    let goal = worldToTile(targetX, targetZ);
+
+    // 목표 지점이 발전기 코어(G)나 콘솔(C) 등 진입 불가 타일 내부인 경우 주변 통행 가능한 바닥으로 목표 자동 보정
+    const goalCh = getTile(goal.col, goal.row);
+    if (goalCh === ' ' || goalCh === '#' || goalCh === 'G' || goalCh === 'C') {
+      const adjTiles = [
+        { col: goal.col, row: goal.row + 1 },
+        { col: goal.col, row: goal.row - 1 },
+        { col: goal.col + 1, row: goal.row },
+        { col: goal.col - 1, row: goal.row },
+        { col: goal.col + 1, row: goal.row + 1 },
+        { col: goal.col - 1, row: goal.row + 1 },
+        { col: goal.col + 1, row: goal.row - 1 },
+        { col: goal.col - 1, row: goal.row - 1 }
+      ];
+      for (const adj of adjTiles) {
+        const ach = getTile(adj.col, adj.row);
+        if (ach !== ' ' && ach !== '#' && ach !== 'G' && ach !== 'C') {
+          goal = adj;
+          break;
+        }
+      }
+    }
 
     if (start.col === goal.col && start.row === goal.row) {
-      this.path = [{ x: targetX, z: targetZ }];
+      this.path = [{ x: targetX, z: targetZ, col: goal.col, row: goal.row }];
       this.pathIndex = 0;
       return;
     }
@@ -486,7 +527,8 @@ export class MonsterAI {
         if (visited[nr][nc]) continue;
 
         const ch = getTile(nc, nr);
-        if (ch === ' ' || ch === '#') continue;
+        // 발전기 코어(G) 및 CCTV 콘솔(C)을 통과 불가능한 고체 장애물로 엄격히 제외
+        if (ch === ' ' || ch === '#' || ch === 'G' || ch === 'C') continue;
 
         if (ch === 'D' && !allowClosedDoors) {
           const door = this.findDoorAtTile(nc, nr);
@@ -510,7 +552,19 @@ export class MonsterAI {
 
     revPath.reverse();
     if (found) {
-      revPath.push({ x: targetX, z: targetZ, col: goal.col, row: goal.row });
+      // 최종 타깃이 프랍 콜라이더(발전기 등) 내부이거나 너무 가까울 경우 프랍 중심 좌표를 경로에 넣지 않음
+      let insideProp = false;
+      if (this.map && this.map.propColliders) {
+        for (const prop of this.map.propColliders) {
+          if (Math.hypot(targetX - prop.x, targetZ - prop.z) < prop.r + 0.45) {
+            insideProp = true;
+            break;
+          }
+        }
+      }
+      if (!insideProp) {
+        revPath.push({ x: targetX, z: targetZ, col: goal.col, row: goal.row });
+      }
     }
     this.path = revPath;
     this.pathIndex = 0;
@@ -541,17 +595,28 @@ export class MonsterAI {
 
   /**
    * 무작위 순찰 목적지 선택
+   * - 식당(중앙 벙커) 내부에 있을 때는 외부 복도나 타 격실로 이동하도록 유도
+   * - 중앙 발전기 코어 및 CCTV 콘솔 바로 주변은 순찰 지점에서 원천 배제
    */
   pickRandomPatrolPoint() {
     const candidates = [];
     const curTile = worldToTile(this.pos.x, this.pos.z);
+    const inCafeteria = (curTile.col >= 19 && curTile.col <= 29 && curTile.row >= 2 && curTile.row <= 10);
 
     for (let r = 2; r < MAP_ROWS - 2; r++) {
       for (let c = 2; c < MAP_COLS - 2; c++) {
+        // 중앙 코어(24, 6) 및 콘솔(24, 3) 바로 앞은 목적지 배제
+        if ((c === 24 && r === 6) || (c === 24 && r === 3)) continue;
+
         const ch = getTile(c, r);
         if (ch === '.' || ch === 'R' || ch === 'B') {
+          // 이미 식당(벙커) 내부에 있다면 88% 확률로 'B'를 건너뛰고 복도('.') 및 다른 방('R')으로 나가도록 유도
+          if (inCafeteria && ch === 'B' && Math.random() < 0.88) {
+            continue;
+          }
+
           const distTiles = Math.hypot(c - curTile.col, r - curTile.row);
-          if (distTiles >= 4 && distTiles <= 14) {
+          if (distTiles >= 4 && distTiles <= 15) {
             candidates.push({ col: c, row: r });
           }
         }
@@ -567,6 +632,8 @@ export class MonsterAI {
 
   /**
    * 경로를 따라 지상에서 괴물 이동 처리
+   * - 원형 프랍(발전기 코어, CCTV 콘솔 등)과의 접촉 시 매끄러운 둘레 접선(Tangent) 슬라이딩
+   * - 막힘 감지 및 타임아웃 기반 자동 웨이포인트 스킵/재순찰 전환
    */
   moveAlongPath(dt, speed, allowDoorBash = false) {
     if (!this.path || this.pathIndex >= this.path.length) return true;
@@ -602,8 +669,10 @@ export class MonsterAI {
     const dz = target.z - this.pos.z;
     const dist = Math.hypot(dx, dz);
 
-    if (dist < 0.32) {
+    // 웨이포인트 통과 판정 (기본 0.42m, 혹은 좁은 공간에서 막힘 감지 시 1.35m)
+    if (dist < 0.42 || (dist < 1.35 && (this.stuckTimer || 0) > 0.35)) {
       this.pathIndex++;
+      this.stuckTimer = 0;
       return this.pathIndex >= this.path.length;
     }
 
@@ -615,17 +684,67 @@ export class MonsterAI {
     const nextX = this.pos.x + dirX * step;
     const nextZ = this.pos.z + dirZ * step;
 
+    let moved = false;
+    // 1. 직접 이동 시도
     if (!this.map.checkCollision(nextX, nextZ, this.radius)) {
       this.pos.x = nextX;
       this.pos.z = nextZ;
-    } else if (!this.map.checkCollision(nextX, this.pos.z, this.radius)) {
-      this.pos.x = nextX;
-    } else if (!this.map.checkCollision(this.pos.x, nextZ, this.radius)) {
-      this.pos.z = nextZ;
+      moved = true;
     } else {
-      // 모서리에 끼었을 경우 타일 중심으로 부드럽게 보정
-      this.pos.x += dirX * step * 0.5;
-      this.pos.z += dirZ * step * 0.5;
+      // 2. 원형 프랍(발전기 코어 등) 외곽 접선(Tangent) 슬라이딩
+      let slidOnProp = false;
+      if (this.map && this.map.propColliders) {
+        for (const prop of this.map.propColliders) {
+          const pdx = this.pos.x - prop.x;
+          const pdz = this.pos.z - prop.z;
+          const pDist = Math.hypot(pdx, pdz);
+          const clearance = this.radius + prop.r + 0.12;
+          if (pDist < clearance + 0.6) {
+            const nx = pDist > 0.001 ? pdx / pDist : 1;
+            const nz = pDist > 0.001 ? pdz / pDist : 0;
+            const t1x = -nz;
+            const t1z = nx;
+            const dot = t1x * dirX + t1z * dirZ;
+            const tanX = dot >= 0 ? t1x : -t1x;
+            const tanZ = dot >= 0 ? t1z : -t1z;
+
+            const tryX = this.pos.x + tanX * step;
+            const tryZ = this.pos.z + tanZ * step;
+            if (!this.map.checkCollision(tryX, tryZ, this.radius)) {
+              this.pos.x = tryX;
+              this.pos.z = tryZ;
+              moved = true;
+              slidOnProp = true;
+              break;
+            }
+          }
+        }
+      }
+
+      // 3. 직선 벽면 축 분리 슬라이딩 (X축 또는 Z축)
+      if (!slidOnProp) {
+        if (!this.map.checkCollision(nextX, this.pos.z, this.radius)) {
+          this.pos.x = nextX;
+          moved = true;
+        } else if (!this.map.checkCollision(this.pos.x, nextZ, this.radius)) {
+          this.pos.z = nextZ;
+          moved = true;
+        }
+      }
+    }
+
+    if (!moved) {
+      this.stuckTimer = (this.stuckTimer || 0) + dt;
+      if (this.stuckTimer > 0.45) {
+        this.stuckTimer = 0;
+        if (this.pathIndex < this.path.length - 1) {
+          this.pathIndex++;
+        } else {
+          return true; // 목적지 도달 불가 시 경로 종료 처리하여 새로운 순찰/추격 유도
+        }
+      }
+    } else {
+      this.stuckTimer = 0;
     }
 
     return false;
@@ -672,6 +791,8 @@ export class MonsterAI {
     if (this.interactionSystem && this.interactionSystem.isGameCleared) return;
 
     if (this.isRemoteControlled) {
+      const prevX = this.pos.x;
+      const prevZ = this.pos.z;
       // 비-호스트 멀티플레이 클라이언트: 무거운 AI 길찾기/레이캐스트를 건너뛰고 부드러운 위치/회전 보간만 처리
       this.pos.lerp(this.targetSyncPos, Math.min(1, dt * 14));
       let diff = this.targetSyncYaw - this.yaw;
@@ -679,13 +800,16 @@ export class MonsterAI {
       while (diff < -Math.PI) diff += Math.PI * 2;
       this.yaw += diff * Math.min(1, dt * 14);
 
+      const actualDist = Math.hypot(this.pos.x - prevX, this.pos.z - prevZ);
       this.monster.root.position.copy(this.pos);
       this.monster.root.rotation.y = this.yaw;
       this.monster.root.visible = (this.state !== 'VENT_MOVE');
-      this.monster.update(dt, this.syncAnimMode || 'stalk');
+      this.monster.update(dt, this.syncAnimMode || 'stalk', actualDist);
       this.updateBioSignHUD();
       return;
     }
+
+    const frameStartPos = this.pos.clone();
 
     if (this.stunCooldown > 0) this.stunCooldown -= dt;
     if (this.sabotageCooldown > 0) this.sabotageCooldown -= dt;
@@ -727,13 +851,16 @@ export class MonsterAI {
       this.monster.root.rotation.y = this.yaw;
 
       if (this.postKillTimer > 1.8) {
-        this.monster.update(dt, 'stalk');
+        this.monster.update(dt, 'stalk', 0);
       } else {
         const fwd = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw);
+        const prevX = this.pos.x;
+        const prevZ = this.pos.z;
         this.pos.x += fwd.x * dt * 0.95;
         this.pos.z += fwd.z * dt * 0.95;
+        const actualDist = Math.hypot(this.pos.x - prevX, this.pos.z - prevZ);
         this.monster.root.position.copy(this.pos);
-        this.monster.update(dt, 'stalk');
+        this.monster.update(dt, 'stalk', actualDist);
       }
       return;
     }
@@ -1076,9 +1203,10 @@ export class MonsterAI {
     while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
     this.yaw += angleDiff * Math.min(1, dt * 10);
 
+    const actualDist = Math.hypot(this.pos.x - frameStartPos.x, this.pos.z - frameStartPos.z);
     this.monster.root.position.copy(this.pos);
     this.monster.root.rotation.y = this.yaw;
-    this.monster.update(dt, animMode);
+    this.monster.update(dt, animMode, actualDist);
   }
 
   /**
