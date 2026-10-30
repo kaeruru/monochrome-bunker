@@ -1204,9 +1204,12 @@ body.in-death-sequence #crosshair,
 body.in-death-sequence #touch-controls,
 body.in-death-sequence #interact-prompt,
 body.in-death-sequence #game-toast,
-body.in-death-sequence #bottom-center-hud {
+body.in-death-sequence #bottom-center-hud,
+#bottom-center-hud.hidden,
+#bottom-center-hud.ui-hidden {
   display: none !important;
   opacity: 0 !important;
+  visibility: hidden !important;
   pointer-events: none !important;
 }
 
@@ -2225,6 +2228,125 @@ body.in-death-sequence #bottom-center-hud {
   display: flex;
   gap: 10px;
   margin-top: 4px;
+}
+
+/* 챕터별 침수 수로 수면 반사 연출 */
+.tunnel-water-reflection {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 48px;
+  background: linear-gradient(to top, rgba(10, 60, 100, 0.42), rgba(0, 0, 0, 0));
+  border-top: 1px solid rgba(80, 180, 240, 0.28);
+}
+
+/* 협동 플레이 맵 선택기 */
+.coop-map-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.coop-map-pill {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #a4abb5;
+  font-size: 13px;
+  padding: 8px 12px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 1px;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.coop-map-pill:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.coop-map-pill.active {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: #ffffff;
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: inset 2px 0 0 #55ccee;
+}
+
+/* 업적 목록 스타일 */
+.achievements-scroll-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 290px;
+  overflow-y: auto;
+  padding-right: 4px;
+  margin-bottom: 14px;
+}
+
+.achievement-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1px;
+}
+
+.achievement-item.unlocked {
+  border-color: rgba(68, 221, 136, 0.4);
+  background: rgba(68, 221, 136, 0.05);
+}
+
+.ach-icon {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 1px;
+}
+
+.achievement-item.unlocked .ach-icon {
+  color: #44dd88;
+  border-color: #44dd88;
+}
+
+.ach-content {
+  flex: 1;
+}
+
+.ach-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e2e8f0;
+  letter-spacing: 0.5px;
+}
+
+.ach-desc {
+  font-size: 11px;
+  color: #8fa0b0;
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+.ach-status {
+  font-size: 11px;
+  font-weight: 600;
+  color: #44dd88;
+  letter-spacing: 1px;
+}
+
+.ach-status.locked {
+  color: #64748b;
 }
 
 @media (max-width: 900px) {

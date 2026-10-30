@@ -166,6 +166,7 @@ function handleMessage(ws, msg) {
       const room = {
         id: roomId,
         hostId: ws.playerId,
+        mapId: msg.mapId || 'chapter1',
         players: new Map([[ws, playerInfo]]),
         doors: new Map(),
         coreProgress: 0,
@@ -180,6 +181,7 @@ function handleMessage(ws, msg) {
         roomId,
         playerId: ws.playerId,
         isHost: true,
+        mapId: room.mapId,
         players: [playerInfo]
       }));
 
@@ -233,6 +235,7 @@ function handleMessage(ws, msg) {
         roomId: targetRoomId,
         playerId: ws.playerId,
         isHost: false,
+        mapId: room.mapId || 'chapter1',
         players: playerList,
         doors: Array.from(room.doors.entries())
       }));

@@ -83,6 +83,7 @@ export class Map3D {
     const floorCorridorGeos = [];
     const floorBunkerGeos = [];
     const floorRoomGeos = [];
+    const floorWaterGeos = [];
     const ceilingGeos = [];
 
     const baseWallGeo = new THREE.BoxGeometry(TILE_SIZE, WALL_HEIGHT, TILE_SIZE);
@@ -111,7 +112,9 @@ export class Map3D {
         fMat.multiply(new THREE.Matrix4().makeRotationX(-Math.PI / 2));
         f.applyMatrix4(fMat);
 
-        if (['B', 'S', 'G', 'C'].includes(ch)) {
+        if (ch === 'W') {
+          floorWaterGeos.push(f);
+        } else if (['B', 'S', 'G', 'C'].includes(ch)) {
           floorBunkerGeos.push(f);
         } else if (ch === 'R') {
           floorRoomGeos.push(f);
@@ -171,6 +174,14 @@ export class Map3D {
       const floorMesh = new THREE.Mesh(mergedFloor, this.materials.floorRoom);
       this.mapGroup.add(floorMesh);
       floorRoomGeos.forEach(g => g.dispose());
+    }
+
+    if (floorWaterGeos.length > 0) {
+      const mergedWater = BufferGeometryUtils.mergeGeometries(floorWaterGeos, false);
+      const waterMesh = new THREE.Mesh(mergedWater, this.materials.floorWater);
+      waterMesh.position.y = 0.04;
+      this.mapGroup.add(waterMesh);
+      floorWaterGeos.forEach(g => g.dispose());
     }
 
     if (ceilingGeos.length > 0) {
@@ -727,5 +738,16 @@ export class Map3D {
     }
 
     return false;
+  }
+
+  getTileAt(x, z) {
+    const t = worldToTile(x, z);
+    if (t.row < 0 || t.row >= MAP_ROWS || t.col < 0 || t.col >= MAP_COLS) return '#';
+    const line = this.activeMap ? this.activeMap[t.row] : null;
+    return line ? line[t.col] : ' ';
+  }
+
+  isWaterAt(x, z) {
+    return this.getTileAt(x, z) === 'W';
   }
 }

@@ -10,7 +10,7 @@ import { NetworkManager } from './network.js';
 import { PlayerCharacterEntity } from './models.js';
 import { createIndustrialEnvMap } from './textures.js';
 import { sound } from './audio.js';
-import { worldToTile, getZoneName } from './tilemapData.js';
+import { worldToTile, getZoneName, CHAPTER_CONFIGS } from './tilemapData.js';
 
 class MonochromeBunker3D {
   constructor() {
@@ -152,6 +152,9 @@ class MonochromeBunker3D {
     this.callsign = 'OPERATIVE-01';
     this.suitColor = 'steel';
     this.gameMode = 'solo';
+    this.selectedChapterId = 'chapter2';
+    this.selectedCoopMapId = 'chapter2';
+    this.activeChapterId = 'chapter1';
 
     // 점프스케어 및 설정 모달 DOM
     this.jumpscareOverlayEl = document.getElementById('jumpscare-overlay');
@@ -269,6 +272,9 @@ class MonochromeBunker3D {
         if (this.monsterAI) {
           this.monsterAI.isRemoteControlled = !info.isHost;
         }
+        if (info.mapId && info.mapId !== this.activeChapterId) {
+          this.loadChapter(info.mapId);
+        }
         if (this.roomInfoBox) this.roomInfoBox.classList.remove('hidden');
         if (this.roomCodeDisplay) this.roomCodeDisplay.textContent = info.roomId;
         if (this.roomPlayerCount) this.roomPlayerCount.textContent = (info.players?.length || 1);
@@ -330,6 +336,12 @@ class MonochromeBunker3D {
         this.controls.unlock();
         this.hideGameplayUI();
         this.hidePrompt();
+        const bottomHud = document.getElementById('bottom-center-hud');
+        if (bottomHud) {
+          bottomHud.classList.add('hidden');
+          bottomHud.classList.add('ui-hidden');
+          bottomHud.style.display = 'none';
+        }
 
         // 손전등 소등
         this.flashlightOn = false;
@@ -758,7 +770,11 @@ class MonochromeBunker3D {
     const toast = document.getElementById('game-toast');
     if (toast) toast.classList.add('hidden');
     const bottomHud = document.getElementById('bottom-center-hud');
-    if (bottomHud) bottomHud.classList.add('hidden');
+    if (bottomHud) {
+      bottomHud.classList.add('hidden');
+      bottomHud.classList.add('ui-hidden');
+      bottomHud.style.display = 'none';
+    }
   }
 
   showGameplayUI() {
@@ -770,7 +786,11 @@ class MonochromeBunker3D {
     const crosshair = document.getElementById('crosshair');
     if (crosshair) crosshair.classList.remove('hidden');
     const bottomHud = document.getElementById('bottom-center-hud');
-    if (bottomHud) bottomHud.classList.remove('hidden');
+    if (bottomHud) {
+      bottomHud.classList.remove('hidden');
+      bottomHud.classList.remove('ui-hidden');
+      bottomHud.style.display = 'flex';
+    }
     this.syncDeviceModeUI();
   }
 
@@ -923,6 +943,13 @@ class MonochromeBunker3D {
             }
           });
         }
+      } else if (target === 'achievements') {
+        const c = document.getElementById('card-achievements');
+        if (c) c.classList.remove('hidden');
+        if (menuCategoryTitle) menuCategoryTitle.textContent = '업적';
+        if (menuCategoryDesc) {
+          menuCategoryDesc.textContent = '지하 벙커와 침수 터널에서 달성한 생존 및 탈출 전술 메달 목록입니다.';
+        }
       } else if (target === 'settings') {
         const c = document.getElementById('card-settings');
         if (c) c.classList.remove('hidden');
@@ -975,8 +1002,8 @@ class MonochromeBunker3D {
         num: 1,
         diff: 'easy',
         badge: 'CHAPTER 01',
-        title: '제1장: 버려진 식당 벙커',
-        desc: '비상 발전기가 침묵한 중앙 식당. 환기구의 신호음이 감지됩니다.',
+        title: '제1장: 버려진 격리 벙커',
+        desc: '비상 발전기가 침묵한 연구 기지 벙커. 환기구의 신호음이 감지됩니다.',
         artBg: 'radial-gradient(circle at 50% 50%, #1e1a0a 0%, #0d0c06 50%, #020202 90%)',
         mistColor: 'rgba(255, 190, 80, 0.45)'
       },
@@ -984,8 +1011,8 @@ class MonochromeBunker3D {
         num: 2,
         diff: 'normal',
         badge: 'CHAPTER 02',
-        title: '제2장: 어둠 속의 심연 터널',
-        desc: '정전이 발생한 중앙 식당과 통로. 환기구 덕트에서 기어나오는 괴물을 피해 코어를 복구하십시오.',
+        title: '제2장: 어둠 속의 침수 수로',
+        desc: '지하수가 차오른 방류 수로 터널. 물살을 가르는 소리가 괴물을 자극합니다.',
         artBg: 'radial-gradient(circle at 50% 50%, #07192a 0%, #030a12 50%, #010204 90%)',
         mistColor: 'rgba(120, 210, 255, 0.45)'
       },
@@ -993,8 +1020,8 @@ class MonochromeBunker3D {
         num: 3,
         diff: 'hard',
         badge: 'CHAPTER 03',
-        title: '제3장: 심연의 괴물과 사투',
-        desc: '괴물이 상시 폭주하며 배전반을 파괴합니다. 조명탄과 방호문으로 생존하십시오.',
+        title: '제3장: 심연의 지열 갱도',
+        desc: '심도 300m 지하 광산. 증기 터빈과 광차 레일 너머에서 지진 같은 진동이 울립니다.',
         artBg: 'radial-gradient(circle at 50% 50%, #2a0707 0%, #120303 50%, #040101 90%)',
         mistColor: 'rgba(255, 80, 80, 0.5)'
       }
@@ -1005,6 +1032,7 @@ class MonochromeBunker3D {
     const updateChapterUI = (idx) => {
       curChapterIdx = (idx + CHAPTERS.length) % CHAPTERS.length;
       const ch = CHAPTERS[curChapterIdx];
+      this.selectedChapterId = 'chapter' + ch.num;
 
       document.querySelectorAll('.chapter-tab').forEach((tab, i) => {
         tab.classList.toggle('active', i === curChapterIdx);
@@ -1035,6 +1063,15 @@ class MonochromeBunker3D {
 
     document.querySelectorAll('.chapter-tab').forEach((tab, i) => {
       tab.addEventListener('click', () => updateChapterUI(i));
+    });
+
+    // 협동 플레이 맵 선택 버튼
+    document.querySelectorAll('.coop-map-pill').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.coop-map-pill').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this.selectedCoopMapId = btn.dataset.coopMap || 'chapter1';
+      });
     });
 
     // 뒤로가기 버튼
@@ -1095,7 +1132,8 @@ class MonochromeBunker3D {
     if (this.btnHostRoom) {
       this.btnHostRoom.addEventListener('click', () => {
         this.callsign = (this.callsignInput?.value || 'OPERATIVE-01').trim();
-        this.networkManager.createRoom(this.callsign, this.suitColor);
+        const mapToHost = this.selectedCoopMapId || this.selectedChapterId || 'chapter1';
+        this.networkManager.createRoom(this.callsign, this.suitColor, '', mapToHost);
       });
     }
 
@@ -1277,6 +1315,8 @@ class MonochromeBunker3D {
 
   deployMission() {
     this.isDeployed = true;
+    const targetChapter = this.selectedChapterId || 'chapter2';
+    this.loadChapter(targetChapter);
     this.showGameplayUI();
     this.missionStartTime = performance.now();
     this.callsign = (this.callsignInput?.value || 'OPERATIVE-01').trim();
@@ -1289,7 +1329,44 @@ class MonochromeBunker3D {
     this.controls.setDisabled(false);
     this.controls.requestPointerLock();
     sound.playDoorSound(true);
-    this.showGameToast(`[DEPLOYED] 대원 [${this.callsign}] 벙커 투입 완료. 작전 목표를 확인하십시오.`, 'success');
+    this.showGameToast(`[DEPLOYED] 대원 [${this.callsign}] 작전 투입 완료.`, 'success');
+  }
+
+  loadChapter(chapterId = 'chapter1') {
+    const cfg = CHAPTER_CONFIGS[chapterId] || CHAPTER_CONFIGS.chapter1;
+    this.activeChapterId = cfg.id;
+    this.currentChapterConfig = cfg;
+
+    // 1. 3D 맵 재구성 (지오메트리, 벽, 문, 수면, 전등)
+    if (this.map) {
+      this.map.rebuildMap(cfg.data);
+      if (this.map.spawnPos) {
+        this.playerPos.set(this.map.spawnPos.x, 1.62, this.map.spawnPos.z);
+        this.playerCamera.position.copy(this.playerPos);
+      }
+    }
+
+    // 2. 괴물 AI 챕터 설정 및 벤트/노드 재구성
+    if (this.monsterAI) {
+      this.monsterAI.setChapter(cfg);
+    }
+
+    // 3. 상호작용 및 파밍 시스템 리셋
+    if (this.interactionSystem) {
+      this.interactionSystem.setupNewMatch(cfg);
+    }
+
+    // 4. CCTV 콘솔 연동 업데이트
+    if (this.cctv) {
+      this.cctv.map = this.map;
+    }
+
+    // 5. 위치 HUD 구역 업데이트
+    if (this.locationTextEl) {
+      const tile = worldToTile(this.playerPos.x, this.playerPos.z);
+      const ch = this.map ? this.map.getTileChar(tile.col, tile.row) : 'S';
+      this.locationTextEl.textContent = `위치: ${getZoneName(tile.col, tile.row, ch, this.activeChapterId)}`;
+    }
   }
 
   toggleSettingsModal() {
@@ -1459,7 +1536,9 @@ class MonochromeBunker3D {
     }
 
     if (isMoving) {
-      const currentSpeed = isActivelySprinting ? this.sprintSpeed : this.walkSpeed;
+      const inWater = this.map ? this.map.isWaterAt(this.playerPos.x, this.playerPos.z) : false;
+      const waterMult = inWater ? (isActivelySprinting ? 0.94 : 0.82) : 1.0;
+      const currentSpeed = (isActivelySprinting ? this.sprintSpeed : this.walkSpeed) * waterMult;
       const step = currentSpeed * dt;
       const nextX = this.playerPos.x + moveDir.x * step;
       const nextZ = this.playerPos.z + moveDir.z * step;
@@ -1479,7 +1558,11 @@ class MonochromeBunker3D {
       this.footstepTimer += dt;
       const stepInterval = isActivelySprinting ? 0.27 : 0.44;
       if (this.footstepTimer > stepInterval) {
-        sound.playFootstep(isActivelySprinting);
+        sound.playFootstep(isActivelySprinting, inWater);
+        if (this.monsterAI) {
+          const soundRad = inWater ? (isActivelySprinting ? 30.0 : 16.0) : (isActivelySprinting ? 22.0 : 9.0);
+          this.monsterAI.notifyPlayerSound(this.playerPos.x, this.playerPos.z, soundRad, inWater ? '물살 첨벙거림' : '발소리');
+        }
         this.footstepTimer = 0;
       }
     } else {
@@ -1577,7 +1660,7 @@ class MonochromeBunker3D {
     if (!this.locationTextEl) return;
     const t = worldToTile(this.playerPos.x, this.playerPos.z);
     const ch = this.map.getTileChar(t.col, t.row);
-    const zoneName = getZoneName(t.col, t.row, ch);
+    const zoneName = getZoneName(t.col, t.row, ch, this.activeChapterId);
     this.locationTextEl.textContent = `위치: ${zoneName}`;
   }
 

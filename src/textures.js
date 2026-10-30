@@ -501,6 +501,44 @@ export function createIndustrialMaterials() {
     addRealisticNoiseAndScratches(ctx, s, 0.15, 26);
   }, 512);
 
+  // 7. 침수 수로 수면 (탁하고 어두운 지하수 수면, 유동 흔적, 램버트 반사)
+  const waterTex = makePhotoTexture((ctx, s) => {
+    // 깊은 탁청색/암녹색 심연 수면 그러데이션
+    const bgGrad = ctx.createLinearGradient(0, 0, s, s);
+    bgGrad.addColorStop(0, '#0c1a24');
+    bgGrad.addColorStop(0.35, '#08131c');
+    bgGrad.addColorStop(0.7, '#07181e');
+    bgGrad.addColorStop(1, '#040b10');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, s, s);
+
+    // 수면 물결 왜곡선 (Subtle flow ripples)
+    ctx.strokeStyle = 'rgba(100, 190, 225, 0.18)';
+    ctx.lineWidth = 3;
+    for (let y = 16; y < s; y += 28) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      for (let x = 0; x <= s; x += 32) {
+        const dy = Math.sin((x / s) * Math.PI * 4 + y * 0.1) * 6;
+        ctx.lineTo(x, y + dy);
+      }
+      ctx.stroke();
+    }
+
+    // 침전 부유물 입자 및 기포
+    addConcreteAggregateAndPores(ctx, s, 200);
+
+    // 표면 오일/부식 피막 광택
+    const sheen = ctx.createRadialGradient(s * 0.4, s * 0.4, 20, s * 0.5, s * 0.5, s * 0.6);
+    sheen.addColorStop(0, 'rgba(80, 180, 220, 0.22)');
+    sheen.addColorStop(0.5, 'rgba(40, 100, 120, 0.08)');
+    sheen.addColorStop(1, 'rgba(0, 0, 0, 0.35)');
+    ctx.fillStyle = sheen;
+    ctx.fillRect(0, 0, s, s);
+
+    addRealisticNoiseAndScratches(ctx, s, 0.08, 14);
+  }, 512);
+
   // [핵심] MeshLambertMaterial을 사용하여 픽셀당 PBR/노멀맵 연산을 완전히 제거하고,
   // 텍스처 자체에 구워진 질감과 명암으로 PS2 시대의 거칠고 매트한 아날로그 비주얼을 구현합니다.
   return {
@@ -519,6 +557,12 @@ export function createIndustrialMaterials() {
     floorRoom: new THREE.MeshLambertMaterial({
       map: roomFloorTex,
       color: 0xffffff
+    }),
+    floorWater: new THREE.MeshLambertMaterial({
+      map: waterTex,
+      color: 0x99ddff,
+      transparent: true,
+      opacity: 0.88
     }),
     ceiling: new THREE.MeshLambertMaterial({
       map: ceilingTex,

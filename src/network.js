@@ -65,9 +65,10 @@ export class NetworkManager {
     });
   }
 
-  createRoom(callsign, suitColor, customCode = '') {
+  createRoom(callsign, suitColor, customCode = '', mapId = 'chapter1') {
     this.callsign = callsign;
     this.suitColor = suitColor;
+    this.mapId = mapId;
     if (!this.isConnected || !this.ws) {
       if (this.callbacks.onRoomError) {
         this.callbacks.onRoomError('서버에 연결되지 않았습니다. 단독 작전(SOLO) 모드로 진행하거나 서버를 가동하십시오.');
@@ -78,7 +79,8 @@ export class NetworkManager {
       type: 'create_room',
       roomCode: customCode,
       callsign: this.callsign,
-      suitColor: this.suitColor
+      suitColor: this.suitColor,
+      mapId: this.mapId
     }));
   }
 
@@ -124,6 +126,7 @@ export class NetworkManager {
               roomId: this.roomId,
               playerId: this.playerId,
               isHost: this.isHost,
+              mapId: msg.mapId || 'chapter1',
               players: msg.players
             });
           }

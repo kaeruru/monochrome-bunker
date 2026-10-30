@@ -13,6 +13,8 @@ export const SOUND_ASSET_MANIFEST = {
   // 2. 플레이어 이동 & 장비 사운드
   footstep_walk:        { url: './sounds/footstep_walk.mp3', desc: '대원 일반 걸음 발소리' },
   footstep_sprint:      { url: './sounds/footstep_sprint.mp3', desc: '대원 전술 달리기 발소리' },
+  water_splash_walk:    { url: './sounds/water_splash_walk.mp3', desc: '침수 수로 보행 물살 첨벙거림' },
+  water_splash_sprint:  { url: './sounds/water_splash_sprint.mp3', desc: '침수 수로 전력 질주 물살 소리' },
   flashlight_on:        { url: './sounds/flashlight_on.mp3', desc: '손전등 딸깍 켜짐' },
   flashlight_off:       { url: './sounds/flashlight_off.mp3', desc: '손전등 딸깍 꺼짐' },
 
@@ -217,7 +219,7 @@ class AudioManager {
         this.ambientDroneGain = this.ctx.createGain();
         this.ambientDroneGain.connect(this.masterGain || this.ctx.destination);
       }
-      this.ambientDroneGain.gain.setValueAtTime(0.48, this.ctx.currentTime);
+      this.ambientDroneGain.gain.setValueAtTime(0.85, this.ctx.currentTime);
 
       src.connect(this.ambientDroneGain);
       src.start(0);
@@ -234,9 +236,9 @@ class AudioManager {
       osc.frequency.setValueAtTime(46, this.ctx.currentTime);
 
       filter.type = 'lowpass';
-      filter.frequency.setValueAtTime(110, this.ctx.currentTime);
+      filter.frequency.setValueAtTime(120, this.ctx.currentTime);
 
-      this.ambientGain.gain.setValueAtTime(0.22, this.ctx.currentTime);
+      this.ambientGain.gain.setValueAtTime(0.65, this.ctx.currentTime);
 
       osc.connect(filter);
       filter.connect(this.ambientGain);
@@ -269,7 +271,7 @@ class AudioManager {
         this.lampBuzzGain = this.ctx.createGain();
         this.lampBuzzGain.connect(this.masterGain || this.ctx.destination);
       }
-      const targetVol = this.isBlackout ? 0.001 : 0.28;
+      const targetVol = this.isBlackout ? 0.001 : 0.52;
       this.lampBuzzGain.gain.setValueAtTime(targetVol, this.ctx.currentTime);
 
       src.connect(this.lampBuzzGain);
@@ -290,7 +292,7 @@ class AudioManager {
       filter.frequency.setValueAtTime(120, this.ctx.currentTime);
       filter.Q.setValueAtTime(3.5, this.ctx.currentTime);
 
-      const targetVol = this.isBlackout ? 0.001 : 0.16;
+      const targetVol = this.isBlackout ? 0.001 : 0.42;
       gain.gain.setValueAtTime(targetVol, this.ctx.currentTime);
 
       osc.connect(filter);
@@ -465,10 +467,48 @@ class AudioManager {
     noise.stop(t + dur);
   }
 
-  playFootstep(isSprint = false) {
+  playFootstep(isSprint = false, isWater = false) {
     this.init();
     if (!this.ctx || this.isMuted) return;
-    if (this.tryPlayExternal(isSprint ? 'footstep_sprint' : 'footstep_walk', isSprint ? 0.25 : 0.16)) return;
+
+    if (isWater) {
+      if (this.tryPlayExternal(isSprint ? 'water_splash_sprint' : 'water_splash_walk', isSprint ? 0.42 : 0.28)) return;
+      const t = this.ctx.currentTime;
+
+      // 물살을 강하게 밟는 둔탁한 저주파 충격파
+      const osc = this.ctx.createOscillator();
+      const oscGain = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(isSprint ? 210 : 160, t);
+      osc.frequency.exponentialRampToValueAtTime(isSprint ? 45 : 35, t + 0.12);
+      oscGain.gain.setValueAtTime(isSprint ? 0.32 : 0.20, t);
+      oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+      osc.connect(oscGain);
+      oscGain.connect(this.masterGain || this.ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.12);
+
+      // 물방울이 흩뿌려지는 첨벙거림 노이즈
+      if (this.noiseBuffer) {
+        const noise = this.ctx.createBufferSource();
+        noise.buffer = this.noiseBuffer;
+        const noiseFilter = this.ctx.createBiquadFilter();
+        noiseFilter.type = 'bandpass';
+        noiseFilter.frequency.setValueAtTime(isSprint ? 1750 : 1350, t);
+        noiseFilter.Q.setValueAtTime(2.2, t);
+        const noiseGain = this.ctx.createGain();
+        noiseGain.gain.setValueAtTime(isSprint ? 0.36 : 0.22, t);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+        noise.connect(noiseFilter);
+        noiseFilter.connect(noiseGain);
+        noiseGain.connect(this.masterGain || this.ctx.destination);
+        noise.start(t);
+        noise.stop(t + 0.14);
+      }
+      return;
+    }
+
+    if (this.tryPlayExternal(isSprint ? 'footstep_sprint' : 'footstep_walk', isSprint ? 0.34 : 0.22)) return;
 
     const t = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
@@ -478,11 +518,11 @@ class AudioManager {
     osc.frequency.setValueAtTime(isSprint ? 160 : 132, t);
     osc.frequency.exponentialRampToValueAtTime(isSprint ? 44 : 36, t + 0.085);
 
-    gain.gain.setValueAtTime(isSprint ? 0.18 : 0.11, t);
+    gain.gain.setValueAtTime(isSprint ? 0.26 : 0.18, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.masterGain || this.ctx.destination);
 
     osc.start(t);
     osc.stop(t + 0.09);

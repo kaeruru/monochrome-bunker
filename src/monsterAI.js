@@ -53,13 +53,17 @@ export class MonsterAI {
     this.rootGroup = new THREE.Group();
     this.scene.add(this.rootGroup);
 
+    this.activeVentNodes = [...VENT_NODES];
+    this.chapterId = 'chapter1';
+    this.monsterType = 'stalker';
+
     // 1. 괴물 3D 모델 인스턴스 생성 (쉐이더 재컴파일 방지를 위해 항상 씬에 유지)
     this.monster = new MonsterEntity();
     this.monster.enableSound = true;
     this.monster.soundVolume = 0.0;
     this.rootGroup.add(this.monster.root);
 
-    // 2. 8개 구역 환기구(Vent) 3D 그릴 메쉬 생성
+    // 2. 환기구(Vent) 3D 그릴 메쉬 생성
     this.ventMeshes = [];
     this.buildVentNetworkMeshes();
 
@@ -129,12 +133,13 @@ export class MonsterAI {
     this.pathIndex = 0;
 
     // 항해실(6) 또는 원자로실(0)에서 환기구 잠복 상태로 시작 (초반 10초 안전 유예)
-    this.currentVentIdx = Math.random() < 0.5 ? 6 : 0;
+    const count = this.activeVentNodes.length;
+    this.currentVentIdx = count > 6 ? 6 : 0;
     this.targetVentIdx = this.pickNextVentIndex(this.currentVentIdx);
     this.ventProgress = 0;
     this.ventHopsRemaining = 2;
 
-    const startVent = VENT_NODES[this.currentVentIdx];
+    const startVent = this.activeVentNodes[this.currentVentIdx % count];
     const wPos = tileToWorld(startVent.col, startVent.row);
     this.pos.set(wPos.x, 4.4, wPos.z);
     this.monster.root.position.copy(this.pos);
@@ -188,8 +193,29 @@ export class MonsterAI {
     this.updateBioSignHUD();
   }
 
+  setChapter(chapterConfig) {
+    if (!chapterConfig) return;
+    this.chapterId = chapterConfig.id || 'chapter1';
+    this.monsterType = chapterConfig.monsterType || 'stalker';
+    if (chapterConfig.ventNodes && chapterConfig.ventNodes.length > 0) {
+      this.activeVentNodes = [...chapterConfig.ventNodes];
+    }
+    this.rebuildVentNetworkMeshes();
+    this.resetForNewMatch();
+  }
+
+  rebuildVentNetworkMeshes() {
+    for (const vm of this.ventMeshes) {
+      if (vm.group && vm.group.parent) {
+        vm.group.parent.remove(vm.group);
+      }
+    }
+    this.ventMeshes = [];
+    this.buildVentNetworkMeshes();
+  }
+
   /**
-   * 8개 환기구 노드에 바닥 그릴(개폐 회전 애니메이션 포함) 및 천장 덕트 설치
+   * 환기구 노드에 바닥 그릴(개폐 회전 애니메이션 포함) 및 천장 덕트 설치
    */
   buildVentNetworkMeshes() {
     const frameMat = new THREE.MeshStandardMaterial({
@@ -204,8 +230,8 @@ export class MonsterAI {
     });
     const holeMat = new THREE.MeshBasicMaterial({ color: 0x020304 });
 
-    for (let i = 0; i < VENT_NODES.length; i++) {
-      const node = VENT_NODES[i];
+    for (let i = 0; i < this.activeVentNodes.length; i++) {
+      const node = this.activeVentNodes[i];
       const w = tileToWorld(node.col, node.row);
       const ventGroup = new THREE.Group();
       ventGroup.position.set(w.x, 0.01, w.z);
@@ -280,15 +306,19 @@ export class MonsterAI {
   notifyPlayerSound(px, pz, hearingRadius, soundLabel = '소음') {
     if (this.isKillingPlayer || this.state === 'STUNNED' || this.state === 'CHASE') return;
 
+    // 수로 물살을 걷거나 달리면 소음이 파이프라인을 타고 훨씬 멀리 전달됨!
+    const inWater = this.map && this.map.isWaterAt ? this.map.isWaterAt(px, pz) : false;
+    const effectiveHearingRadius = inWater ? hearingRadius * 1.35 : hearingRadius;
+
     const dist = Math.hypot(px - this.pos.x, pz - this.pos.z);
-    if (dist > hearingRadius) return;
+    if (dist > effectiveHearingRadius) return;
 
     if (this.state === 'VENT_LURK') {
       // 벤트 잠복 중 소리를 들으면 소음 지점과 가장 가까운 벤트로 즉시 방향을 틀어 출현 준비!
       let bestIdx = 0;
       let bestDist = Infinity;
-      for (let i = 0; i < VENT_NODES.length; i++) {
-        const vw = tileToWorld(VENT_NODES[i].col, VENT_NODES[i].row);
+      for (let i = 0; i < this.activeVentNodes.length; i++) {
+        const vw = tileToWorld(this.activeVentNodes[i].col, this.activeVentNodes[i].row);
         const d = Math.hypot(px - vw.x, pz - vw.z);
         if (d < bestDist) {
           bestDist = d;
@@ -313,12 +343,15 @@ export class MonsterAI {
    * 다음 이동할 환기구 노드 선택
    */
   pickNextVentIndex(excludeIdx, preferNearPlayerPos = null) {
+    const count = this.activeVentNodes.length;
+    if (count <= 1) return 0;
+
     if (preferNearPlayerPos && Math.random() < 0.55) {
       // 55% 확률로 플레이어 주변(단, 너무 코앞이 아닌 10~28m 거리) 벤트를 선택해 긴장감 유지
       const candidates = [];
-      for (let i = 0; i < VENT_NODES.length; i++) {
+      for (let i = 0; i < count; i++) {
         if (i === excludeIdx) continue;
-        const w = tileToWorld(VENT_NODES[i].col, VENT_NODES[i].row);
+        const w = tileToWorld(this.activeVentNodes[i].col, this.activeVentNodes[i].row);
         const d = Math.hypot(preferNearPlayerPos.x - w.x, preferNearPlayerPos.z - w.z);
         if (d >= 9.0 && d <= 32.0) {
           candidates.push(i);
@@ -329,9 +362,9 @@ export class MonsterAI {
       }
     }
 
-    let next = Math.floor(Math.random() * VENT_NODES.length);
+    let next = Math.floor(Math.random() * count);
     if (next === excludeIdx) {
-      next = (excludeIdx + 1 + Math.floor(Math.random() * (VENT_NODES.length - 1))) % VENT_NODES.length;
+      next = (excludeIdx + 1 + Math.floor(Math.random() * (count - 1))) % count;
     }
     return next;
   }
@@ -576,8 +609,8 @@ export class MonsterAI {
   retreatToNearestVent() {
     let bestIdx = 0;
     let bestDist = Infinity;
-    for (let i = 0; i < VENT_NODES.length; i++) {
-      const w = tileToWorld(VENT_NODES[i].col, VENT_NODES[i].row);
+    for (let i = 0; i < this.activeVentNodes.length; i++) {
+      const w = tileToWorld(this.activeVentNodes[i].col, this.activeVentNodes[i].row);
       const d = Math.hypot(w.x - this.pos.x, w.z - this.pos.z);
       if (d < bestDist) {
         bestDist = d;
@@ -585,7 +618,7 @@ export class MonsterAI {
       }
     }
     this.targetVentIdx = bestIdx;
-    const vw = tileToWorld(VENT_NODES[bestIdx].col, VENT_NODES[bestIdx].row);
+    const vw = tileToWorld(this.activeVentNodes[bestIdx].col, this.activeVentNodes[bestIdx].row);
     this.state = 'PATROL';
     this.patrolDuration = 0; // 벤트 도착 즉시 진입하도록 설정
     this.setHeartCoreColor(0xdbe8ff);
@@ -800,18 +833,19 @@ export class MonsterAI {
       // 플레이어 카메라가 괴물의 안면 두개골과 날카로운 내턱을 강제로 정면 응시
       const headWorld = new THREE.Vector3();
       this.monster.headGroup.getWorldPosition(headWorld);
-      playerCamera.lookAt(headWorld);
+      headWorld.y -= 0.08; // 안면과 턱, 이빨이 정중앙에 위치하도록 보정
 
-      // 극도의 공포감과 충격을 전달하는 불규칙 카메라 셰이크 & Z축 왜곡 진동
-      const shakeAmp = Math.sin(this.killTimer * 48) * 0.042 * (1.0 - progress * 0.4);
-      playerCamera.rotation.z = shakeAmp;
-      playerCamera.rotation.x += (Math.random() - 0.5) * 0.02;
+      // Euler 회전 왜곡 방지를 위해 카메라 위치에 미세 충격 지터를 적용하고 헤드를 직시
+      const jitter = (1.0 - progress * 0.35) * 0.024;
+      playerCamera.position.x = playerPos.x + (Math.random() - 0.5) * jitter;
+      playerCamera.position.y = 1.62 + (Math.random() - 0.5) * jitter;
+      playerCamera.position.z = playerPos.z + (Math.random() - 0.5) * jitter;
+      playerCamera.lookAt(headWorld);
 
       this.monster.update(dt, 'jumpscare');
 
       if (this.killTimer <= 0) {
         this.isKillingPlayer = false;
-        playerCamera.rotation.z = 0;
         if (this.callbacks.onPlayerCaught) {
           this.callbacks.onPlayerCaught();
         }
@@ -881,8 +915,8 @@ export class MonsterAI {
     switch (this.state) {
       case 'VENT_LURK': {
         animMode = 'stalk';
-        const fromNode = VENT_NODES[this.currentVentIdx];
-        const toNode = VENT_NODES[this.targetVentIdx];
+        const fromNode = this.activeVentNodes[this.currentVentIdx % this.activeVentNodes.length];
+        const toNode = this.activeVentNodes[this.targetVentIdx % this.activeVentNodes.length];
         const fromW = tileToWorld(fromNode.col, fromNode.row);
         const toW = tileToWorld(toNode.col, toNode.row);
 
@@ -1014,8 +1048,8 @@ export class MonsterAI {
             // 순찰 시간이 끝나면 가장 가까운 환기구로 들어가 다른 구역으로 이동
             let nearIdx = 0;
             let nearDist = Infinity;
-            for (let i = 0; i < VENT_NODES.length; i++) {
-              const vw = tileToWorld(VENT_NODES[i].col, VENT_NODES[i].row);
+            for (let i = 0; i < this.activeVentNodes.length; i++) {
+              const vw = tileToWorld(this.activeVentNodes[i].col, this.activeVentNodes[i].row);
               const d = Math.hypot(vw.x - this.pos.x, vw.z - this.pos.z);
               if (d < nearDist) {
                 nearDist = d;
@@ -1031,7 +1065,7 @@ export class MonsterAI {
               }
               this.updateBioSignHUD();
             } else {
-              const vw = tileToWorld(VENT_NODES[nearIdx].col, VENT_NODES[nearIdx].row);
+              const vw = tileToWorld(this.activeVentNodes[nearIdx].col, this.activeVentNodes[nearIdx].row);
               this.computePathToWorld(vw.x, vw.z, false);
             }
           } else {
@@ -1212,13 +1246,13 @@ export class MonsterAI {
     this.isKillingPlayer = true;
     this.killTimer = 1.65;
 
-    // 플레이어 시야 정면 0.82m 위치에 괴물을 즉각 배치하여 플레이어를 마주보게 정렬
+    // 플레이어 시야 정면 1.38m 위치에 괴물을 즉각 배치하여 두개골, 발톱, 흉부가 모두 선명하게 프레이밍되도록 정렬
     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(playerCamera.quaternion);
     fwd.y = 0;
     if (fwd.lengthSq() > 0.001) fwd.normalize();
 
-    this.pos.x = playerPos.x + fwd.x * 0.82;
-    this.pos.z = playerPos.z + fwd.z * 0.82;
+    this.pos.x = playerPos.x + fwd.x * 1.38;
+    this.pos.z = playerPos.z + fwd.z * 1.38;
     this.pos.y = 0;
     this.yaw = Math.atan2(-fwd.x, -fwd.z);
 

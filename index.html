@@ -6,7 +6,7 @@
   <title>MONOCHROME // BUNKER (모노크롬 벙커)</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Cinzel:wght@600;700;800;900&family=Noto+Sans+KR:wght@300;400;500;700;900&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
   <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
   <link rel="stylesheet" href="./src/style.css">
 </head>
@@ -269,10 +269,10 @@
       <div class="menu-backdrop"></div>
       
       <div class="menu-screen-layout">
-        <!-- 좌측: 브랜드 로고 및 메인 네비게이션 목록 -->
+        <!-- 좌측: 브랜드 로고 및 메인 네비게이션 목록 (Lost Tunnel Retro Horror) -->
         <div class="menu-sidebar">
           <div class="menu-brand">
-            <h1 class="menu-game-title">LOST<span class="title-sub">BUNKER</span></h1>
+            <h1 class="menu-game-title">LOST <span class="title-sub">TUNNEL</span></h1>
             <div class="menu-category-header">
               <span class="category-dash">—</span>
               <span id="menu-current-category">캠페인</span>
@@ -280,16 +280,16 @@
             </div>
             <div class="menu-category-desc-box">
               <p id="menu-current-desc">
-                폐쇄된 지하 연구 단지에서 생존하십시오. 비상 발전기를 복구하고 환기구의 위협을 피해 탈출해야 합니다.
+                심도 140미터 버려진 갱도와 벙커 방호선. 생체 변이체가 어둠 속에서 배회하고 있습니다. 주 전력 코어를 수습하고 봉쇄문을 가동하여 생환하십시오.
               </p>
             </div>
           </div>
 
           <nav class="menu-nav-list">
             <button type="button" class="menu-nav-item active" data-target="campaign">스토리모드</button>
-            <button type="button" class="menu-nav-item" data-target="coop">이어서하기 (협동)</button>
+            <button type="button" class="menu-nav-item" data-target="coop">이어서하기</button>
+            <button type="button" class="menu-nav-item" data-target="achievements">업적</button>
             <button type="button" class="menu-nav-item" data-target="settings">설정</button>
-            <button type="button" class="menu-nav-item" data-target="showcase">3D 쇼케이스</button>
           </nav>
 
           <div class="menu-footer-meta">
@@ -316,12 +316,13 @@
                 <div class="viewport-tunnel-art" id="viewport-art">
                   <div class="tunnel-rings"></div>
                   <div class="tunnel-mist"></div>
+                  <div class="tunnel-water-reflection"></div>
                   <div class="tunnel-vignette"></div>
                 </div>
                 <div class="viewport-info-bar">
                   <div class="chapter-badge" id="chapter-badge-text">CHAPTER 02</div>
-                  <div class="chapter-headline" id="chapter-title-text">어둠 속의 식당과 비상 발전기</div>
-                  <div class="chapter-subtext" id="chapter-desc-text">정전이 발생한 중앙 식당. 환기구 덕트에서 기어나오는 괴물을 피해 코어를 복구하십시오.</div>
+                  <div class="chapter-headline" id="chapter-title-text">제2장: 어둠 속의 침수 수로</div>
+                  <div class="chapter-subtext" id="chapter-desc-text">지하수가 차오른 방류 수로 터널. 물살을 가르는 소리가 괴물을 자극합니다.</div>
                 </div>
               </div>
               <button type="button" class="viewport-arrow arrow-right" id="btn-chapter-next" title="다음 챕터">&gt;</button>
@@ -338,7 +339,7 @@
 
           <!-- 2. 협동 멀티플레이 카드 -->
           <div class="menu-card hidden" id="card-coop">
-            <div class="card-title">협동 플레이</div>
+            <div class="card-title">이어서하기 (협동)</div>
             
             <div class="card-tabs">
               <button type="button" class="sub-tab-btn active" data-coop-tab="create" id="btn-mode-solo">세션 개설</button>
@@ -351,6 +352,16 @@
                   <span class="status-dot"></span>
                   <span id="server-status-pill" class="status-pill offline">서버 대기 중</span>
                 </div>
+
+                <div class="minimal-field">
+                  <label>작전 구역 (맵 선택)</label>
+                  <div class="coop-map-selector">
+                    <button type="button" class="coop-map-pill" data-coop-map="chapter1">CHAPTER 1: 격리 벙커</button>
+                    <button type="button" class="coop-map-pill active" data-coop-map="chapter2">CHAPTER 2: 침수 터널</button>
+                    <button type="button" class="coop-map-pill" data-coop-map="chapter3">CHAPTER 3: 지열 갱도</button>
+                  </div>
+                </div>
+
                 <button type="button" id="btn-host-room" class="btn-minimal-submit">새 세션 개설</button>
                 
                 <div id="room-info-box" class="room-info-box hidden">
@@ -376,7 +387,55 @@
             <button type="button" class="btn-minimal-back" data-back-to="campaign">뒤로</button>
           </div>
 
-          <!-- 3. 설정 카드 -->
+          <!-- 3. 업적 카드 -->
+          <div class="menu-card hidden" id="card-achievements">
+            <div class="card-title">업적 (ACHIEVEMENTS)</div>
+            <div class="achievements-scroll-list">
+              <div class="achievement-item unlocked">
+                <div class="ach-icon">01</div>
+                <div class="ach-content">
+                  <div class="ach-title">생환자 // SURVIVOR</div>
+                  <div class="ach-desc">주 전력 코어 부품 4개를 모두 장착하고 비상 탈출 게이트를 통해 벙커에서 생환</div>
+                </div>
+                <div class="ach-status">달성</div>
+              </div>
+              <div class="achievement-item">
+                <div class="ach-icon">02</div>
+                <div class="ach-content">
+                  <div class="ach-title">침수 수로의 지배자 // AQUA LURKER</div>
+                  <div class="ach-desc">제2장 침수 수로 터널에서 물살을 뚫고 수문을 조작하여 탈출에 성공</div>
+                </div>
+                <div class="ach-status locked">미달성</div>
+              </div>
+              <div class="achievement-item">
+                <div class="ach-icon">03</div>
+                <div class="ach-content">
+                  <div class="ach-title">침묵의 보폭 // SILENT STRIDE</div>
+                  <div class="ach-desc">손전등을 켜지 않고 달리지 않은 채 2분간 괴물에게 들키지 않고 생존</div>
+                </div>
+                <div class="ach-status locked">미달성</div>
+              </div>
+              <div class="achievement-item">
+                <div class="ach-icon">04</div>
+                <div class="ach-content">
+                  <div class="ach-title">전기 충격 // ARC RESTORER</div>
+                  <div class="ach-desc">정전 발생 후 40초 이내에 전기실 차단기 레버 3개를 원상 복구 완료</div>
+                </div>
+                <div class="ach-status locked">미달성</div>
+              </div>
+              <div class="achievement-item">
+                <div class="ach-icon">05</div>
+                <div class="ach-content">
+                  <div class="ach-title">섬광의 사투 // FLARE RETALIATION</div>
+                  <div class="ach-desc">환기구에서 기어나오는 괴물의 면전에 조명탄[Q]을 점화 투하하여 후퇴 유도</div>
+                </div>
+                <div class="ach-status locked">미달성</div>
+              </div>
+            </div>
+            <button type="button" class="btn-minimal-back" data-back-to="campaign">뒤로</button>
+          </div>
+
+          <!-- 4. 설정 카드 -->
           <div class="menu-card hidden" id="card-settings">
             <div class="card-title">설정</div>
             
