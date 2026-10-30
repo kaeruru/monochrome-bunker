@@ -324,14 +324,37 @@ class MonochromeBunker3D {
     this.monsterAI = new MonsterAI(this.scene, this.map, this.interactionSystem, {
       onToast: (msg, level) => this.showGameToast(msg, level),
       onKillStart: () => {
-        // 암전 및 1인칭 점프스케어 연출: 모든 조명 소등 및 암전 오버레이 활성화
+        // 괴물 피습: 즉시 조작 차단 및 인게임 모든 UI(HUD, 목표, 크로스헤어, 프롬프트) 감춤
+        this.isPlayerDead = true;
+        this.controls.setDisabled(true);
+        this.controls.unlock();
+        this.hideGameplayUI();
+        this.hidePrompt();
+
+        // 손전등 소등
         this.flashlightOn = false;
         this.flashlight.intensity = 0;
+
+        // 점프스케어 시 괴물이 선명하게 보이도록 고광량 정면 스포트라이트 투광
+        if (!this.jumpscareFlashLight) {
+          this.jumpscareFlashLight = new THREE.SpotLight(0xfff6ee, 24.0, 8.0, Math.PI / 2.2, 0.35, 1.0);
+          this.jumpscareFlashLightTarget = new THREE.Object3D();
+          this.scene.add(this.jumpscareFlashLight);
+          this.scene.add(this.jumpscareFlashLightTarget);
+          this.jumpscareFlashLight.target = this.jumpscareFlashLightTarget;
+        }
+        this.jumpscareFlashLight.visible = true;
+        this.jumpscareFlashLight.position.copy(this.playerCamera.position);
+        const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(this.playerCamera.quaternion);
+        this.jumpscareFlashLightTarget.position.copy(this.playerCamera.position).addScaledVector(fwd, 1.2);
+
+        // 환경광도 완전 0 대신 음산한 대비 조명 유지
+        if (this.ambientLight) this.ambientLight.intensity = 0.55;
         if (this.playerFillLight) this.playerFillLight.intensity = 0;
-        if (this.ambientLight) this.ambientLight.intensity = 0;
         if (this.map.bunkerAmbient) this.map.bunkerAmbient.intensity = 0;
         if (this.map.genLight) this.map.genLight.intensity = 0;
         if (this.map.consoleLight) this.map.consoleLight.intensity = 0;
+
         if (this.jumpscareOverlayEl) this.jumpscareOverlayEl.classList.remove('hidden');
         if (this.networkManager && this.networkManager.roomId) {
           this.networkManager.sendPlayerDown(this.callsign);
@@ -339,6 +362,7 @@ class MonochromeBunker3D {
       },
       onPlayerCaught: () => {
         if (this.jumpscareOverlayEl) this.jumpscareOverlayEl.classList.add('hidden');
+        if (this.jumpscareFlashLight) this.jumpscareFlashLight.visible = false;
         this.handlePlayerCaught();
       }
     });
@@ -375,6 +399,7 @@ class MonochromeBunker3D {
     this.isPlayerDead = false;
     this.isDeathCamActive = false;
     this.isDeployed = true;
+    this.showGameplayUI();
 
     if (this.fallenOperative) {
       this.fallenOperative.root.visible = false;
@@ -437,6 +462,7 @@ class MonochromeBunker3D {
     this.isPlayerDead = false;
     this.isDeathCamActive = false;
     this.isDeployed = false;
+    this.showGameplayUI();
 
     if (this.fallenOperative) {
       this.fallenOperative.root.visible = false;
@@ -713,6 +739,33 @@ class MonochromeBunker3D {
       this.cctv.open();
       this.showGameToast('[SPECTATE] 생존 대원 관전 모드 가동. CCTV 및 방호문을 원격 조작하십시오.', 'info');
     }
+  }
+
+  hideGameplayUI() {
+    document.body.classList.add('in-death-sequence');
+    const hud = document.getElementById('game-hud');
+    if (hud) hud.classList.add('hidden');
+    const obj = document.getElementById('objective-panel');
+    if (obj) obj.classList.add('hidden');
+    const crosshair = document.getElementById('crosshair');
+    if (crosshair) crosshair.classList.add('hidden');
+    const touch = document.getElementById('touch-controls');
+    if (touch) touch.classList.add('hidden');
+    const prompt = document.getElementById('interact-prompt');
+    if (prompt) prompt.classList.add('hidden');
+    const toast = document.getElementById('game-toast');
+    if (toast) toast.classList.add('hidden');
+  }
+
+  showGameplayUI() {
+    document.body.classList.remove('in-death-sequence');
+    const hud = document.getElementById('game-hud');
+    if (hud) hud.classList.remove('hidden');
+    const obj = document.getElementById('objective-panel');
+    if (obj) obj.classList.remove('hidden');
+    const crosshair = document.getElementById('crosshair');
+    if (crosshair) crosshair.classList.remove('hidden');
+    this.syncDeviceModeUI();
   }
 
   syncDeviceModeUI() {
@@ -1185,6 +1238,7 @@ class MonochromeBunker3D {
     }
 
     window.addEventListener('keydown', (e) => {
+      if (this.isPlayerDead || this.isDeathCamActive) return;
       if (e.target && (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT')) return;
       if (e.code === 'KeyM') {
         e.preventDefault();
@@ -1193,11 +1247,6 @@ class MonochromeBunker3D {
           this.modelViewer.close();
         } else {
           this.modelViewer.open();
-        }
-      } else if (e.code === 'KeyP') {
-        e.preventDefault();
-        if (this.interactionSystem) {
-          this.interactionSystem.triggerBlackout('괴물이 배전 선로를 파손하여 시설 전체가 정전되었습니다.');
         }
       } else if (e.code === 'Escape') {
         e.preventDefault();
@@ -1222,6 +1271,7 @@ class MonochromeBunker3D {
 
   deployMission() {
     this.isDeployed = true;
+    this.showGameplayUI();
     this.missionStartTime = performance.now();
     this.callsign = (this.callsignInput?.value || 'OPERATIVE-01').trim();
     if (this.monsterAI) {

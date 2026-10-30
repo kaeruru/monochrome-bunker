@@ -182,37 +182,40 @@ html, body {
   border-color: #d8b4fe;
 }
 
-/* 좌측 상단 작전 목표 현황판 */
+/* 좌측 상단 작전 목표 현황판 (미니멀 호러 디자인) */
 #objective-panel {
   position: absolute;
   top: 52px;
   left: 16px;
-  background: rgba(8, 11, 14, 0.88);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  border-left: 3px solid #55ccee;
-  padding: 9px 13px;
+  background: rgba(10, 12, 14, 0.65);
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-left: 2px solid rgba(220, 220, 220, 0.6);
+  padding: 7px 12px;
   border-radius: 2px;
   z-index: 14;
   pointer-events: none;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  max-width: 440px;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.7);
+  gap: 3px;
+  max-width: 300px;
 }
 
 .obj-header {
-  font-size: 11px;
-  font-weight: 700;
-  color: #55ccee;
-  letter-spacing: 1px;
-  margin-bottom: 2px;
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.45);
+  letter-spacing: 1.5px;
 }
 
 .obj-line {
   font-size: 12px;
-  color: #ccd4dc;
-  letter-spacing: 0.4px;
+  color: #e2e8f0;
+  letter-spacing: 0.3px;
+}
+
+.obj-line.dimmed {
+  color: rgba(255, 255, 255, 0.35);
 }
 
 .obj-line.danger {
@@ -1194,19 +1197,31 @@ html, body {
   color: #ffaaaa;
 }
 
+/* 괴물 피습 사망 시퀀스 동안 모든 게임 HUD 및 오버레이 완벽 차단 */
+body.in-death-sequence #game-hud,
+body.in-death-sequence #objective-panel,
+body.in-death-sequence #crosshair,
+body.in-death-sequence #touch-controls,
+body.in-death-sequence #interact-prompt,
+body.in-death-sequence #game-toast {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
 /* ==========================================================================
-   처형 점프스케어 (Jumpscare) 전체화면 암전 및 쇼크 오버레이
+   처형 점프스케어 (Jumpscare) 전체화면 고대비 쇼크 오버레이
    ========================================================================== */
 #jumpscare-overlay {
   position: fixed;
   inset: 0;
   z-index: 9999;
   pointer-events: none;
-  background: rgba(0, 0, 0, 0.96);
+  background: rgba(25, 0, 0, 0.18);
   display: flex;
   align-items: center;
   justify-content: center;
-  animation: jumpscareFlash 0.18s ease-out;
+  animation: jumpscareFlash 0.22s ease-out;
 }
 
 #jumpscare-overlay.hidden {
@@ -1216,7 +1231,7 @@ html, body {
 .jumpscare-blood-vignette {
   position: absolute;
   inset: 0;
-  box-shadow: inset 0 0 180px rgba(220, 10, 10, 0.95), inset 0 0 90px rgba(0, 0, 0, 0.98);
+  box-shadow: inset 0 0 160px rgba(220, 10, 10, 0.85), inset 0 0 60px rgba(0, 0, 0, 0.7);
   animation: jumpscareThrob 0.08s infinite alternate;
 }
 
@@ -1235,9 +1250,9 @@ html, body {
 }
 
 @keyframes jumpscareFlash {
-  0% { background: #ffffff; opacity: 1; }
-  15% { background: #ff1111; opacity: 1; }
-  100% { background: rgba(0, 0, 0, 0.96); opacity: 1; }
+  0% { background: rgba(255, 255, 255, 0.95); }
+  25% { background: rgba(255, 30, 30, 0.55); }
+  100% { background: rgba(20, 0, 0, 0.18); }
 }
 
 @keyframes jumpscareThrob {

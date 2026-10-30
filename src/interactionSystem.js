@@ -1132,25 +1132,29 @@ export class InteractionAndEscapeSystem {
     const escapeStatusEl = document.getElementById('obj-escape-status');
 
     if (coreProgressEl) {
-      coreProgressEl.textContent = `[CORE] 중앙 코어 부품: ${this.coreState.totalInstalled} / ${this.coreState.maxTotal} (셀 ${this.coreState.energyCells}/2 · 키카드 ${this.coreState.securityKeycard}/1 · 밸브 ${this.coreState.coolantValve}/1)`;
+      coreProgressEl.textContent = `코어 부품 수집: ${this.coreState.totalInstalled} / ${this.coreState.maxTotal}`;
     }
 
     if (powerStatusEl) {
       if (this.isBlackout) {
-        powerStatusEl.textContent = `[PWR: FAILURE] 비상 전력 차단: 전기실 배전반 레버 복구 필요 (${this.breakerState.leversPulled}/3)`;
+        powerStatusEl.textContent = `전력 차단: 배전반 복구 필요 (${this.breakerState.leversPulled}/3)`;
+        powerStatusEl.classList.remove('hidden');
         powerStatusEl.classList.add('danger');
       } else {
-        powerStatusEl.textContent = '[PWR: ONLINE] 주 전력망: 정상 가동 중 (방호문/CCTV 통제 활성)';
+        powerStatusEl.textContent = '';
+        powerStatusEl.classList.add('hidden');
         powerStatusEl.classList.remove('danger');
       }
     }
 
     if (escapeStatusEl) {
       if (this.isEscapeOpen) {
-        escapeStatusEl.textContent = '[GATE: UNLOCKED] 비상 탈출 게이트: 개방됨 (벙커 북쪽 벽)';
+        escapeStatusEl.textContent = '비상 탈출 해치: 개방됨 (북쪽 벽)';
+        escapeStatusEl.classList.remove('hidden');
         escapeStatusEl.classList.add('ready');
       } else {
-        escapeStatusEl.textContent = '[GATE: LOCKED] 비상 탈출 게이트: 잠김 (코어 복구율 100% 필요)';
+        escapeStatusEl.textContent = '';
+        escapeStatusEl.classList.add('hidden');
         escapeStatusEl.classList.remove('ready');
       }
     }

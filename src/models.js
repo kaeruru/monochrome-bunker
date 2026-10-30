@@ -590,8 +590,8 @@ export class MonsterEntity {
     }
 
     // 점프스케어 시 암흑 속에서 번쩍이는 두개골 안면 광학 조명 (평상시 0)
-    this.faceLight = new THREE.PointLight(0xff2222, 0, 4.2, 1.8);
-    this.faceLight.position.set(0, 0.04, 0.32);
+    this.faceLight = new THREE.PointLight(0xffeedd, 0, 5.5, 1.4);
+    this.faceLight.position.set(0, 0.06, 0.52);
     this.headGroup.add(this.faceLight);
 
     const crestCenter = createSculptedBioLimb(
@@ -1077,7 +1077,8 @@ export class MonsterEntity {
     }
     if (this.faceLight) {
       if (mode === 'jumpscare') {
-        this.faceLight.intensity = Math.random() > 0.12 ? 14.0 : 2.5;
+        this.faceLight.color.setHex(0xffffff);
+        this.faceLight.intensity = Math.random() > 0.08 ? 26.0 : 10.0;
       } else {
         this.faceLight.intensity = 0;
       }

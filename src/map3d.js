@@ -651,18 +651,7 @@ export class Map3D {
         const r = center.row + dr;
         const ch = this.getTileChar(c, r);
 
-        let isBlocked = false;
         if (ch === '#' || ch === ' ') {
-          isBlocked = true;
-        } else if (ch === 'D') {
-          const door = this.doors.find(d => d.col === c && d.row === r);
-          // 문이 65% 이상 열리지 않았으면 통과 불가
-          if (door && door.openRatio < 0.65) {
-            isBlocked = true;
-          }
-        }
-
-        if (isBlocked) {
           const tilePos = tileToWorld(c, r);
           const closestX = Math.max(tilePos.x - half, Math.min(x, tilePos.x + half));
           const closestZ = Math.max(tilePos.z - half, Math.min(z, tilePos.z + half));
@@ -670,6 +659,58 @@ export class Map3D {
           const dz = z - closestZ;
           if (dx * dx + dz * dz < radius * radius) {
             return true;
+          }
+        } else if (ch === 'D') {
+          const door = this.doors.find(d => d.col === c && d.row === r);
+          if (door) {
+            // 1. 닫힌 셔터 판(두께 0.22m, 너비 2.1m) 정밀 AABB 충돌 체크
+            if (door.openRatio < 0.65) {
+              const shutterHalfThick = 0.22 / 2;
+              const shutterHalfWidth = 2.10 / 2;
+              let sMinX, sMaxX, sMinZ, sMaxZ;
+              if (door.orientation === 'EW') {
+                sMinX = door.x - shutterHalfThick;
+                sMaxX = door.x + shutterHalfThick;
+                sMinZ = door.z - shutterHalfWidth;
+                sMaxZ = door.z + shutterHalfWidth;
+              } else {
+                sMinX = door.x - shutterHalfWidth;
+                sMaxX = door.x + shutterHalfWidth;
+                sMinZ = door.z - shutterHalfThick;
+                sMaxZ = door.z + shutterHalfThick;
+              }
+              const cX = Math.max(sMinX, Math.min(x, sMaxX));
+              const cZ = Math.max(sMinZ, Math.min(z, sMaxZ));
+              const sDx = x - cX;
+              const sDz = z - cZ;
+              if (sDx * sDx + sDz * sDz < radius * radius) {
+                return true;
+              }
+            }
+
+            // 2. 좌우 강철 기둥 프레임 충돌 체크 (문이 열려 있어도 기둥 벽은 충돌)
+            const pillarHalfW = 0.24 / 2;
+            const pillarHalfD = 0.44 / 2;
+            const pillarOffset = half - pillarHalfW; // 1.13m
+            let p1x, p1z, p2x, p2z, pHalfX, pHalfZ;
+            if (door.orientation === 'EW') {
+              pHalfX = pillarHalfD;
+              pHalfZ = pillarHalfW;
+              p1x = door.x; p1z = door.z - pillarOffset;
+              p2x = door.x; p2z = door.z + pillarOffset;
+            } else {
+              pHalfX = pillarHalfW;
+              pHalfZ = pillarHalfD;
+              p1x = door.x - pillarOffset; p1z = door.z;
+              p2x = door.x + pillarOffset; p2z = door.z;
+            }
+            const c1x = Math.max(p1x - pHalfX, Math.min(x, p1x + pHalfX));
+            const c1z = Math.max(p1z - pHalfZ, Math.min(z, p1z + pHalfZ));
+            if ((x - c1x) ** 2 + (z - c1z) ** 2 < radius * radius) return true;
+
+            const c2x = Math.max(p2x - pHalfX, Math.min(x, p2x + pHalfX));
+            const c2z = Math.max(p2z - pHalfZ, Math.min(z, p2z + pHalfZ));
+            if ((x - c2x) ** 2 + (z - c2z) ** 2 < radius * radius) return true;
           }
         }
       }

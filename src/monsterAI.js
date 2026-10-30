@@ -97,12 +97,12 @@ export class MonsterAI {
     this.isKillingPlayer = false;
     this.killTimer = 0;
 
-    // 난이도 및 이동 속도 밸런스 설정
+    // 난이도 및 이동 속도 밸런스 설정 (괴물이 걸어서 도망칠 수 없는 긴박한 속도)
     this.difficulty = 'normal';
-    this.patrolSpeed = 3.15;
-    this.investigateSpeed = 4.35;
-    this.chaseSpeed = 7.6;
-    this.hearingSprintRadius = 21.0;
+    this.patrolSpeed = 4.8;
+    this.investigateSpeed = 6.2;
+    this.chaseSpeed = 10.2;
+    this.hearingSprintRadius = 22.0;
 
     // UI 엘리먼트 캐시
     this.bioSignEl = document.getElementById('obj-monster-status');
@@ -153,20 +153,20 @@ export class MonsterAI {
   setDifficulty(diff) {
     this.difficulty = diff;
     if (diff === 'easy') {
-      this.patrolSpeed = 2.65;
-      this.investigateSpeed = 3.8;
-      this.chaseSpeed = 6.4;
-      this.hearingSprintRadius = 15.0;
+      this.patrolSpeed = 3.8;
+      this.investigateSpeed = 5.0;
+      this.chaseSpeed = 8.8;
+      this.hearingSprintRadius = 16.0;
     } else if (diff === 'hard') {
-      this.patrolSpeed = 3.65;
-      this.investigateSpeed = 5.2;
-      this.chaseSpeed = 8.6;
+      this.patrolSpeed = 5.6;
+      this.investigateSpeed = 7.2;
+      this.chaseSpeed = 11.2;
       this.hearingSprintRadius = 26.0;
     } else {
-      this.patrolSpeed = 3.15;
-      this.investigateSpeed = 4.35;
-      this.chaseSpeed = 7.6;
-      this.hearingSprintRadius = 21.0;
+      this.patrolSpeed = 4.8;
+      this.investigateSpeed = 6.2;
+      this.chaseSpeed = 10.2;
+      this.hearingSprintRadius = 22.0;
     }
   }
 
@@ -751,37 +751,15 @@ export class MonsterAI {
   }
 
   /**
-   * 좌측 상단 작전 목표 패널에 괴물 생체 신호(BIO-SIGN) 상태 업데이트
+   * 좌측 상단 작전 목표 패널에 괴물 생체 신호(BIO-SIGN) 상태 업데이트 (미니멀 호러 - 스포일러 방지)
    */
   updateBioSignHUD() {
     if (!this.bioSignEl) {
       this.bioSignEl = document.getElementById('obj-monster-status');
     }
     if (!this.bioSignEl) return;
-
-    if (this.state === 'VENT_LURK') {
-      const targetNode = VENT_NODES[this.targetVentIdx] || VENT_NODES[0];
-      this.bioSignEl.textContent = `[BIO-SIGN] 환기구 진동 감지: ${targetNode.zone} 방면 상부 덕트 이동 중`;
-      this.bioSignEl.className = 'obj-line';
-    } else if (this.state === 'VENT_EMERGE') {
-      const node = VENT_NODES[this.currentVentIdx] || VENT_NODES[0];
-      this.bioSignEl.textContent = `[BIO-SIGN] 경고: ${node.zone} 환기구 그릴 개방 감지!`;
-      this.bioSignEl.className = 'obj-line danger';
-    } else if (this.state === 'PATROL' || this.state === 'VENT_ENTER') {
-      const t = worldToTile(this.pos.x, this.pos.z);
-      const zName = getZoneName(t.col, t.row, getTile(t.col, t.row));
-      this.bioSignEl.textContent = `[BIO-SIGN] 괴물 지상 배회 감지: ${zName}`;
-      this.bioSignEl.className = 'obj-line';
-    } else if (this.state === 'INVESTIGATE') {
-      this.bioSignEl.textContent = `[BIO-SIGN] 주의: 괴물이 소음을 감지하고 수색 중입니다! (손전등 소등 권장)`;
-      this.bioSignEl.className = 'obj-line danger';
-    } else if (this.state === 'CHASE' || this.state === 'DOOR_BASH') {
-      this.bioSignEl.textContent = `[BIO-SIGN] 위험! 괴물 추격 중! 방호문을 닫거나 조명탄[Q]을 투척하십시오!`;
-      this.bioSignEl.className = 'obj-line danger';
-    } else if (this.state === 'STUNNED') {
-      this.bioSignEl.textContent = `[BIO-SIGN] 괴물 시각 센서 마비됨 (조명탄 섬광 효과 - 환기구로 퇴각 중)`;
-      this.bioSignEl.className = 'obj-line ready';
-    }
+    this.bioSignEl.textContent = '';
+    this.bioSignEl.style.display = 'none';
   }
 
   /**
