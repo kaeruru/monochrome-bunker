@@ -426,13 +426,10 @@ class MonochromeBunker3D {
       this.viewModel.root.visible = true;
     }
 
-    // 암전 해제 및 정상 조명 복구
-    this.flashlightOn = true;
-    this.flashlight.intensity = this.flashlightMaxIntensity;
-    if (this.playerFillLight) this.playerFillLight.intensity = 1.45;
-    if (this.ambientLight) this.ambientLight.intensity = 0.46;
-    if (this.map.bunkerAmbient) this.map.bunkerAmbient.intensity = 0.45;
-    if (this.map.genLight) this.map.genLight.intensity = 2.2;
+    // 암전 해제 및 챕터별 정상 조명 복구
+    this.applyChapterLighting(false);
+    if (this.map.bunkerAmbient) this.map.bunkerAmbient.intensity = this.activeChapterId === 'chapter2' ? 1.25 : 0.45;
+    if (this.map.genLight) this.map.genLight.intensity = this.activeChapterId === 'chapter2' ? 5.2 : 2.2;
     if (this.map.consoleLight) this.map.consoleLight.intensity = 2.0;
 
     this.map.setBlackoutState(false);
@@ -490,12 +487,9 @@ class MonochromeBunker3D {
     if (this.viewModel) {
       this.viewModel.root.visible = true;
     }
-    this.flashlightOn = true;
-    this.flashlight.intensity = this.flashlightMaxIntensity;
-    if (this.playerFillLight) this.playerFillLight.intensity = 1.45;
-    if (this.ambientLight) this.ambientLight.intensity = 0.46;
-    if (this.map.bunkerAmbient) this.map.bunkerAmbient.intensity = 0.45;
-    if (this.map.genLight) this.map.genLight.intensity = 2.2;
+    this.applyChapterLighting(false);
+    if (this.map.bunkerAmbient) this.map.bunkerAmbient.intensity = this.activeChapterId === 'chapter2' ? 1.25 : 0.45;
+    if (this.map.genLight) this.map.genLight.intensity = this.activeChapterId === 'chapter2' ? 5.2 : 2.2;
     if (this.map.consoleLight) this.map.consoleLight.intensity = 2.0;
 
     this.map.setBlackoutState(false);
@@ -1332,6 +1326,47 @@ class MonochromeBunker3D {
     this.showGameToast(`[DEPLOYED] 대원 [${this.callsign}] 작전 투입 완료.`, 'success');
   }
 
+  applyChapterLighting(isBlackout = false) {
+    const isCh2 = this.activeChapterId === 'chapter2';
+    if (isCh2) {
+      this.flashlightOn = false;
+      this.flashlight.intensity = 0;
+      if (this.playerFillLight) this.playerFillLight.intensity = 0;
+      if (this.btnTouchFlashlight) {
+        this.btnTouchFlashlight.classList.remove('active');
+        this.btnTouchFlashlight.style.opacity = '0.35';
+        this.btnTouchFlashlight.title = '수로 구역: 손전등 비활성화';
+      }
+      this.scene.background.setHex(isBlackout ? 0x050202 : 0x090503);
+      if (this.scene.fog) {
+        this.scene.fog.color.setHex(isBlackout ? 0x050202 : 0x090503);
+        this.scene.fog.density = 0.046;
+      }
+      if (this.ambientLight) {
+        this.ambientLight.color.setHex(isBlackout ? 0x280e06 : 0x422616);
+        this.ambientLight.intensity = isBlackout ? 0.32 : 0.76;
+      }
+    } else {
+      this.flashlightOn = !isBlackout;
+      this.flashlight.intensity = isBlackout ? 0 : this.flashlightMaxIntensity;
+      if (this.playerFillLight) this.playerFillLight.intensity = isBlackout ? 0.22 : 1.45;
+      if (this.btnTouchFlashlight) {
+        this.btnTouchFlashlight.classList.toggle('active', this.flashlightOn);
+        this.btnTouchFlashlight.style.opacity = '1.0';
+        this.btnTouchFlashlight.title = '';
+      }
+      this.scene.background.setHex(0x040405);
+      if (this.scene.fog) {
+        this.scene.fog.color.setHex(0x040405);
+        this.scene.fog.density = 0.052;
+      }
+      if (this.ambientLight) {
+        this.ambientLight.color.setHex(isBlackout ? 0xff2211 : 0x282c32);
+        this.ambientLight.intensity = isBlackout ? 0.25 : 0.58;
+      }
+    }
+  }
+
   loadChapter(chapterId = 'chapter1') {
     const cfg = CHAPTER_CONFIGS[chapterId] || CHAPTER_CONFIGS.chapter1;
     this.activeChapterId = cfg.id;
@@ -1339,12 +1374,15 @@ class MonochromeBunker3D {
 
     // 1. 3D 맵 재구성 (지오메트리, 벽, 문, 수면, 전등)
     if (this.map) {
-      this.map.rebuildMap(cfg.data);
+      this.map.rebuildMap(cfg.data, cfg.id);
       if (this.map.spawnPos) {
         this.playerPos.set(this.map.spawnPos.x, 1.62, this.map.spawnPos.z);
         this.playerCamera.position.copy(this.playerPos);
       }
     }
+
+    // 1-1. 환경 조명 및 손전등 적용
+    this.applyChapterLighting(false);
 
     // 2. 괴물 AI 챕터 설정 및 벤트/노드 재구성
     if (this.monsterAI) {
@@ -1359,6 +1397,8 @@ class MonochromeBunker3D {
     // 4. CCTV 콘솔 연동 업데이트
     if (this.cctv) {
       this.cctv.map = this.map;
+      this.cctv.cameraConfigs = this.map.cctvConfigs;
+      this.cctv.updateDoorButtons(this.map.doors);
     }
 
     // 5. 위치 HUD 구역 업데이트
@@ -1483,17 +1523,22 @@ class MonochromeBunker3D {
 
     // 3. 손전등 토글 (F키 또는 우측 하단 손전등 버튼) - 소등 시 괴물 시야 감지 반경이 대폭 축소됨
     if (this.controls.consumeFlashlight()) {
-      this.flashlightOn = !this.flashlightOn;
-      this.flashlight.intensity = this.flashlightOn ? this.flashlightMaxIntensity : 0;
-      if (this.playerFillLight) {
-        this.playerFillLight.intensity = this.flashlightOn ? 1.45 : 0.22;
-      }
-      sound.playFlashlightClick(this.flashlightOn);
-      if (this.viewModel) {
-        this.viewModel.triggerFlashlightAnim(this.flashlightOn);
-      }
-      if (this.btnTouchFlashlight) {
-        this.btnTouchFlashlight.classList.toggle('active', this.flashlightOn);
+      if (this.activeChapterId === 'chapter2') {
+        sound.playFlashlightClick(false);
+        this.showGameToast('[통신] 침수 수로 구역에서는 방수 손전등이 지급되지 않습니다. 기둥의 주황 유도등을 확인하십시오.', 'warning');
+      } else {
+        this.flashlightOn = !this.flashlightOn;
+        this.flashlight.intensity = this.flashlightOn ? this.flashlightMaxIntensity : 0;
+        if (this.playerFillLight) {
+          this.playerFillLight.intensity = this.flashlightOn ? 1.45 : 0.22;
+        }
+        sound.playFlashlightClick(this.flashlightOn);
+        if (this.viewModel) {
+          this.viewModel.triggerFlashlightAnim(this.flashlightOn);
+        }
+        if (this.btnTouchFlashlight) {
+          this.btnTouchFlashlight.classList.toggle('active', this.flashlightOn);
+        }
       }
     }
 
@@ -1535,9 +1580,13 @@ class MonochromeBunker3D {
       this.playerCamera.updateProjectionMatrix();
     }
 
+    const inWater = this.map ? this.map.isWaterAt(this.playerPos.x, this.playerPos.z) : false;
+    const isCh2 = this.activeChapterId === 'chapter2';
+    // 챕터 2에서는 물이 허벅지까지 차올라 -35% 속도 감소 (0.65배 속도)
+    const waterMult = inWater ? (isCh2 ? (isActivelySprinting ? 0.70 : 0.65) : (isActivelySprinting ? 0.94 : 0.82)) : 1.0;
+    const targetEyeH = (inWater && isCh2) ? this.playerEyeHeight - 0.28 : this.playerEyeHeight;
+
     if (isMoving) {
-      const inWater = this.map ? this.map.isWaterAt(this.playerPos.x, this.playerPos.z) : false;
-      const waterMult = inWater ? (isActivelySprinting ? 0.94 : 0.82) : 1.0;
       const currentSpeed = (isActivelySprinting ? this.sprintSpeed : this.walkSpeed) * waterMult;
       const step = currentSpeed * dt;
       const nextX = this.playerPos.x + moveDir.x * step;
@@ -1551,22 +1600,22 @@ class MonochromeBunker3D {
       }
 
       const bobFreq = isActivelySprinting ? 15.5 : 10.0;
-      const bobAmp = isActivelySprinting ? 0.085 : 0.052;
+      const bobAmp = isActivelySprinting ? (inWater ? 0.095 : 0.085) : (inWater ? 0.065 : 0.052);
       this.walkCycle += dt * bobFreq;
-      this.playerCamera.position.y = this.playerEyeHeight + Math.sin(this.walkCycle) * bobAmp;
+      this.playerCamera.position.y = targetEyeH + Math.sin(this.walkCycle) * bobAmp;
 
       this.footstepTimer += dt;
-      const stepInterval = isActivelySprinting ? 0.27 : 0.44;
+      const stepInterval = isActivelySprinting ? (inWater ? 0.32 : 0.27) : (inWater ? 0.50 : 0.44);
       if (this.footstepTimer > stepInterval) {
         sound.playFootstep(isActivelySprinting, inWater);
         if (this.monsterAI) {
-          const soundRad = inWater ? (isActivelySprinting ? 30.0 : 16.0) : (isActivelySprinting ? 22.0 : 9.0);
-          this.monsterAI.notifyPlayerSound(this.playerPos.x, this.playerPos.z, soundRad, inWater ? '물살 첨벙거림' : '발소리');
+          const soundRad = inWater ? (isActivelySprinting ? 34.0 : 18.0) : (isActivelySprinting ? 22.0 : 9.0);
+          this.monsterAI.notifyPlayerSound(this.playerPos.x, this.playerPos.z, soundRad, inWater ? '수로 물살 첨벙거림' : '발소리');
         }
         this.footstepTimer = 0;
       }
     } else {
-      this.playerCamera.position.y = this.playerEyeHeight;
+      this.playerCamera.position.y = targetEyeH;
     }
 
     this.playerCamera.position.x = this.playerPos.x;

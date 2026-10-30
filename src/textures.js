@@ -539,11 +539,238 @@ export function createIndustrialMaterials() {
     addRealisticNoiseAndScratches(ctx, s, 0.08, 14);
   }, 512);
 
+  // 8. 고대 붉은 벽돌 볼트 벽 (Ancient Subterranean Red Brick Vault)
+  // - 로마/빅토리아 양식의 거친 적갈색 벽돌, 석회 백화(Efflorescence), 하단부 이끼/침수 침착
+  const brickWallTex = makePhotoTexture((ctx, s) => {
+    // 베이스 어두운 흙색/몰탈 그라디언트
+    ctx.fillStyle = '#261b18';
+    ctx.fillRect(0, 0, s, s);
+
+    const rows = 12;
+    const rowH = s / rows;
+    const brickW = s / 5;
+
+    for (let r = 0; r < rows; r++) {
+      const y = r * rowH;
+      const offset = (r % 2) * (brickW * 0.5);
+      const cols = Math.ceil(s / brickW) + 2;
+
+      for (let c = -1; c < cols; c++) {
+        const x = c * brickW + offset;
+        const bW = brickW - 4;
+        const bH = rowH - 4;
+
+        // 벽돌 개별 톤 베리에이션 (테라코타 레드, 적갈색, 탄 벽돌 암갈색)
+        const randTone = (Math.sin(r * 12.3 + c * 33.7) + 1) / 2;
+        let brickColor;
+        if (randTone < 0.25) {
+          brickColor = '#50231b'; // 짙은 탄 흙벽돌
+        } else if (randTone < 0.6) {
+          brickColor = '#6c2e22'; // 표준 테라코타 적벽돌
+        } else if (randTone < 0.85) {
+          brickColor = '#823829'; // 따뜻한 오렌지빛 적벽돌
+        } else {
+          brickColor = '#421c17'; // 산화된 어두운 갈색
+        }
+        ctx.fillStyle = brickColor;
+        ctx.fillRect(x + 2, y + 2, bW, bH);
+
+        // 벽돌 상단 미세 하이라이트
+        ctx.fillStyle = 'rgba(255, 200, 180, 0.12)';
+        ctx.fillRect(x + 2, y + 2, bW, 2);
+
+        // 벽돌 하단 미세 그림자
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+        ctx.fillRect(x + 2, y + bH, bW, 2);
+      }
+    }
+
+    // 석회 백화 현상 (Efflorescence: 오래된 지하 벽돌 사이로 석회 성분이 배어나온 흰색 얼룩)
+    for (let i = 0; i < 7; i++) {
+      const ex = (Math.sin(i * 17.1) * 0.5 + 0.5) * s;
+      const ey = (Math.cos(i * 23.3) * 0.35 + 0.35) * s;
+      const ew = 30 + (i % 3) * 25;
+      const eh = 40 + (i % 4) * 35;
+      const eGrad = ctx.createRadialGradient(ex, ey, 4, ex, ey, ew);
+      eGrad.addColorStop(0, 'rgba(225, 218, 205, 0.28)');
+      eGrad.addColorStop(0.6, 'rgba(200, 195, 185, 0.14)');
+      eGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = eGrad;
+      ctx.fillRect(ex - ew, ey - eh, ew * 2, eh * 2);
+    }
+
+    // 하단부 상시 침수/물 튀김으로 인한 짙은 슬러지 및 젖은 녹색/검은 이끼 얼룩
+    const dampGrad = ctx.createLinearGradient(0, s * 0.6, 0, s);
+    dampGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    dampGrad.addColorStop(0.4, 'rgba(20, 28, 18, 0.45)');
+    dampGrad.addColorStop(0.8, 'rgba(12, 18, 10, 0.75)');
+    dampGrad.addColorStop(1, 'rgba(8, 10, 8, 0.95)');
+    ctx.fillStyle = dampGrad;
+    ctx.fillRect(0, s * 0.6, s, s * 0.4);
+
+    addRealisticNoiseAndScratches(ctx, s, 0.16, 32);
+  }, 512);
+
+  // 9. 원형 대형 방류 암거 콘크리트 리브 벽 (Ribbed Corrugated Concrete Flume)
+  // - 레퍼런스 2: 동심원형 주름 리브, 축축하게 젖은 콘크리트, 수직 침전물 자국
+  const concreteFlumeTex = makePhotoTexture((ctx, s) => {
+    // 짙은 젖은 콘크리트 그라디언트
+    const baseGrad = ctx.createLinearGradient(0, 0, s, 0);
+    baseGrad.addColorStop(0, '#2b3034');
+    baseGrad.addColorStop(0.5, '#3a4045');
+    baseGrad.addColorStop(1, '#24282c');
+    ctx.fillStyle = baseGrad;
+    ctx.fillRect(0, 0, s, s);
+
+    addConcreteAggregateAndPores(ctx, s, 450);
+
+    // 가로 방향 주름 리브 (Corrugated Rib Bands)
+    const ribStep = 24;
+    for (let y = 0; y < s; y += ribStep) {
+      ctx.fillStyle = '#14181a';
+      ctx.fillRect(0, y, s, 7);
+
+      ctx.fillStyle = 'rgba(210, 220, 230, 0.16)';
+      ctx.fillRect(0, y + 7, s, 3);
+
+      ctx.fillStyle = '#343a3e';
+      ctx.fillRect(0, y + 10, s, ribStep - 10);
+    }
+
+    addWaterSeepageStreaks(ctx, s, 9);
+
+    const wlGrad = ctx.createLinearGradient(0, s * 0.65, 0, s);
+    wlGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    wlGrad.addColorStop(0.3, 'rgba(15, 25, 20, 0.5)');
+    wlGrad.addColorStop(1, 'rgba(8, 14, 12, 0.85)');
+    ctx.fillStyle = wlGrad;
+    ctx.fillRect(0, s * 0.65, s, s * 0.35);
+
+    addRealisticNoiseAndScratches(ctx, s, 0.14, 28);
+  }, 512);
+
+  // 10. 고대 지하 저류조 석조 보행로 (Ancient Cistern Flagstone Walkway)
+  // - 물에 젖은 고대 석판 타일, 둥글게 닳은 모서리, 물웅덩이 반사광
+  const stoneWalkwayTex = makePhotoTexture((ctx, s) => {
+    ctx.fillStyle = '#302a24';
+    ctx.fillRect(0, 0, s, s);
+
+    addConcreteAggregateAndPores(ctx, s, 350);
+
+    const slabCount = 3;
+    const slabSize = s / slabCount;
+
+    for (let gy = 0; gy < slabCount; gy++) {
+      for (let gx = 0; gx < slabCount; gx++) {
+        const x = gx * slabSize;
+        const y = gy * slabSize;
+        const w = slabSize - 6;
+        const h = slabSize - 6;
+
+        const v = (Math.sin(gx * 7.7 + gy * 13.3) + 1) / 2;
+        ctx.fillStyle = v > 0.5 ? '#3e3832' : '#332e29';
+        ctx.fillRect(x + 3, y + 3, w, h);
+
+        ctx.strokeStyle = '#1e1a17';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(x + 3, y + 3, w, h);
+
+        ctx.fillStyle = 'rgba(230, 210, 180, 0.08)';
+        ctx.fillRect(x + 4, y + 4, w - 2, 2);
+      }
+    }
+
+    // 축축한 물웅덩이 얼룩 (Puddles)
+    const puddleGrad = ctx.createRadialGradient(s * 0.45, s * 0.55, 10, s * 0.45, s * 0.55, 75);
+    puddleGrad.addColorStop(0, 'rgba(10, 16, 20, 0.7)');
+    puddleGrad.addColorStop(0.7, 'rgba(16, 24, 28, 0.35)');
+    puddleGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = puddleGrad;
+    ctx.beginPath();
+    ctx.ellipse(s * 0.45, s * 0.55, 75, 45, Math.PI / 6, 0, Math.PI * 2);
+    ctx.fill();
+
+    addRealisticNoiseAndScratches(ctx, s, 0.14, 24);
+  }, 512);
+
+  // 11. 심연 탁한 수면 텍스처 (Murky Subterranean Flume Water with Amber Sheen)
+  const waterTexDeep = makePhotoTexture((ctx, s) => {
+    const bgGrad = ctx.createLinearGradient(0, 0, s, s);
+    bgGrad.addColorStop(0, '#0a151b');
+    bgGrad.addColorStop(0.5, '#071016');
+    bgGrad.addColorStop(1, '#050c10');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, s, s);
+
+    ctx.strokeStyle = 'rgba(120, 160, 180, 0.22)';
+    ctx.lineWidth = 2.5;
+    for (let y = 12; y < s; y += 22) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      for (let x = 0; x <= s; x += 24) {
+        const dy = Math.sin((x / s) * Math.PI * 6 + y * 0.15) * 5;
+        ctx.lineTo(x, y + dy);
+      }
+      ctx.stroke();
+    }
+
+    // 주황색 형광등(나트륨등) 반사 오렌지빛 광택 (Amber Surface Specular Sheen)
+    const orangeSheen = ctx.createRadialGradient(s * 0.5, s * 0.35, 10, s * 0.5, s * 0.35, s * 0.45);
+    orangeSheen.addColorStop(0, 'rgba(235, 130, 45, 0.22)');
+    orangeSheen.addColorStop(0.4, 'rgba(180, 95, 30, 0.10)');
+    orangeSheen.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = orangeSheen;
+    ctx.fillRect(0, 0, s, s);
+
+    addRealisticNoiseAndScratches(ctx, s, 0.08, 12);
+  }, 512);
+
+  // 12. 고대 지하 아치 벽돌 천장 (Vaulted Brick Arch Ceiling)
+  const ceilingBrickTex = makePhotoTexture((ctx, s) => {
+    ctx.fillStyle = '#221612';
+    ctx.fillRect(0, 0, s, s);
+
+    const rows = 14;
+    const rowH = s / rows;
+    for (let r = 0; r < rows; r++) {
+      const y = r * rowH;
+      ctx.fillStyle = (r % 2 === 0) ? '#4a1e17' : '#3c1813';
+      ctx.fillRect(0, y + 2, s, rowH - 4);
+
+      ctx.strokeStyle = '#18100e';
+      ctx.lineWidth = 2;
+      const step = 40;
+      const offset = (r % 2) * 20;
+      for (let x = offset; x < s; x += step) {
+        ctx.beginPath();
+        ctx.moveTo(x, y + 2);
+        ctx.lineTo(x, y + rowH - 2);
+        ctx.stroke();
+      }
+    }
+
+    const archGrad = ctx.createRadialGradient(s / 2, s / 2, s * 0.2, s / 2, s / 2, s * 0.7);
+    archGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    archGrad.addColorStop(1, 'rgba(0, 0, 0, 0.72)');
+    ctx.fillStyle = archGrad;
+    ctx.fillRect(0, 0, s, s);
+
+    addRealisticNoiseAndScratches(ctx, s, 0.12, 16);
+  }, 512);
+
   // [핵심] MeshLambertMaterial을 사용하여 픽셀당 PBR/노멀맵 연산을 완전히 제거하고,
   // 텍스처 자체에 구워진 질감과 명암으로 PS2 시대의 거칠고 매트한 아날로그 비주얼을 구현합니다.
   return {
     wall: new THREE.MeshLambertMaterial({
       map: wallTex,
+      color: 0xffffff
+    }),
+    wallBrick: new THREE.MeshLambertMaterial({
+      map: brickWallTex,
+      color: 0xffffff
+    }),
+    wallFlume: new THREE.MeshLambertMaterial({
+      map: concreteFlumeTex,
       color: 0xffffff
     }),
     floorBunker: new THREE.MeshLambertMaterial({
@@ -558,14 +785,28 @@ export function createIndustrialMaterials() {
       map: roomFloorTex,
       color: 0xffffff
     }),
+    floorStoneWalkway: new THREE.MeshLambertMaterial({
+      map: stoneWalkwayTex,
+      color: 0xffffff
+    }),
     floorWater: new THREE.MeshLambertMaterial({
       map: waterTex,
       color: 0x99ddff,
       transparent: true,
       opacity: 0.88
     }),
+    floorWaterDeep: new THREE.MeshLambertMaterial({
+      map: waterTexDeep,
+      color: 0xffeedd,
+      transparent: true,
+      opacity: 0.90
+    }),
     ceiling: new THREE.MeshLambertMaterial({
       map: ceilingTex,
+      color: 0xffffff
+    }),
+    ceilingBrick: new THREE.MeshLambertMaterial({
+      map: ceilingBrickTex,
       color: 0xffffff
     }),
     doorPanel: new THREE.MeshLambertMaterial({
@@ -577,6 +818,8 @@ export function createIndustrialMaterials() {
     }),
     ledGreen: new THREE.MeshBasicMaterial({ color: 0x33ff77 }),
     ledRed: new THREE.MeshBasicMaterial({ color: 0xff3333 }),
-    consoleScreen: new THREE.MeshBasicMaterial({ color: 0x90ffb8 })
+    consoleScreen: new THREE.MeshBasicMaterial({ color: 0x90ffb8 }),
+    lampOrangeTube: new THREE.MeshBasicMaterial({ color: 0xff8c2a }),
+    lampOrangeFixture: new THREE.MeshLambertMaterial({ color: 0x221a14 })
   };
 }

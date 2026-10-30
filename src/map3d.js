@@ -16,8 +16,9 @@ import { MonsterEntity, PlayerCharacterEntity } from './models.js';
 import { sound } from './audio.js';
 
 export class Map3D {
-  constructor(scene, customMapStrings = null) {
+  constructor(scene, customMapStrings = null, chapterId = 'chapter1') {
     this.scene = scene;
+    this.chapterId = chapterId;
     this.materials = createIndustrialMaterials();
 
     this.mapGroup = new THREE.Group();
@@ -46,7 +47,8 @@ export class Map3D {
     this.buildFromTileMap(this.activeMap);
   }
 
-  rebuildMap(newMapStrings) {
+  rebuildMap(newMapStrings, chapterId = 'chapter1') {
+    this.chapterId = chapterId;
     this.clearMap();
     this.activeMap = normalizeMapStrings(newMapStrings);
     this.buildFromTileMap(this.activeMap);
@@ -77,13 +79,18 @@ export class Map3D {
 
   buildFromTileMap(mapArray) {
     let doorIndex = 1;
+    const isCh2 = this.chapterId === 'chapter2';
 
-    // 대규모 지오메트리 병합 수집 버퍼 (드로우콜 2,000+개 -> 5개로 압축)
+    // 대규모 지오메트리 병합 수집 버퍼 (드로우콜 2,000+개 -> 5개 내외로 압축)
     const wallGeos = [];
+    const wallBrickGeos = [];
+    const wallFlumeGeos = [];
     const floorCorridorGeos = [];
     const floorBunkerGeos = [];
     const floorRoomGeos = [];
+    const floorStoneWalkwayGeos = [];
     const floorWaterGeos = [];
+    const floorWaterBedGeos = [];
     const ceilingGeos = [];
 
     const baseWallGeo = new THREE.BoxGeometry(TILE_SIZE, WALL_HEIGHT, TILE_SIZE);
@@ -97,11 +104,32 @@ export class Map3D {
 
         const pos = tileToWorld(col, row);
 
-        // 1. 강철 방호벽 ('#')
+        // 1. 방호벽 및 구조 지지 기둥 ('#')
         if (ch === '#') {
           const g = baseWallGeo.clone();
           g.applyMatrix4(new THREE.Matrix4().makeTranslation(pos.x, WALL_HEIGHT / 2, pos.z));
-          wallGeos.push(g);
+          if (isCh2) {
+            // 수로 타일('W')과 접한 벽면은 레퍼런스 2번 원형 콘크리트 리브 벽(wallFlume),
+            // 그 외 아치 회랑 및 기둥 등은 레퍼런스 1번 고대 붉은 벽돌(wallBrick) 적용
+            let touchesWater = false;
+            for (let dr = -1; dr <= 1; dr++) {
+              for (let dc = -1; dc <= 1; dc++) {
+                if (dr === 0 && dc === 0) continue;
+                if (this.getTileChar(col + dc, row + dr) === 'W') {
+                  touchesWater = true;
+                  break;
+                }
+              }
+              if (touchesWater) break;
+            }
+            if (touchesWater) {
+              wallFlumeGeos.push(g);
+            } else {
+              wallBrickGeos.push(g);
+            }
+          } else {
+            wallGeos.push(g);
+          }
           continue;
         }
 
@@ -114,6 +142,18 @@ export class Map3D {
 
         if (ch === 'W') {
           floorWaterGeos.push(f);
+          if (isCh2) {
+            // 허벅지 깊이 수면 아래 침전 바닥면 생성
+            const bed = baseFloorGeo.clone();
+            const bMat = new THREE.Matrix4();
+            bMat.multiply(new THREE.Matrix4().makeTranslation(pos.x, 0.01, pos.z));
+            bMat.multiply(new THREE.Matrix4().makeRotationX(-Math.PI / 2));
+            bed.applyMatrix4(bMat);
+            floorWaterBedGeos.push(bed);
+          }
+        } else if (isCh2) {
+          // 챕터 2에서는 건조 구역 전체에 고대 저류조 석판(Flagstone Walkway) 적용
+          floorStoneWalkwayGeos.push(f);
         } else if (['B', 'S', 'G', 'C'].includes(ch)) {
           floorBunkerGeos.push(f);
         } else if (ch === 'R') {
@@ -148,11 +188,32 @@ export class Map3D {
     }
 
     // 드로우콜을 획기적으로 압축하는 통합 메쉬 생성
+    if (wallBrickGeos.length > 0) {
+      const merged = BufferGeometryUtils.mergeGeometries(wallBrickGeos, false);
+      const mesh = new THREE.Mesh(merged, this.materials.wallBrick);
+      this.mapGroup.add(mesh);
+      wallBrickGeos.forEach(g => g.dispose());
+    }
+
+    if (wallFlumeGeos.length > 0) {
+      const merged = BufferGeometryUtils.mergeGeometries(wallFlumeGeos, false);
+      const mesh = new THREE.Mesh(merged, this.materials.wallFlume);
+      this.mapGroup.add(mesh);
+      wallFlumeGeos.forEach(g => g.dispose());
+    }
+
     if (wallGeos.length > 0) {
       const mergedWall = BufferGeometryUtils.mergeGeometries(wallGeos, false);
       const wallMesh = new THREE.Mesh(mergedWall, this.materials.wall);
       this.mapGroup.add(wallMesh);
       wallGeos.forEach(g => g.dispose());
+    }
+
+    if (floorStoneWalkwayGeos.length > 0) {
+      const merged = BufferGeometryUtils.mergeGeometries(floorStoneWalkwayGeos, false);
+      const mesh = new THREE.Mesh(merged, this.materials.floorStoneWalkway);
+      this.mapGroup.add(mesh);
+      floorStoneWalkwayGeos.forEach(g => g.dispose());
     }
 
     if (floorCorridorGeos.length > 0) {
@@ -176,17 +237,27 @@ export class Map3D {
       floorRoomGeos.forEach(g => g.dispose());
     }
 
+    if (floorWaterBedGeos.length > 0) {
+      const mergedBed = BufferGeometryUtils.mergeGeometries(floorWaterBedGeos, false);
+      const bedMesh = new THREE.Mesh(mergedBed, this.materials.floorRoom);
+      this.mapGroup.add(bedMesh);
+      floorWaterBedGeos.forEach(g => g.dispose());
+    }
+
     if (floorWaterGeos.length > 0) {
       const mergedWater = BufferGeometryUtils.mergeGeometries(floorWaterGeos, false);
-      const waterMesh = new THREE.Mesh(mergedWater, this.materials.floorWater);
-      waterMesh.position.y = 0.04;
+      const waterMat = isCh2 ? this.materials.floorWaterDeep : this.materials.floorWater;
+      const waterMesh = new THREE.Mesh(mergedWater, waterMat);
+      // 챕터 2에서는 허벅지 깊이(0.50m)로 수면이 차오름
+      waterMesh.position.y = isCh2 ? 0.50 : 0.04;
       this.mapGroup.add(waterMesh);
       floorWaterGeos.forEach(g => g.dispose());
     }
 
     if (ceilingGeos.length > 0) {
       const mergedCeiling = BufferGeometryUtils.mergeGeometries(ceilingGeos, false);
-      const ceilingMesh = new THREE.Mesh(mergedCeiling, this.materials.ceiling);
+      const ceilMat = isCh2 ? this.materials.ceilingBrick : this.materials.ceiling;
+      const ceilingMesh = new THREE.Mesh(mergedCeiling, ceilMat);
       this.mapGroup.add(ceilingMesh);
       ceilingGeos.forEach(g => g.dispose());
     }
@@ -283,9 +354,16 @@ export class Map3D {
     this.mapGroup.add(group);
 
     let label = `방호문 ${id}`;
-    if (id === 1) label = '서쪽 방호문';
-    else if (id === 2) label = '동쪽 방호문';
-    else if (id === 3) label = '남쪽 방호문';
+    if (this.chapterId === 'chapter2') {
+      if (id === 1) label = '서쪽 수문 (아치 회랑 차단 격벽)';
+      else if (id === 2) label = '동쪽 수문 (제2 침수 저류조 격벽)';
+      else if (id === 3) label = '북쪽 수문 (제1 대형 방류 암거)';
+      else if (id === 4) label = '남쪽 수문 (남측 방류 터널)';
+    } else {
+      if (id === 1) label = '서쪽 방호문';
+      else if (id === 2) label = '동쪽 방호문';
+      else if (id === 3) label = '남쪽 방호문';
+    }
 
     this.doors.push({
       id,
@@ -343,12 +421,22 @@ export class Map3D {
     }
 
     if (this.bunkerAmbient) {
-      this.bunkerAmbient.color.setHex(flag ? 0xff3322 : 0xdde4ec);
-      this.bunkerAmbient.intensity = flag ? 0.45 : 1.8;
+      if (this.chapterId === 'chapter2') {
+        this.bunkerAmbient.color.setHex(flag ? 0x441408 : 0x55321a);
+        this.bunkerAmbient.intensity = flag ? 0.32 : 1.25;
+      } else {
+        this.bunkerAmbient.color.setHex(flag ? 0xff3322 : 0xdde4ec);
+        this.bunkerAmbient.intensity = flag ? 0.45 : 1.8;
+      }
     }
     if (this.genLight) {
-      this.genLight.color.setHex(flag ? 0xff4422 : 0xeef4ff);
-      this.genLight.intensity = flag ? 0.9 : 4.8;
+      if (this.chapterId === 'chapter2') {
+        this.genLight.color.setHex(flag ? 0xcc3311 : 0xffa044);
+        this.genLight.intensity = flag ? 0.8 : 5.2;
+      } else {
+        this.genLight.color.setHex(flag ? 0xff4422 : 0xeef4ff);
+        this.genLight.intensity = flag ? 0.9 : 4.8;
+      }
     }
     if (this.consoleLight) {
       this.consoleLight.intensity = flag ? 0.25 : 2.1;
@@ -361,6 +449,7 @@ export class Map3D {
   }
 
   buildGenerator(x, z) {
+    const isCh2 = this.chapterId === 'chapter2';
     const group = new THREE.Group();
     group.position.set(x, 0, z);
 
@@ -380,10 +469,10 @@ export class Map3D {
     topCap.position.y = WALL_HEIGHT - 0.18;
     group.add(topCap);
 
-    // 중앙 발광 코어 기둥
+    // 중앙 발광 코어 기둥 (챕터 2는 온화한 주황빛 증기/수압 터빈 코어)
     const pillar = new THREE.Mesh(
       new THREE.CylinderGeometry(0.42, 0.42, WALL_HEIGHT - 0.5, 16),
-      new THREE.MeshBasicMaterial({ color: 0xe8e8e8 })
+      new THREE.MeshBasicMaterial({ color: isCh2 ? 0xffb866 : 0xe8e8e8 })
     );
     pillar.position.y = WALL_HEIGHT / 2;
     group.add(pillar);
@@ -400,14 +489,15 @@ export class Map3D {
     // 회전하는 에너지 링
     this.generatorCore = new THREE.Mesh(
       new THREE.TorusGeometry(0.72, 0.07, 12, 32),
-      new THREE.MeshBasicMaterial({ color: 0xffffff })
+      new THREE.MeshBasicMaterial({ color: isCh2 ? 0xff9933 : 0xffffff })
     );
     this.generatorCore.position.y = 1.6;
     this.generatorCore.rotation.x = Math.PI / 3;
     group.add(this.generatorCore);
 
-    // 발전기 주 조명 (눈부심을 줄이고 주변만 은은하게 비추도록 감광)
-    this.genLight = new THREE.PointLight(0xeef4ff, 4.8, 14, 1.7);
+    // 발전기 / 터빈 주 조명
+    const lightColor = isCh2 ? 0xffaa44 : 0xeef4ff;
+    this.genLight = new THREE.PointLight(lightColor, isCh2 ? 5.2 : 4.8, 14, 1.7);
     this.genLight.position.set(0, 2.2, 0);
     group.add(this.genLight);
 
@@ -445,7 +535,6 @@ export class Map3D {
       group.add(screen);
     }
 
-    // 콘솔 화면 불빛 (모바일 최적화: 자체 발광 스크린 메쉬로 충분히 표현하고 무거운 PointLight 제거)
     this.consoleLight = null;
 
     this.mapGroup.add(group);
@@ -453,16 +542,19 @@ export class Map3D {
   }
 
   buildCeilingLamp(x, z) {
+    const isCh2 = this.chapterId === 'chapter2';
     const group = new THREE.Group();
     group.position.set(x, WALL_HEIGHT - 0.06, z);
 
+    const fixtureMat = isCh2 ? this.materials.lampOrangeFixture : this.materials.doorFrame;
     const fixture = new THREE.Mesh(
       new THREE.BoxGeometry(1.1, 0.08, 0.36),
-      this.materials.doorFrame
+      fixtureMat
     );
     group.add(fixture);
 
-    const tubeMat = new THREE.MeshBasicMaterial({ color: 0xbfc6cc });
+    const tubeColor = isCh2 ? 0xff8a22 : 0xbfc6cc;
+    const tubeMat = new THREE.MeshBasicMaterial({ color: tubeColor });
     const tube = new THREE.Mesh(
       new THREE.PlaneGeometry(0.95, 0.24),
       tubeMat
@@ -471,15 +563,22 @@ export class Map3D {
     tube.position.y = -0.045;
     group.add(tube);
 
-    // 복도 천장등 (모바일 60FPS 최적화: 12개의 실시간 PointLight를 제거하고 자체 발광 튜브로 표현)
+    // 챕터 2에서는 플레이어 손전등이 없는 대신 기둥과 통로의 주황색 나트륨 형광등이 온기를 비춤
+    let lampLight = null;
+    if (isCh2) {
+      lampLight = new THREE.PointLight(0xff8420, 2.4, 11, 1.8);
+      lampLight.position.set(0, -0.3, 0);
+      group.add(lampLight);
+    }
+
     this.mapGroup.add(group);
 
     this.ceilingLamps.push({
       x,
       z,
-      light: null,
+      light: lampLight,
       tubeMat,
-      baseIntensity: 2.2,
+      baseIntensity: isCh2 ? 2.4 : 2.2,
       nextFlickerIn: 2.5 + Math.random() * 9.0,
       flickerRemain: 0,
       soundCooldown: 0
@@ -490,7 +589,6 @@ export class Map3D {
    * CCTV 카메라 배치 및 가장 시야가 트인 복도 방향으로 자동 정렬
    */
   buildCCTVCamera(num, col, row, x, z) {
-    // 4방향(북, 남, 동, 서) 중 가장 길게 뚫린 복도 방향을 계산
     const dirs = [
       { name: '북쪽', dc: 0, dr: -1, yaw: 0 },
       { name: '남쪽', dc: 0, dr: 1, yaw: Math.PI },
@@ -514,7 +612,6 @@ export class Map3D {
       }
     }
 
-    // 카메라 본체 모델
     const camGroup = new THREE.Group();
     camGroup.position.set(x, WALL_HEIGHT - 0.28, z);
     camGroup.rotation.y = bestDir.yaw;
@@ -539,15 +636,21 @@ export class Map3D {
     recLed.position.set(0.08, 0.08, -0.24);
     camGroup.add(recLed);
 
-    // CCTV 카메라 본체 배치 (모바일 최적화: PointLight 제거)
     this.mapGroup.add(camGroup);
 
-    const defaultNames = {
+    const defaultNamesCh1 = {
       1: 'CAM 01 - 동쪽 허브 복도',
       2: 'CAM 02 - 남쪽 관리실/창고 복도',
       3: 'CAM 03 - 북서 엔진/의무실 복도',
       4: 'CAM 04 - 서쪽 보안실/원자로 복도'
     };
+    const defaultNamesCh2 = {
+      1: 'CAM 01 - 제2 침수 저류 수로',
+      2: 'CAM 02 - 남측 방류 터널',
+      3: 'CAM 03 - 고대 벽돌 아치 회랑',
+      4: 'CAM 04 - 서측 원형 배수관'
+    };
+    const defaultNames = this.chapterId === 'chapter2' ? defaultNamesCh2 : defaultNamesCh1;
 
     this.cctvConfigs.push({
       id: num,
@@ -624,11 +727,16 @@ export class Map3D {
         }
       }
 
+      const isCh2 = this.chapterId === 'chapter2';
+      const onColor = isCh2 ? 0xff8a22 : 0xbfc6cc;
+      const offColor = isCh2 ? 0x241208 : 0x22262a;
+      const deadColor = isCh2 ? 0x180c05 : 0x141618;
+
       if (lamp.flickerRemain > 0) {
         lamp.flickerRemain = Math.max(0, lamp.flickerRemain - dt);
         const onNow = Math.random() > 0.55;
         if (lamp.light) lamp.light.intensity = onNow ? lamp.baseIntensity * (0.3 + Math.random() * 0.7) : 0.05;
-        lamp.tubeMat.color.setHex(onNow ? 0xbfc6cc : 0x22262a);
+        lamp.tubeMat.color.setHex(onNow ? onColor : offColor);
 
         // 플레이어가 이 전등 근처(14m 이내)에 있을 때 전등이 지직거리면 3D 거리 비례 스파크/안정기 사운드 재생
         if (playerPos && lamp.soundCooldown <= 0) {
@@ -641,10 +749,10 @@ export class Map3D {
         }
       } else if (this.isBlackout) {
         if (lamp.light) lamp.light.intensity = 0;
-        lamp.tubeMat.color.setHex(0x141618);
+        lamp.tubeMat.color.setHex(deadColor);
       } else {
         if (lamp.light) lamp.light.intensity = lamp.baseIntensity;
-        lamp.tubeMat.color.setHex(0xbfc6cc);
+        lamp.tubeMat.color.setHex(onColor);
       }
     }
   }
