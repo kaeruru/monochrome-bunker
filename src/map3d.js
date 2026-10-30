@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 import {
   TILE_MAP,
   TILE_SIZE,
@@ -75,12 +76,17 @@ export class Map3D {
   }
 
   buildFromTileMap(mapArray) {
-    // 벙커 기본 은은한 환경광 (조도를 대폭 낮춰 음산한 공포 분위기 조성)
-    this.bunkerAmbient = new THREE.PointLight(0xdde4ec, 1.8, 16, 1.8);
-    this.bunkerAmbient.position.set(0, WALL_HEIGHT - 0.3, -15);
-    this.mapGroup.add(this.bunkerAmbient);
-
     let doorIndex = 1;
+
+    // 대규모 지오메트리 병합 수집 버퍼 (드로우콜 2,000+개 -> 5개로 압축)
+    const wallGeos = [];
+    const floorCorridorGeos = [];
+    const floorBunkerGeos = [];
+    const floorRoomGeos = [];
+    const ceilingGeos = [];
+
+    const baseWallGeo = new THREE.BoxGeometry(TILE_SIZE, WALL_HEIGHT, TILE_SIZE);
+    const baseFloorGeo = new THREE.PlaneGeometry(TILE_SIZE, TILE_SIZE);
 
     for (let row = 0; row < MAP_ROWS; row++) {
       const line = mapArray[row] || '';
@@ -92,32 +98,33 @@ export class Map3D {
 
         // 1. 강철 방호벽 ('#')
         if (ch === '#') {
-          const wall = new THREE.Mesh(this.wallGeo, this.materials.wall);
-          wall.position.set(pos.x, WALL_HEIGHT / 2, pos.z);
-          wall.castShadow = true;
-          wall.receiveShadow = true;
-          this.mapGroup.add(wall);
+          const g = baseWallGeo.clone();
+          g.applyMatrix4(new THREE.Matrix4().makeTranslation(pos.x, WALL_HEIGHT / 2, pos.z));
+          wallGeos.push(g);
           continue;
         }
 
-        // 2. 보행 가능 구역의 바닥 & 천장 생성
-        let floorMat = this.materials.floorCorridor;
+        // 2. 보행 가능 구역의 바닥 & 천장 지오메트리 수집
+        const f = baseFloorGeo.clone();
+        const fMat = new THREE.Matrix4();
+        fMat.multiply(new THREE.Matrix4().makeTranslation(pos.x, 0, pos.z));
+        fMat.multiply(new THREE.Matrix4().makeRotationX(-Math.PI / 2));
+        f.applyMatrix4(fMat);
+
         if (['B', 'S', 'G', 'C'].includes(ch)) {
-          floorMat = this.materials.floorBunker;
+          floorBunkerGeos.push(f);
         } else if (ch === 'R') {
-          floorMat = this.materials.floorRoom;
+          floorRoomGeos.push(f);
+        } else {
+          floorCorridorGeos.push(f);
         }
 
-        const floor = new THREE.Mesh(this.floorGeo, floorMat);
-        floor.rotation.x = -Math.PI / 2;
-        floor.position.set(pos.x, 0, pos.z);
-        floor.receiveShadow = true;
-        this.mapGroup.add(floor);
-
-        const ceiling = new THREE.Mesh(this.floorGeo, this.materials.ceiling);
-        ceiling.rotation.x = Math.PI / 2;
-        ceiling.position.set(pos.x, WALL_HEIGHT, pos.z);
-        this.mapGroup.add(ceiling);
+        const c = baseFloorGeo.clone();
+        const cMat = new THREE.Matrix4();
+        cMat.multiply(new THREE.Matrix4().makeTranslation(pos.x, WALL_HEIGHT, pos.z));
+        cMat.multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2));
+        c.applyMatrix4(cMat);
+        ceilingGeos.push(c);
 
         // 3. 타일별 특수 오브젝트 배치
         if (ch === 'S') {
@@ -136,6 +143,45 @@ export class Map3D {
         }
       }
     }
+
+    // 드로우콜을 획기적으로 압축하는 통합 메쉬 생성
+    if (wallGeos.length > 0) {
+      const mergedWall = BufferGeometryUtils.mergeGeometries(wallGeos, false);
+      const wallMesh = new THREE.Mesh(mergedWall, this.materials.wall);
+      this.mapGroup.add(wallMesh);
+      wallGeos.forEach(g => g.dispose());
+    }
+
+    if (floorCorridorGeos.length > 0) {
+      const mergedFloor = BufferGeometryUtils.mergeGeometries(floorCorridorGeos, false);
+      const floorMesh = new THREE.Mesh(mergedFloor, this.materials.floorCorridor);
+      this.mapGroup.add(floorMesh);
+      floorCorridorGeos.forEach(g => g.dispose());
+    }
+
+    if (floorBunkerGeos.length > 0) {
+      const mergedFloor = BufferGeometryUtils.mergeGeometries(floorBunkerGeos, false);
+      const floorMesh = new THREE.Mesh(mergedFloor, this.materials.floorBunker);
+      this.mapGroup.add(floorMesh);
+      floorBunkerGeos.forEach(g => g.dispose());
+    }
+
+    if (floorRoomGeos.length > 0) {
+      const mergedFloor = BufferGeometryUtils.mergeGeometries(floorRoomGeos, false);
+      const floorMesh = new THREE.Mesh(mergedFloor, this.materials.floorRoom);
+      this.mapGroup.add(floorMesh);
+      floorRoomGeos.forEach(g => g.dispose());
+    }
+
+    if (ceilingGeos.length > 0) {
+      const mergedCeiling = BufferGeometryUtils.mergeGeometries(ceilingGeos, false);
+      const ceilingMesh = new THREE.Mesh(mergedCeiling, this.materials.ceiling);
+      this.mapGroup.add(ceilingMesh);
+      ceilingGeos.forEach(g => g.dispose());
+    }
+
+    baseWallGeo.dispose();
+    baseFloorGeo.dispose();
 
     // 카메라 번호순 정렬 (1 -> 2 -> 3 -> 4)
     this.cctvConfigs.sort((a, b) => a.id - b.id);
@@ -222,11 +268,7 @@ export class Map3D {
     shutter.scale.y = 0.09;
     group.add(shutter);
 
-    // 문 앞 미약한 유도 조명
-    const doorLight = new THREE.PointLight(0xdde4ec, 0.85, 4.5, 2.0);
-    doorLight.position.set(0, WALL_HEIGHT - 0.65, 0);
-    group.add(doorLight);
-
+    // 문 앞 미약한 유도 조명 (모바일 최적화: 무거운 실시간 PointLight 대신 상단 LED 바로 상태 표시)
     this.mapGroup.add(group);
 
     let label = `방호문 ${id}`;
@@ -249,7 +291,7 @@ export class Map3D {
       shutter,
       ledFront,
       ledBack,
-      doorLight
+      doorLight: null
     });
   }
 
@@ -392,10 +434,8 @@ export class Map3D {
       group.add(screen);
     }
 
-    // 콘솔 화면 불빛
-    this.consoleLight = new THREE.PointLight(0xbbeedd, 2.1, 4.5, 1.8);
-    this.consoleLight.position.set(0, 1.6, 0.5);
-    group.add(this.consoleLight);
+    // 콘솔 화면 불빛 (모바일 최적화: 자체 발광 스크린 메쉬로 충분히 표현하고 무거운 PointLight 제거)
+    this.consoleLight = null;
 
     this.mapGroup.add(group);
     this.propColliders.push({ x, z, r: 0.78 });
@@ -420,17 +460,13 @@ export class Map3D {
     tube.position.y = -0.045;
     group.add(tube);
 
-    // 복도 천장등 조도 대폭 축소 (어두운 심연 복도 연출)
-    const light = new THREE.PointLight(0xdce4ec, 2.2, 9.5, 1.85);
-    light.position.y = -0.25;
-    group.add(light);
-
+    // 복도 천장등 (모바일 60FPS 최적화: 12개의 실시간 PointLight를 제거하고 자체 발광 튜브로 표현)
     this.mapGroup.add(group);
 
     this.ceilingLamps.push({
       x,
       z,
-      light,
+      light: null,
       tubeMat,
       baseIntensity: 2.2,
       nextFlickerIn: 2.5 + Math.random() * 9.0,
@@ -492,11 +528,7 @@ export class Map3D {
     recLed.position.set(0.08, 0.08, -0.24);
     camGroup.add(recLed);
 
-    // CCTV 주변 최소 보조 조명 (어두운 복도에서 괴물의 심장 코어가 돋보이도록 조도 축소)
-    const camAreaLight = new THREE.PointLight(0xd8e0e8, 1.4, 9.5, 1.8);
-    camAreaLight.position.set(0, -0.2, 0);
-    camGroup.add(camAreaLight);
-
+    // CCTV 카메라 본체 배치 (모바일 최적화: PointLight 제거)
     this.mapGroup.add(camGroup);
 
     const defaultNames = {
@@ -584,7 +616,7 @@ export class Map3D {
       if (lamp.flickerRemain > 0) {
         lamp.flickerRemain = Math.max(0, lamp.flickerRemain - dt);
         const onNow = Math.random() > 0.55;
-        lamp.light.intensity = onNow ? lamp.baseIntensity * (0.3 + Math.random() * 0.7) : 0.05;
+        if (lamp.light) lamp.light.intensity = onNow ? lamp.baseIntensity * (0.3 + Math.random() * 0.7) : 0.05;
         lamp.tubeMat.color.setHex(onNow ? 0xbfc6cc : 0x22262a);
 
         // 플레이어가 이 전등 근처(14m 이내)에 있을 때 전등이 지직거리면 3D 거리 비례 스파크/안정기 사운드 재생
@@ -597,10 +629,10 @@ export class Map3D {
           }
         }
       } else if (this.isBlackout) {
-        lamp.light.intensity = 0;
+        if (lamp.light) lamp.light.intensity = 0;
         lamp.tubeMat.color.setHex(0x141618);
       } else {
-        lamp.light.intensity = lamp.baseIntensity;
+        if (lamp.light) lamp.light.intensity = lamp.baseIntensity;
         lamp.tubeMat.color.setHex(0xbfc6cc);
       }
     }

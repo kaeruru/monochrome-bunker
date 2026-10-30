@@ -16,16 +16,22 @@ class MonochromeBunker3D {
     this.container = document.getElementById('game-container');
     this.canvas = document.getElementById('gameCanvas');
 
-    // 1. Three.js WebGL 렌더러
+    // 1. 기기 환경 정밀 감지 (모바일 60FPS를 위한 렌더링 최적화 분기)
+    const isMobileClient = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile/i.test(navigator.userAgent) ||
+      (window.matchMedia && window.matchMedia('(pointer: coarse) and (hover: none)').matches) ||
+      (window.innerWidth <= 1024 && ('ontouchstart' in window));
+    this.isMobile = isMobileClient;
+
+    // 1-1. Three.js WebGL 렌더러 (모바일 필레이트 폭망 방지: DPR 1.0 적용)
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
-      antialias: true,
+      antialias: !isMobileClient,
       powerPreference: 'high-performance'
     });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(isMobileClient ? 1.0 : Math.min(window.devicePixelRatio, 1.5));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 0.82;
+    this.renderer.toneMappingExposure = 0.88;
 
     // 2. 3D 씬 및 모노크롬 안개 + 비플라스틱 인더스트리얼 환경광(PMREM)
     this.scene = new THREE.Scene();
@@ -62,23 +68,21 @@ class MonochromeBunker3D {
     // 5-1. 1인칭 뷰모델 (왼손 손전등/PDA + 오른손 파밍 아이템 파지 및 애니메이션)
     this.viewModel = new FirstPersonViewModel(this.playerCamera);
 
-    // 6. 기본 환경광 (어두운 긴장감은 유지하되 주변 구조물 윤곽이 답답하지 않도록 개선)
-    this.ambientLight = new THREE.AmbientLight(0x202327, 0.46);
+    // 6. 기본 환경광 (어두운 심연 분위기는 살리되 손전등 없이도 윤곽이 보이도록 최적화)
+    this.ambientLight = new THREE.AmbientLight(0x282c32, 0.58);
     this.scene.add(this.ambientLight);
 
-    // 7. 플레이어 전술 손전등 (조사 각도와 사거리를 대폭 개선 + 근거리 보조 헤드램프 광원 추가)
+    // 7. 플레이어 전술 손전등 (실시간 집중 단일 광원으로 최적화)
     this.flashlightOn = true;
-    this.flashlightMaxIntensity = 24;
-    this.flashlight = new THREE.SpotLight(0xf0f6ff, this.flashlightMaxIntensity, 34, Math.PI / 3.6, 0.65, 1.12);
+    this.flashlightMaxIntensity = 26;
+    this.flashlight = new THREE.SpotLight(0xf0f6ff, this.flashlightMaxIntensity, 36, Math.PI / 3.3, 0.72, 1.15);
     this.flashlightTarget = new THREE.Object3D();
     this.scene.add(this.flashlightTarget);
     this.flashlight.target = this.flashlightTarget;
     this.scene.add(this.flashlight);
 
-    // 플레이어 발밑 및 직근거리(1.5~5m) 시야 답답함을 해소하는 전술 보조광
-    this.playerFillLight = new THREE.PointLight(0xdce8ff, 1.45, 6.2, 1.5);
-    this.playerFillLight.position.copy(this.playerPos);
-    this.scene.add(this.playerFillLight);
+    // 모바일 60FPS를 위해 불필요한 실시간 PointLight 제거
+    this.playerFillLight = null;
 
     // 8. PC & 모바일 통합 컨트롤러
     this.controls = new FPSControls(this.playerCamera, this.renderer.domElement);
