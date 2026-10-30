@@ -577,8 +577,9 @@ export class InteractionAndEscapeSystem {
       this.breakerState.beaconLight.intensity = 2.6;
     }
 
-    // 맵의 모든 방호문 강제 개방 및 정전 모드 적용
+    // 맵의 모든 방호문 강제 개방 및 정전 모드 적용 (형광등 험 노이즈 소등)
     this.map.setBlackoutState(true);
+    sound.setBlackout(true);
 
     if (this.callbacks.onBlackoutChange) {
       this.callbacks.onBlackoutChange(true);
@@ -615,6 +616,7 @@ export class InteractionAndEscapeSystem {
         // 3/3 복구 완료!
         this.isBlackout = false;
         sound.playPowerRestore();
+        sound.setBlackout(false);
         this.map.setBlackoutState(false);
         this.autoBlackoutTimer = 280 + Math.random() * 80;
 

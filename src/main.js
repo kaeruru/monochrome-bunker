@@ -424,6 +424,7 @@ class MonochromeBunker3D {
     if (this.map.consoleLight) this.map.consoleLight.intensity = 2.0;
 
     this.map.setBlackoutState(false);
+    sound.setBlackout(false);
     this.playerPos.set(this.map.spawnPos.x, this.playerEyeHeight, this.map.spawnPos.z);
     this.playerCamera.position.copy(this.playerPos);
     this.playerCamera.rotation.z = 0;
@@ -486,6 +487,7 @@ class MonochromeBunker3D {
     if (this.map.consoleLight) this.map.consoleLight.intensity = 2.0;
 
     this.map.setBlackoutState(false);
+    sound.setBlackout(false);
     this.playerPos.set(this.map.spawnPos.x, this.playerEyeHeight, this.map.spawnPos.z);
     this.playerCamera.position.copy(this.playerPos);
     this.playerCamera.rotation.z = 0;
@@ -755,6 +757,8 @@ class MonochromeBunker3D {
     if (prompt) prompt.classList.add('hidden');
     const toast = document.getElementById('game-toast');
     if (toast) toast.classList.add('hidden');
+    const bottomHud = document.getElementById('bottom-center-hud');
+    if (bottomHud) bottomHud.classList.add('hidden');
   }
 
   showGameplayUI() {
@@ -765,6 +769,8 @@ class MonochromeBunker3D {
     if (obj) obj.classList.remove('hidden');
     const crosshair = document.getElementById('crosshair');
     if (crosshair) crosshair.classList.remove('hidden');
+    const bottomHud = document.getElementById('bottom-center-hud');
+    if (bottomHud) bottomHud.classList.remove('hidden');
     this.syncDeviceModeUI();
   }
 
@@ -1357,6 +1363,13 @@ class MonochromeBunker3D {
       return;
     }
 
+    // 1-2. 괴물에게 붙잡힌 처형(Jumpscare) 연출 진행 중이면 카메라 고정 및 점프스케어 애니메이션 업데이트 수행
+    if (this.monsterAI && this.monsterAI.isKillingPlayer) {
+      if (this.cctv && this.cctv.isOpen) this.cctv.close();
+      this.monsterAI.update(dt, this.playerPos, this.playerCamera, false, false, false);
+      return;
+    }
+
     if (this.isPlayerDead) return;
     if (this.interactionSystem && this.interactionSystem.isGameCleared) return;
 
@@ -1366,13 +1379,6 @@ class MonochromeBunker3D {
     // 1-1. 상호작용 & 파밍 & 정전/탈출 시스템 업데이트
     if (this.interactionSystem) {
       this.interactionSystem.update(dt);
-    }
-
-    // 1-2. 괴물에게 붙잡힌 처형(Jumpscare) 연출 진행 중이면 카메라 고정 업데이트만 수행
-    if (this.monsterAI && this.monsterAI.isKillingPlayer) {
-      if (this.cctv && this.cctv.isOpen) this.cctv.close();
-      this.monsterAI.update(dt, this.playerPos, this.playerCamera, this.flashlightOn, false, false);
-      return;
     }
 
     // 2. CCTV 모니터가 열려 있을 때의 업데이트 (괴물도 실시간으로 활동)

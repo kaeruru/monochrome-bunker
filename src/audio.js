@@ -53,11 +53,31 @@ export const SOUND_ASSET_MANIFEST = {
 class AudioManager {
   constructor() {
     this.ctx = null;
+    this.masterGain = null;
+    this._masterVolume = 0.8;
     this.ambientGain = null;
+    this.ambientDroneSource = null;
+    this.ambientDroneGain = null;
+    this.lampBuzzSource = null;
+    this.lampBuzzGain = null;
+    this.proceduralAmbientOsc = null;
+    this.proceduralHumOsc = null;
     this.noiseBuffer = null;
     this.isMuted = false;
+    this.isBlackout = false;
     this.externalBuffers = new Map();
     this.loadingPromises = new Map();
+  }
+
+  set volume(val) {
+    this._masterVolume = Math.max(0, Math.min(1, val));
+    if (this.masterGain && this.ctx) {
+      this.masterGain.gain.setValueAtTime(this._masterVolume, this.ctx.currentTime);
+    }
+  }
+
+  get volume() {
+    return this._masterVolume;
   }
 
   init() {
@@ -69,9 +89,26 @@ class AudioManager {
     }
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     this.ctx = new AudioContext();
+
+    this.masterGain = this.ctx.createGain();
+    this.masterGain.gain.setValueAtTime(this._masterVolume, this.ctx.currentTime);
+    this.masterGain.connect(this.ctx.destination);
+
     this.createNoiseBuffer();
     this.startAmbient();
     this.preloadExternalAssets();
+  }
+
+  /**
+   * 정전 및 전력 복구 시 형광등 험 노이즈 연동 제어
+   */
+  setBlackout(isBlackout) {
+    this.isBlackout = isBlackout;
+    if (this.lampBuzzGain && this.ctx) {
+      const t = this.ctx.currentTime;
+      this.lampBuzzGain.gain.cancelScheduledValues(t);
+      this.lampBuzzGain.gain.linearRampToValueAtTime(isBlackout ? 0.001 : 0.28, t + 0.35);
+    }
   }
 
   /**
@@ -100,10 +137,19 @@ class AudioManager {
   loadExternalBuffer(key, url) {
     if (!this.ctx || !url || this.loadingPromises.has(key)) return;
     const p = fetch(url)
-      .then(res => res.arrayBuffer())
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.arrayBuffer();
+      })
       .then(buf => this.ctx.decodeAudioData(buf))
       .then(decoded => {
         this.externalBuffers.set(key, decoded);
+        // 지속 배경음(드론 및 형광등 험)인 경우 즉시 고품질 MP3 루프로 매끄럽게 전환
+        if (key === 'ambient_bunker_drone') {
+          this.playAmbientDroneLoop();
+        } else if (key === 'lamp_buzz_hum') {
+          this.playLampBuzzLoop();
+        }
       })
       .catch(err => {
         console.warn(`[Audio] 외부 사운드 에셋 로드 실패 (${key}: ${url}), 프로시저럴 사운드로 대체합니다.`, err);
@@ -125,7 +171,7 @@ class AudioManager {
     src.playbackRate.value = playbackRate;
     gain.gain.setValueAtTime(Math.max(0.001, volume), this.ctx.currentTime);
     src.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.masterGain || this.ctx.destination);
     src.start(0);
     return true;
   }
@@ -140,27 +186,121 @@ class AudioManager {
     }
   }
 
+  /**
+   * 벙커 상시 배경음: 1) 심연 저주파 드론 + 2) 천장 형광등 험 노이즈 지속 루프
+   */
   startAmbient() {
     if (!this.ctx) return;
+    this.playAmbientDroneLoop();
+    this.playLampBuzzLoop();
+  }
 
-    // 벙커 심연 저주파 드론 (Sub-bass Drone)
-    const osc = this.ctx.createOscillator();
-    const filter = this.ctx.createBiquadFilter();
-    this.ambientGain = this.ctx.createGain();
+  playAmbientDroneLoop() {
+    if (!this.ctx || this.isMuted) return;
 
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(46, this.ctx.currentTime);
+    const buf = this.externalBuffers.get('ambient_bunker_drone');
+    if (buf) {
+      if (this.proceduralAmbientOsc) {
+        try { this.proceduralAmbientOsc.stop(); } catch(e) {}
+        this.proceduralAmbientOsc = null;
+      }
+      if (this.ambientDroneSource) {
+        try { this.ambientDroneSource.stop(); } catch(e) {}
+        this.ambientDroneSource = null;
+      }
 
-    filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(90, this.ctx.currentTime);
+      const src = this.ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
 
-    this.ambientGain.gain.setValueAtTime(0.038, this.ctx.currentTime);
+      if (!this.ambientDroneGain) {
+        this.ambientDroneGain = this.ctx.createGain();
+        this.ambientDroneGain.connect(this.masterGain || this.ctx.destination);
+      }
+      this.ambientDroneGain.gain.setValueAtTime(0.48, this.ctx.currentTime);
 
-    osc.connect(filter);
-    filter.connect(this.ambientGain);
-    this.ambientGain.connect(this.ctx.destination);
+      src.connect(this.ambientDroneGain);
+      src.start(0);
+      this.ambientDroneSource = src;
+      return;
+    }
 
-    osc.start();
+    if (!this.proceduralAmbientOsc) {
+      const osc = this.ctx.createOscillator();
+      const filter = this.ctx.createBiquadFilter();
+      this.ambientGain = this.ctx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(46, this.ctx.currentTime);
+
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(110, this.ctx.currentTime);
+
+      this.ambientGain.gain.setValueAtTime(0.22, this.ctx.currentTime);
+
+      osc.connect(filter);
+      filter.connect(this.ambientGain);
+      this.ambientGain.connect(this.masterGain || this.ctx.destination);
+
+      osc.start();
+      this.proceduralAmbientOsc = osc;
+    }
+  }
+
+  playLampBuzzLoop() {
+    if (!this.ctx || this.isMuted) return;
+
+    const buf = this.externalBuffers.get('lamp_buzz_hum');
+    if (buf) {
+      if (this.proceduralHumOsc) {
+        try { this.proceduralHumOsc.stop(); } catch(e) {}
+        this.proceduralHumOsc = null;
+      }
+      if (this.lampBuzzSource) {
+        try { this.lampBuzzSource.stop(); } catch(e) {}
+        this.lampBuzzSource = null;
+      }
+
+      const src = this.ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+
+      if (!this.lampBuzzGain) {
+        this.lampBuzzGain = this.ctx.createGain();
+        this.lampBuzzGain.connect(this.masterGain || this.ctx.destination);
+      }
+      const targetVol = this.isBlackout ? 0.001 : 0.28;
+      this.lampBuzzGain.gain.setValueAtTime(targetVol, this.ctx.currentTime);
+
+      src.connect(this.lampBuzzGain);
+      src.start(0);
+      this.lampBuzzSource = src;
+      return;
+    }
+
+    if (!this.proceduralHumOsc) {
+      const osc = this.ctx.createOscillator();
+      const filter = this.ctx.createBiquadFilter();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(120, this.ctx.currentTime);
+
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(120, this.ctx.currentTime);
+      filter.Q.setValueAtTime(3.5, this.ctx.currentTime);
+
+      const targetVol = this.isBlackout ? 0.001 : 0.16;
+      gain.gain.setValueAtTime(targetVol, this.ctx.currentTime);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.masterGain || this.ctx.destination);
+
+      osc.start();
+      this.proceduralHumOsc = osc;
+      this.lampBuzzGain = gain;
+    }
   }
 
   playFlashlightClick(isOn) {
@@ -955,7 +1095,15 @@ class AudioManager {
     // 1. 공포감 극대화를 위해 배경 앰비언트 사운드 일시적 음소거(Ducking)
     if (this.ambientGain) {
       this.ambientGain.gain.setValueAtTime(0.001, t);
-      this.ambientGain.gain.linearRampToValueAtTime(0.09, t + 2.8);
+      this.ambientGain.gain.linearRampToValueAtTime(0.22, t + 2.8);
+    }
+    if (this.ambientDroneGain) {
+      this.ambientDroneGain.gain.setValueAtTime(0.001, t);
+      this.ambientDroneGain.gain.linearRampToValueAtTime(0.48, t + 2.8);
+    }
+    if (this.lampBuzzGain) {
+      this.lampBuzzGain.gain.setValueAtTime(0.001, t);
+      this.lampBuzzGain.gain.linearRampToValueAtTime(this.isBlackout ? 0.001 : 0.28, t + 2.8);
     }
 
     // 2. 심장을 덜컥 내려앉게 만드는 극저역 서브 베이스 슬램 (360Hz -> 22Hz 드롭)

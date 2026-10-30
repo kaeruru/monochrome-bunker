@@ -1203,7 +1203,8 @@ body.in-death-sequence #objective-panel,
 body.in-death-sequence #crosshair,
 body.in-death-sequence #touch-controls,
 body.in-death-sequence #interact-prompt,
-body.in-death-sequence #game-toast {
+body.in-death-sequence #game-toast,
+body.in-death-sequence #bottom-center-hud {
   display: none !important;
   opacity: 0 !important;
   pointer-events: none !important;
