@@ -6,33 +6,33 @@
 
 export const SOUND_ASSET_MANIFEST = {
   // 1. 환경음 & 전등(형광등) 디테일 사운드
-  ambient_bunker_drone: { url: null, desc: 'https://legal-crimson-i07aoxlo.edgeone.dev/%EB%B0%B0%EA%B2%BD%EC%9D%8C.mp3' },
-  lamp_buzz_hum:        { url: null, desc: 'https://legal-crimson-i07aoxlo.edgeone.dev/%EB%85%B8%EC%9D%B4%EC%A6%88%20%EA%B8%B0%EB%B3%B8.mp3' },
+  ambient_bunker_drone: { url: './sounds/ambient_bunker_drone.mp3', desc: '벙커 지하 저주파 웅웅거림 배경음' },
+  lamp_buzz_hum:        { url: './sounds/lamp_buzz_hum.mp3', desc: '천장 형광등 기본 험 노이즈' },
   lamp_flicker_spark:   { url: null, desc: '천장 전등 지직거릴 때 스파크/전류 노이즈' },
 
   // 2. 플레이어 이동 & 장비 사운드
-  footstep_walk:        { url: null, desc: 'https://legal-crimson-i07aoxlo.edgeone.dev/%EA%B1%B7%EA%B8%B0.mp3' },
-  footstep_sprint:      { url: null, desc: 'https://legal-crimson-i07aoxlo.edgeone.dev/%EB%9B%B0%EA%B8%B0.mp3' },
-  flashlight_on:        { url: null, desc: 'https://legal-crimson-i07aoxlo.edgeone.dev/%EC%86%90%EC%A0%84%EB%93%B1.mp3' },
-  flashlight_off:       { url: null, desc: 'https://legal-crimson-i07aoxlo.edgeone.dev/%EC%86%90%EC%A0%84%EB%93%B1.mp3' },
+  footstep_walk:        { url: './sounds/footstep_walk.mp3', desc: '대원 일반 걸음 발소리' },
+  footstep_sprint:      { url: './sounds/footstep_sprint.mp3', desc: '대원 전술 달리기 발소리' },
+  flashlight_on:        { url: './sounds/flashlight_on.mp3', desc: '손전등 딸깍 켜짐' },
+  flashlight_off:       { url: './sounds/flashlight_off.mp3', desc: '손전등 딸깍 꺼짐' },
 
   // 3. 아이템 파밍 & 1인칭 뷰모델 상호작용 사운드
-  item_pickup:          { url: null, desc: 'https://legal-crimson-i07aoxlo.edgeone.dev/%ED%85%9C%20%ED%9A%8D%EB%93%9D.mp3' },
-  item_equip_switch:    { url: null, desc: 'https://legal-crimson-i07aoxlo.edgeone.dev/%EC%A0%84%ED%99%98.mp3' },
-  item_drop:            { url: null, desc: 'https://legal-crimson-i07aoxlo.edgeone.dev/%ED%85%9C%20%EB%93%9C%EB%9E%8D.mp3' },
-  flare_ignite:         { url: null, desc: 'https://legal-crimson-i07aoxlo.edgeone.dev/%ED%99%94%EC%97%BC%ED%83%84%20%EC%A0%90%ED%99%94.mp3' },
-  locker_open:          { url: null, desc: 'https://legal-crimson-i07aoxlo.edgeone.dev/%EC%82%AC%EB%AC%BC%ED%95%A8.mp3' },
-  terminal_scan:        { url: null, desc: 'https://legal-crimson-i07aoxlo.edgeone.dev/%ED%9E%8C%ED%8A%B8%20%EC%BD%94%EB%93%9C.mp3' },
+  item_pickup:          { url: './sounds/item_pickup.mp3', desc: '아이템 획득 습득음' },
+  item_equip_switch:    { url: './sounds/item_equip_switch.mp3', desc: '인벤토리 슬롯 장착 전환음' },
+  item_drop:            { url: './sounds/item_drop.mp3', desc: '아이템 바닥에 내려놓음' },
+  flare_ignite:         { url: './sounds/flare_ignite.mp3', desc: '조명탄 신관 점화 쉭- 소리' },
+  locker_open:          { url: './sounds/locker_open.mp3', desc: '철제 사물함 캐비닛 개폐음' },
+  terminal_scan:        { url: './sounds/terminal_scan.mp3', desc: '전술 힌트 콘솔 스캔음' },
 
   // 4. 정전(블랙아웃) & 전기실 배전반 복구 사운드
-  blackout_power_down:  { url: null, desc: 'https://legal-crimson-i07aoxlo.edgeone.dev/%ED%8C%8C%EC%9B%8C%20%EB%8B%A4%EC%9A%B4.mp3' },
-  breaker_lever_pull:   { url: null, desc: 'https://legal-crimson-i07aoxlo.edgeone.dev/%EB%A0%88%EB%B2%84.mp3' },
-  electric_arc_spark:   { url: null, desc: 'https://legal-crimson-i07aoxlo.edgeone.dev/%EC%A7%80%EC%A7%80%EC%A7%80%E3%85%A3%EC%A7%96%E3%84%B1.mp3' },
-  power_restore_up:     { url: null, desc: 'https://legal-crimson-i07aoxlo.edgeone.dev/%EC%A0%84%EC%B2%B4%20%ED%8C%8C%EC%9B%8C%20%EC%98%A8.mp3' },
+  blackout_power_down:  { url: './sounds/blackout_power_down.mp3', desc: '전력 차단 파워 다운 셧다운' },
+  breaker_lever_pull:   { url: './sounds/breaker_lever_pull.mp3', desc: '고전압 배전반 레버 당김' },
+  electric_arc_spark:   { url: './sounds/electric_arc_spark.mp3', desc: '고전압 전기 아크 스파크' },
+  power_restore_up:     { url: './sounds/power_restore_up.mp3', desc: '전력망 복구 파워 온 웅장음' },
 
   // 5. 방호문 & CCTV & 중앙 코어 탈출 사운드
-  door_open:            { url: null, desc: 'https://legal-crimson-i07aoxlo.edgeone.dev/%EC%B2%A0%EB%AC%B8.mp3' },
-  door_close:           { url: null, desc: 'https://legal-crimson-i07aoxlo.edgeone.dev/%EC%B2%A0%EB%AC%B8.mp3' },
+  door_open:            { url: './sounds/door_open.mp3', desc: '방호문 슬라이딩 개방음' },
+  door_close:           { url: './sounds/door_close.mp3', desc: '방호문 슬라이딩 폐쇄음' },
   door_malfunction:     { url: null, desc: '정전으로 인한 방호문 강제 무력화/고장음' },
   cctv_switch:          { url: null, desc: 'CCTV 카메라 채널 전환 노이즈 클릭음' },
   core_part_insert:     { url: null, desc: '중앙 코어에 수집 부품(배터리/키카드/밸브) 장착음' },
@@ -291,6 +291,38 @@ class AudioManager {
 
     // 2. 금속 마찰 스파크 노이즈
     this.playElectricArc(volume * 0.6);
+  }
+
+  /**
+   * 고전압 전기 아크 스파크 사운드 (배전반 고장, 방호문 스파크, 괴물 스턴)
+   */
+  playElectricArc(volume = 0.35) {
+    this.init();
+    if (!this.ctx || this.isMuted) return;
+    if (this.tryPlayExternal('electric_arc_spark', volume)) return;
+
+    if (!this.noiseBuffer) return;
+    const t = this.ctx.currentTime;
+    const dur = 0.28;
+
+    const noise = this.ctx.createBufferSource();
+    noise.buffer = this.noiseBuffer;
+
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(2400, t);
+    filter.Q.setValueAtTime(4.5, t);
+
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(volume * 0.8, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+
+    noise.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.ctx.destination);
+
+    noise.start(t);
+    noise.stop(t + dur);
   }
 
   playFootstep(isSprint = false) {
