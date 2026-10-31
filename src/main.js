@@ -178,6 +178,7 @@ class MonochromeBunker3D {
 
     // 점프스케어 및 설정 모달 DOM
     this.jumpscareOverlayEl = document.getElementById('jumpscare-overlay');
+    this.vignetteOverlayEl = document.getElementById('vignette-overlay');
     this.gameSetupModalEl = document.getElementById('game-setup-modal');
     this.hudPingBadge = document.getElementById('hud-ping-badge');
     this.hudPingDot = document.getElementById('hud-ping-dot');
@@ -247,6 +248,15 @@ class MonochromeBunker3D {
 
     this.handlePlayerCaught = () => {
       this.startCinematicDeathSequence();
+    };
+
+    // 심장 박동 타이밍에 맞춘 화면 비네트 수축/확장 펄스 연동
+    sound.onHeartbeatPulse = (tension) => {
+      if (this.vignetteOverlayEl) {
+        this.vignetteOverlayEl.classList.remove('pulse');
+        void this.vignetteOverlayEl.offsetWidth;
+        this.vignetteOverlayEl.classList.add('pulse');
+      }
     };
 
     // 12. 멀티플레이어 네트워크 매니저 초기화
@@ -1975,6 +1985,39 @@ class MonochromeBunker3D {
         isActivelySprinting,
         isMoving
       );
+
+      // 6-2. 괴물 거리 비례 서스펜스 텐션(심장 박동음) & 전등/손전등 지지직 점멸 전조 연출
+      const distToMonster = Math.hypot(
+        this.playerPos.x - this.monsterAI.pos.x,
+        this.playerPos.z - this.monsterAI.pos.z
+      );
+      const isVisible = this.monsterAI.hasGridLineOfSight
+        ? this.monsterAI.hasGridLineOfSight(this.playerPos.x, this.playerPos.z, this.monsterAI.pos.x, this.monsterAI.pos.z)
+        : false;
+
+      // 1) 실시간 거리 비례 심장 박동음 갱신
+      sound.updateMonsterTension(distToMonster, dt, isVisible, this.monsterAI.state);
+
+      // 2) 괴물이 15m 이내로 접근 시 손전등 빛 지지직 떨림 & 전기 스파크 소리 전조 현상
+      if (distToMonster < 15.0 && this.monsterAI.state !== 'VENT_LURK') {
+        this.flickerTimer = (this.flickerTimer || 0) - dt;
+        if (this.flickerTimer <= 0) {
+          const isFlicker = Math.random() < 0.38;
+          this.flickerTimer = isFlicker ? (0.05 + Math.random() * 0.12) : (0.2 + Math.random() * 0.5);
+
+          if (this.flashlight && this.flashlightOn) {
+            this.flashlight.intensity = isFlicker
+              ? (Math.random() * 3.5)
+              : this.flashlightMaxIntensity;
+          }
+
+          if (isFlicker && Math.random() < 0.15) {
+            sound.playLampFlickerBuzz(0.18);
+          }
+        }
+      } else if (this.flashlight && this.flashlightOn) {
+        this.flashlight.intensity = this.flashlightMaxIntensity;
+      }
     }
 
     // 7. 현재 구역 이름 표시 업데이트

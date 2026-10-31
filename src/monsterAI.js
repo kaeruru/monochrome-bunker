@@ -151,6 +151,10 @@ export class MonsterAI {
     this.stunCooldown = 0;
     this.sabotageCooldown = 45; // 초반 45초 동안은 괴물 직접 정전 습격 유예
 
+    // 스토커 엿보기(STALK_PEEK) 및 지상 발소리 타이머
+    this.stalkPeekTimer = 0;
+    this.footstepTimer = 0;
+
     // 처형 연출 상태
     this.isKillingPlayer = false;
     this.killTimer = 0;
@@ -1421,7 +1425,11 @@ export class MonsterAI {
 
         // 시야 내 플레이어 발각 검사
         if (this.canSeePlayer(playerPos, flashlightOn, isBlackout)) {
-          this.startChase(playerPos);
+          if (distToPlayer <= 4.8 || isCh2) {
+            this.startChase(playerPos);
+          } else {
+            this.startStalkPeek(playerPos);
+          }
           break;
         }
 
@@ -1469,7 +1477,11 @@ export class MonsterAI {
         this.pos.y = isCh2 ? 0.0 : (this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0);
 
         if (this.canSeePlayer(playerPos, flashlightOn, isBlackout)) {
-          this.startChase(playerPos);
+          if (distToPlayer <= 4.8 || isCh2) {
+            this.startChase(playerPos);
+          } else {
+            this.startStalkPeek(playerPos);
+          }
           break;
         }
 
@@ -1489,6 +1501,30 @@ export class MonsterAI {
             this.pickRandomPatrolPoint();
             this.updateBioSignHUD();
           }
+        }
+        break;
+      }
+
+      case 'STALK_PEEK': {
+        animMode = 'idle';
+        const isCh2 = this.chapterId === 'chapter2';
+        this.pos.y = isCh2 ? 0.0 : (this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0);
+        this.targetYaw = Math.atan2(playerPos.x - this.pos.x, playerPos.z - this.pos.z);
+        this.stalkPeekTimer -= dt;
+
+        // 플레이어가 손전등을 켜고 있거나, 움직이거나(걷기/달리기), 너무 근접(<= 4.5m)하면 즉시 추격 돌입!
+        if (flashlightOn || isMoving || isSprinting || distToPlayer <= 4.5) {
+          this.startChase(playerPos);
+          break;
+        }
+
+        // 손전등을 끄고 가만히 멈춰 서서 3.2초를 버티면 괴물이 플레이어를 놓치고 순찰 복귀!
+        if (this.stalkPeekTimer <= 0) {
+          this.state = 'PATROL';
+          this.patrolDuration = isCh2 ? 9999 : (12 + Math.random() * 8);
+          this.setHeartCoreColor(0xdbe8ff);
+          this.pickRandomPatrolPoint();
+          this.updateBioSignHUD();
         }
         break;
       }
@@ -1643,6 +1679,24 @@ export class MonsterAI {
     this.monster.root.position.copy(this.pos);
     this.monster.root.rotation.y = this.yaw;
     this.monster.update(dt, animMode, actualDist);
+
+    // 지상 이동 시 3D 발소리 루프 (벽 너머에서 들리는 묵직한 쿵... 쿵... 소리)
+    if (['PATROL', 'INVESTIGATE', 'CHASE'].includes(this.state) && actualDist > 0.005) {
+      this.footstepTimer = (this.footstepTimer || 0) + dt;
+      const stepInterval = (this.state === 'CHASE') ? 0.34 : 0.68;
+      if (this.footstepTimer >= stepInterval) {
+        this.footstepTimer = 0;
+        if (distToPlayer < 24.0) {
+          const dx = this.pos.x - playerPos.x;
+          const dz = this.pos.z - playerPos.z;
+          const camYaw = playerCamera.rotation ? playerCamera.rotation.y : 0;
+          const localX = dx * Math.cos(camYaw) - dz * Math.sin(camYaw);
+          const pan = Math.max(-1, Math.min(1, localX / 8.0));
+          const vol = Math.max(0.04, (1.0 - distToPlayer / 24.0) * (this.state === 'CHASE' ? 0.50 : 0.28));
+          sound.playMonsterFootstep3D(vol, pan, this.state === 'CHASE');
+        }
+      }
+    }
 
     // 6. 제2장 전용: 삼두 괴수 #2(매복자 악어) & #3(맹글 악어) 상태 머신 업데이트
     if (this.chapterId === 'chapter2') {
@@ -1824,6 +1878,24 @@ export class MonsterAI {
         this.relocateSnare(playerPos, true);
       }
     }
+  }
+
+  /**
+   * 원거리 플레이어 최초 목격 시 엿보기 스토킹 상태 돌입 (3초간 관찰 & 숨죽이기 기회 제공)
+   */
+  startStalkPeek(playerPos) {
+    if (this.state === 'STALK_PEEK' || this.state === 'CHASE') return;
+    this.state = 'STALK_PEEK';
+    this.stateTimer = 0;
+    this.stalkPeekTimer = 3.2; // 3.2초 동안 가만히 관찰
+    this.setHeartCoreColor(0xff1111);
+    this.path = []; // 즉시 이동 정지
+    this.targetYaw = Math.atan2(playerPos.x - this.pos.x, playerPos.z - this.pos.z);
+
+    // 어둠 속에서 낮게 울리는 으르렁 소리
+    sound.playMonsterStalkGrowl(0.42);
+
+    this.updateBioSignHUD();
   }
 
   /**

@@ -92,6 +92,12 @@ class AudioManager {
     this.isBlackout = false;
     this.externalBuffers = new Map();
     this.loadingPromises = new Map();
+
+    // 괴물 거리 비례 서스펜스 텐션 및 심장 박동 제어 변수
+    this.heartbeatTimer = 0;
+    this.heartbeatInterval = 1.2;
+    this.tensionLevel = 0; // 0 ~ 1.0
+    this.onHeartbeatPulse = null;
   }
 
   set volume(val) {
@@ -929,6 +935,59 @@ class AudioManager {
   }
 
   /**
+   * 3D 위치 및 패닝이 적용된 괴물 발소리 (왼쪽/오른쪽 방향성)
+   */
+  playMonsterFootstep3D(volume = 0.28, pan = 0, isChase = false) {
+    this.init();
+    if (!this.ctx || this.isMuted || volume <= 0.01) return;
+    const t = this.ctx.currentTime;
+    const clampedVol = Math.max(0.02, Math.min(0.65, volume));
+
+    // 1. 무거운 타격 서브 베이스
+    const subOsc = this.ctx.createOscillator();
+    const subGain = this.ctx.createGain();
+    subOsc.type = 'sine';
+    subOsc.frequency.setValueAtTime(isChase ? 120 : 80, t);
+    subOsc.frequency.exponentialRampToValueAtTime(22, t + 0.20);
+    subGain.gain.setValueAtTime(clampedVol * 0.95, t);
+    subGain.gain.exponentialRampToValueAtTime(0.001, t + 0.21);
+
+    // 2. 금속 발톱/관절 마찰 고역대
+    const metalOsc = this.ctx.createOscillator();
+    const metalFilter = this.ctx.createBiquadFilter();
+    const metalGain = this.ctx.createGain();
+    metalOsc.type = 'sawtooth';
+    metalOsc.frequency.setValueAtTime(isChase ? 680 : 420, t);
+    metalOsc.frequency.exponentialRampToValueAtTime(130, t + 0.11);
+    metalFilter.type = 'bandpass';
+    metalFilter.frequency.setValueAtTime(900, t);
+    metalFilter.Q.setValueAtTime(3.0, t);
+    metalGain.gain.setValueAtTime(clampedVol * 0.42, t);
+    metalGain.gain.exponentialRampToValueAtTime(0.001, t + 0.11);
+
+    metalOsc.connect(metalFilter);
+    metalFilter.connect(metalGain);
+
+    // 3. 스테레오 패너 지원
+    if (this.ctx.createStereoPanner) {
+      const panner = this.ctx.createStereoPanner();
+      panner.pan.setValueAtTime(Math.max(-1, Math.min(1, pan)), t);
+      subGain.connect(panner);
+      metalGain.connect(panner);
+      panner.connect(this.masterGain || this.ctx.destination);
+    } else {
+      subGain.connect(this.masterGain || this.ctx.destination);
+      metalGain.connect(this.masterGain || this.ctx.destination);
+    }
+
+    subOsc.connect(subGain);
+    subOsc.start(t);
+    subOsc.stop(t + 0.21);
+    metalOsc.start(t);
+    metalOsc.stop(t + 0.11);
+  }
+
+  /**
    * 괴물 흉곽 심장 코어 고동음 (두-근!)
    */
   playMonsterHeartbeat(volume = 0.22) {
@@ -942,19 +1001,103 @@ class AudioManager {
       const gain = this.ctx.createGain();
       osc.type = 'sine';
       osc.frequency.setValueAtTime(freq, t + offset);
-      osc.frequency.exponentialRampToValueAtTime(26, t + offset + 0.14);
+      osc.frequency.exponentialRampToValueAtTime(24, t + offset + 0.14);
 
       gain.gain.setValueAtTime(amp, t + offset);
       gain.gain.exponentialRampToValueAtTime(0.001, t + offset + 0.15);
 
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this.masterGain || this.ctx.destination);
       osc.start(t + offset);
       osc.stop(t + offset + 0.15);
     };
 
-    pulse(0, 72, volume * 0.85);
-    pulse(0.14, 58, volume * 0.55);
+    pulse(0, 72, volume * 0.95);
+    pulse(0.14, 56, volume * 0.65);
+  }
+
+  /**
+   * 괴물과의 거리에 따른 실시간 서스펜스 심장 박동 루프 갱신
+   */
+  updateMonsterTension(distToMonster, dt, isVisible = false, monsterState = 'PATROL') {
+    if (!this.ctx || this.isMuted) return;
+
+    if (distToMonster > 22.0 || monsterState === 'VENT_LURK') {
+      this.tensionLevel = 0;
+      this.heartbeatTimer = 0;
+      return;
+    }
+
+    // 거리에 따른 텐션 수치 및 심장 박동 간격 계산
+    let interval = 1.35;
+    let volume = 0.20;
+
+    if (distToMonster < 5.0 || monsterState === 'CHASE') {
+      interval = 0.38; // 초고속 쿵쾅
+      volume = 0.58;
+      this.tensionLevel = 1.0;
+    } else if (distToMonster < 9.0 || monsterState === 'STALK_PEEK') {
+      interval = 0.54;
+      volume = 0.44;
+      this.tensionLevel = 0.85;
+    } else if (distToMonster < 15.0) {
+      interval = 0.82;
+      volume = 0.32;
+      this.tensionLevel = 0.55;
+    } else {
+      interval = 1.25;
+      volume = 0.22;
+      this.tensionLevel = 0.30;
+    }
+
+    if (isVisible) {
+      interval *= 0.82;
+      volume = Math.min(0.65, volume * 1.25);
+    }
+
+    this.heartbeatTimer -= dt;
+    if (this.heartbeatTimer <= 0) {
+      this.heartbeatTimer = interval;
+      this.playMonsterHeartbeat(volume);
+      if (typeof this.onHeartbeatPulse === 'function') {
+        this.onHeartbeatPulse(this.tensionLevel);
+      }
+    }
+  }
+
+  /**
+   * 스토커 엿보기(STALK_PEEK) 시 어둠 속에서 낮게 울리는 소름 끼치는 생체 그르렁 소리
+   */
+  playMonsterStalkGrowl(volume = 0.32) {
+    this.init();
+    if (!this.ctx || this.isMuted || volume <= 0.01) return;
+    const t = this.ctx.currentTime;
+    const dur = 1.8;
+
+    // 저주파 럼블 으르렁 (Sawtooth + Lowpass)
+    const osc = this.ctx.createOscillator();
+    const filter = this.ctx.createBiquadFilter();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(68, t);
+    osc.frequency.linearRampToValueAtTime(52, t + dur * 0.5);
+    osc.frequency.linearRampToValueAtTime(42, t + dur);
+
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(260, t);
+    filter.frequency.linearRampToValueAtTime(180, t + dur);
+    filter.Q.setValueAtTime(3.2, t);
+
+    gain.gain.setValueAtTime(0.001, t);
+    gain.gain.linearRampToValueAtTime(volume, t + 0.35);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.masterGain || this.ctx.destination);
+    osc.start(t);
+    osc.stop(t + dur);
   }
 
   /**
