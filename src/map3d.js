@@ -867,7 +867,7 @@ export class Map3D {
     ctx.textAlign = 'center';
     ctx.fillStyle = '#b0bec5';
     const legendText = isCh2
-      ? '[W] 침수 수로(물)   [M] 오르막 경사로   [H] 철제 사다리   [D] 수문 격벽   [G] 터빈 코어   [C] CCTV 관제 콘솔'
+      ? '[W] 침수 수로(물)   [M] 오르막 경사로   [H] 철제 사다리   [1~4] 수로 감시 CCTV   [G] 터빈 코어   [C] 관제 콘솔'
       : '[B] 벙커 본부   [R] 격실   [.] 복도   [D] 방호문   [G] 발전기 코어   [C] CCTV 모니터';
     ctx.fillText(legendText, w / 2, h - 23);
   }
@@ -1322,15 +1322,27 @@ export class Map3D {
     const inLowPipe = isCh2 && this.isWaterTile(col, row);
     const floorY = this.getFloorHeightAt(x, z);
 
-    // 카메라 설치 높이: 천장 슬래브 및 아치 리브에 파묻히지 않도록 안전한 높이로 설정
-    // 챕터2 수로 원통관(Low Pipe): 수면 0.56m, 중심선 1.82m이므로 camMountY = 2.15m에서 수로 전경이 시원하게 조망됨
-    // 챕터2 고대 벽돌 아치 회랑(High Ground): 바닥 1.40m, 아치 스프링 3.25m이므로 camMountY = 2.85m로 아치 밑 안전한 시야 확보
-    // 챕터1 벙커 복도: 바닥 0.0m, 천장 3.60m이므로 camMountY = 2.45m로 배관/천장 차폐 원천 방지
-    const camMountY = isCh2 ? (inLowPipe ? 2.15 : (floorY + 1.45)) : (floorY + 2.45);
+    // 챕터 2 전용 전략적 수로 카메라 수동 정밀 각도 (벽 차폐 및 중앙 허브 조망 원천 방지)
+    const ch2Overrides = {
+      1: { yaw: -Math.PI / 2, pitch: -0.22, name: 'CAM 01 - 북측 대구경 원통 하수관' }, // 동쪽 조망
+      2: { yaw: Math.PI / 2, pitch: -0.22, name: 'CAM 02 - 남측 침수 배수관' },         // 서쪽 조망
+      3: { yaw: Math.PI, pitch: -0.24, name: 'CAM 03 - 동측 침수 저류 수로' },           // 남쪽 조망
+      4: { yaw: Math.PI, pitch: -0.24, name: 'CAM 04 - 서측 원형 수로 합류부' }          // 남쪽 조망
+    };
+
+    const finalYaw = (isCh2 && ch2Overrides[num]) ? ch2Overrides[num].yaw : bestDir.yaw;
+    const finalPitch = (isCh2 && ch2Overrides[num]) ? ch2Overrides[num].pitch : -0.18;
+
+    // 카메라 설치 높이:
+    // 챕터 2 수로 원통관(Low Pipe): 천장 아치 최상단(3.44m) 바로 아래인 camMountY = 3.12m 에 견고히 마운트하여
+    // 바닥/물속으로 처박히지 않고 상공에서 수로 전체와 수면, 유영하는 악어가 한눈에 들어오도록 시원한 하이앵글 확보
+    // 챕터 2 고대 벽돌 아치 회랑(High Ground): 바닥 1.40m, 아치 천장 4.42m -> camMountY = 3.50m
+    // 챕터 1 벙커 복도: 바닥 0.0m, 천장 3.60m -> camMountY = 2.45m
+    const camMountY = isCh2 ? (inLowPipe ? 3.12 : (floorY + 2.10)) : (floorY + 2.45);
 
     const camGroup = new THREE.Group();
     camGroup.position.set(x, camMountY, z);
-    camGroup.rotation.y = bestDir.yaw;
+    camGroup.rotation.y = finalYaw;
 
     const mount = new THREE.Mesh(
       new THREE.CylinderGeometry(0.08, 0.08, 0.3, 8),
@@ -1366,18 +1378,20 @@ export class Map3D {
       3: 'CAM 03 - 동측 침수 저류 수로',
       4: 'CAM 04 - 서측 원형 수로 합류부'
     };
-    const defaultNames = isCh2 ? defaultNamesCh2 : defaultNamesCh1;
+    const camName = isCh2
+      ? (ch2Overrides[num]?.name || defaultNamesCh2[num] || `CAM 0${num} - 수로 감시`)
+      : (defaultNamesCh1[num] || `CAM 0${num} - 구역 감시`);
 
     // 카메라 시점 위치를 카메라 하우징 전방으로 배치하여 자체 모델 및 천장/벽면 간섭 원천 방지
-    const fwdX = -Math.sin(bestDir.yaw) * 0.32;
-    const fwdZ = -Math.cos(bestDir.yaw) * 0.32;
+    const fwdX = -Math.sin(finalYaw) * 0.32;
+    const fwdZ = -Math.cos(finalYaw) * 0.32;
 
     this.cctvConfigs.push({
       id: num,
-      name: defaultNames[num] || `CAM 0${num} - 구역 감시`,
+      name: camName,
       pos: { x: x + fwdX, y: camMountY - 0.08, z: z + fwdZ },
-      baseYaw: bestDir.yaw,
-      basePitch: -0.18
+      baseYaw: finalYaw,
+      basePitch: finalPitch
     });
   }
 

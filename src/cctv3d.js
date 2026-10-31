@@ -223,6 +223,16 @@ export class CCTVSystem3D {
     this.nvSpotLight.visible = true;
     this.nvFillLight.visible = true;
 
+    // 챕터별 UI 및 방호문 컨테이너 상태 동기화 (챕터 2는 방호문 미존재)
+    this.updateDoorButtons(this.map ? this.map.doors : []);
+    const minimapTitleEl = document.querySelector('.minimap-title');
+    if (minimapTitleEl) {
+      const isCh2 = this.map && this.map.chapterId === 'chapter2';
+      minimapTitleEl.textContent = isCh2
+        ? 'TACTICAL RADAR // WATERWAY SURVEILLANCE'
+        : 'TACTICAL RADAR (GREEN: OPEN / RED: CLOSED)';
+    }
+
     sound.playCCTVSwitch();
     this.selectCamera(this.activeCamId);
   }
@@ -352,6 +362,8 @@ export class CCTVSystem3D {
         if (ch === ' ') continue;
         if (ch === '#') {
           ctx.fillStyle = '#3a4a40';
+        } else if (ch === 'W') {
+          ctx.fillStyle = '#0d2b3a';
         } else if (['B', 'S', 'G', 'C'].includes(ch)) {
           ctx.fillStyle = '#203528';
         } else {
@@ -361,10 +373,12 @@ export class CCTVSystem3D {
       }
     }
 
-    // 방호문 표시 (열림=초록, 닫힘=빨강)
-    for (const d of map3d.doors) {
-      ctx.fillStyle = d.isOpen ? '#33ff77' : '#ff3333';
-      ctx.fillRect(d.col * cellW - 1, d.row * cellH - 1, cellW + 2, cellH + 2);
+    // 방호문 표시 (챕터 1 전용: 열림=초록, 닫힘=빨강)
+    if (map3d.doors && map3d.doors.length > 0) {
+      for (const d of map3d.doors) {
+        ctx.fillStyle = d.isOpen ? '#33ff77' : '#ff3333';
+        ctx.fillRect(d.col * cellW - 1, d.row * cellH - 1, cellW + 2, cellH + 2);
+      }
     }
 
     // 플레이어 위치 표시 (하얀 점)

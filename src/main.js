@@ -98,7 +98,11 @@ class MonochromeBunker3D {
         this.controls.setDisabled(isOpen);
       }
     });
-    this.cctv.updateDoorButtons(this.map.doors);
+    if (this.cctv) {
+      this.cctv.map = this.map;
+      this.cctv.setConfigs(this.map.cctvConfigs);
+      this.cctv.updateDoorButtons(this.map.doors);
+    }
 
     // 10. 3D 괴물 & 캐릭터 모델링 쇼케이스 뷰어 초기화
     this.modelViewer = new ModelShowcaseViewer((isOpen) => {
@@ -485,7 +489,11 @@ class MonochromeBunker3D {
     if (this.monsterAI) {
       this.monsterAI.resetForNewMatch();
     }
-    this.cctv.updateDoorButtons(this.map.doors);
+    if (this.cctv) {
+      this.cctv.map = this.map;
+      this.cctv.setConfigs(this.map.cctvConfigs);
+      this.cctv.updateDoorButtons(this.map.doors);
+    }
     this.controls.setDisabled(false);
     this.controls.requestPointerLock();
     this.missionStartTime = performance.now();
@@ -546,7 +554,11 @@ class MonochromeBunker3D {
     if (this.monsterAI) {
       this.monsterAI.resetForNewMatch();
     }
-    this.cctv.updateDoorButtons(this.map.doors);
+    if (this.cctv) {
+      this.cctv.map = this.map;
+      this.cctv.setConfigs(this.map.cctvConfigs);
+      this.cctv.updateDoorButtons(this.map.doors);
+    }
 
     this.controls.setDisabled(true);
     this.controls.unlock();
@@ -1503,7 +1515,7 @@ class MonochromeBunker3D {
     // 4. CCTV 콘솔 연동 업데이트
     if (this.cctv) {
       this.cctv.map = this.map;
-      this.cctv.cameraConfigs = this.map.cctvConfigs;
+      this.cctv.setConfigs(this.map.cctvConfigs);
       this.cctv.updateDoorButtons(this.map.doors);
     }
 

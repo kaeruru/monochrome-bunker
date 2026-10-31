@@ -1631,14 +1631,14 @@ export class MonsterAI {
       : 0;
 
     // -------------------------------------------------------------------------
-    // [A] #2 매복자 악어 (LurkerCrocodileEntity - 경사로/사다리 입구 잠복 & 소나 펄스 / 조명탄 퇴치)
+    // [A] #2 매복자 악어 (LurkerCrocodileEntity - 경사로/사다리 입구 잠복 & 손전등 퇴치)
     // -------------------------------------------------------------------------
     const dLurk = Math.hypot(playerPos.x - this.lurkerPos.x, playerPos.z - this.lurkerPos.z);
 
     if (this.lurkerState === 'LURK_WAIT') {
       this.lurkerTimer -= dt;
 
-      // 1) 조명탄(Flare)이 매복자 6.5m 이내에 있으면 강렬한 열/화염으로 인해 잠수 퇴각
+      // 1) 조명탄(Flare)이 매복자 6.5m 이내에 있으면 강렬한 화염/열기로 인해 잠수 퇴각
       let repelledByFlare = false;
       if (this.interactionSystem && this.interactionSystem.activeFlares) {
         for (const flare of this.interactionSystem.activeFlares) {
@@ -1654,7 +1654,7 @@ export class MonsterAI {
         this.lurkerState = 'LURK_RELOCATE';
         this.lurkerTimer = 1.1;
       } else if (dLurk < 1.85 && playerFootY < 0.62 && !this.isPlayerSnared) {
-        // 소나 펄스로 확인 및 격퇴하지 않고 경사로/사다리 입구를 밟으면 수면 아래에서 곰덫 아가리가 솟구치며 기습!
+        // 소나 펄스나 조명탄으로 쫓아내지 않고 경사로/사다리 입구를 밟으면 수면 아래에서 곰덫 아가리가 솟구치며 기습!
         this.lurkerState = 'LURK_ATTACK';
         this.lurkerTimer = 1.5;
         this.lurkerYaw = Math.atan2(playerPos.x - this.lurkerPos.x, playerPos.z - this.lurkerPos.z);
