@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MonsterEntity, PlayerCharacterEntity } from './models.js';
+import { MonsterEntity, PlayerCharacterEntity, CrawlerCrocodileEntity } from './models.js';
 import { createIndustrialEnvMap } from './textures.js';
 
 /**
@@ -64,8 +64,9 @@ export class ModelShowcaseViewer {
         <div class="mv-tool-group">
           <span class="mv-label">관찰 대상:</span>
           <button class="tool-btn mv-target-btn active" data-target="compare">[COMPARE] 체격 나란히 비교</button>
-          <button class="tool-btn mv-target-btn" data-target="monster">[MONSTER] 괴물 정밀 관찰</button>
-          <button class="tool-btn mv-target-btn" data-target="player">[PLAYER] 전술 대원 정밀 관찰</button>
+          <button class="tool-btn mv-target-btn" data-target="monster">[STALKER] 제1장 스토커</button>
+          <button class="tool-btn mv-target-btn" data-target="crawler">[CRAWLER] 제2장 수로 악어</button>
+          <button class="tool-btn mv-target-btn" data-target="player">[PLAYER] 전술 대원</button>
         </div>
 
         <div class="mv-tool-group">
@@ -118,11 +119,14 @@ export class ModelShowcaseViewer {
 
     // 모델 인스턴스 생성
     this.monster = new MonsterEntity();
+    this.crawler = new CrawlerCrocodileEntity();
     this.playerModel = new PlayerCharacterEntity('동료 대원 #02', false);
 
     this.scene.add(this.monster.root);
+    this.scene.add(this.crawler.root);
     this.scene.add(this.playerModel.root);
 
+    this.crawler.root.visible = false;
     this.applyViewTarget('compare');
   }
 
@@ -141,23 +145,43 @@ export class ModelShowcaseViewer {
 
   applyViewTarget(target) {
     this.viewTarget = target;
-    this.monster.enableSound = this.isOpen && this.soundEnabled && target !== 'player';
+    const isMonsterSound = this.isOpen && this.soundEnabled && (target === 'monster' || target === 'compare');
+    const isCrawlerSound = this.isOpen && this.soundEnabled && target === 'crawler';
+    this.monster.enableSound = isMonsterSound;
+    if (this.crawler) this.crawler.enableSound = isCrawlerSound;
+
     const titleEl = document.getElementById('mv-info-title');
     const descEl = document.getElementById('mv-info-desc');
 
     if (target === 'monster') {
       this.monster.root.visible = true;
       this.monster.root.position.set(0, 0, 0);
+      if (this.crawler) this.crawler.root.visible = false;
       this.playerModel.root.visible = false;
       this.orbitDist = 3.0;
       this.orbitCenterY = 1.25;
-      if (titleEl) titleEl.textContent = '[MONSTER] 제노-엔도스켈레톤 스토커 (Xeno-Endoskeleton Stalker)';
+      if (titleEl) titleEl.textContent = '[STALKER] 제1장 제노-엔도스켈레톤 스토커 (2.65m)';
       if (descEl) {
         descEl.textContent =
           '속이 들여다보이는 16개의 엔도스켈레톤 금속 갈비뼈와 유압 피스톤, 흉곽 중앙에 동맥 케이블로 매달려 박동하는 심장 코어(Heart Core), 그리고 폭주/포효 사운드가 결합된 생체-기계 괴물입니다.';
       }
+    } else if (target === 'crawler') {
+      this.monster.root.visible = false;
+      if (this.crawler) {
+        this.crawler.root.visible = true;
+        this.crawler.root.position.set(0, 0, 0);
+      }
+      this.playerModel.root.visible = false;
+      this.orbitDist = 3.2;
+      this.orbitCenterY = 0.55;
+      if (titleEl) titleEl.textContent = '[CRAWLER] 제2장 침수 수로 악어형 크롤러 (Sewer Crocodile)';
+      if (descEl) {
+        descEl.textContent =
+          '침수 하수관(수면 Y=0.56m)에서 서식하는 악어형 생체기계 포식자입니다. 3열 톱니 등줄기 골판, 거대한 이중 크롬 하악, S자 수중 유영 꼬리 파동 모션을 갖추고 있습니다.';
+      }
     } else if (target === 'player') {
       this.monster.root.visible = false;
+      if (this.crawler) this.crawler.root.visible = false;
       this.playerModel.root.visible = true;
       this.playerModel.root.position.set(0, 0, 0);
       this.orbitDist = 2.45;
@@ -169,6 +193,7 @@ export class ModelShowcaseViewer {
       }
     } else {
       this.monster.root.visible = true;
+      if (this.crawler) this.crawler.root.visible = false;
       this.playerModel.root.visible = true;
       this.monster.root.position.set(-0.78, 0, 0);
       this.playerModel.root.position.set(0.78, 0, 0);
@@ -286,7 +311,10 @@ export class ModelShowcaseViewer {
 
   open() {
     this.isOpen = true;
-    this.monster.enableSound = this.soundEnabled && this.viewTarget !== 'player';
+    const isMonsterSound = this.soundEnabled && (this.viewTarget === 'monster' || this.viewTarget === 'compare');
+    const isCrawlerSound = this.soundEnabled && this.viewTarget === 'crawler';
+    this.monster.enableSound = isMonsterSound;
+    if (this.crawler) this.crawler.enableSound = isCrawlerSound;
     if (document.pointerLockElement) {
       try {
         document.exitPointerLock();
@@ -301,6 +329,7 @@ export class ModelShowcaseViewer {
   close() {
     this.isOpen = false;
     this.monster.enableSound = false;
+    if (this.crawler) this.crawler.enableSound = false;
     this.modalEl.classList.add('hidden');
     if (this.onStateChange) this.onStateChange(false);
   }
@@ -322,9 +351,16 @@ export class ModelShowcaseViewer {
     }
 
     // 괴물 및 캐릭터 애니메이션 업데이트
-    this.monster.update(dt, this.animState);
-    const playerMode = (this.animState === 'stalk' || this.animState === 'chase') ? 'walk' : 'look';
-    this.playerModel.update(dt, playerMode);
+    if (this.monster && this.monster.root.visible) {
+      this.monster.update(dt, this.animState);
+    }
+    if (this.crawler && this.crawler.root.visible) {
+      this.crawler.update(dt, this.animState);
+    }
+    if (this.playerModel && this.playerModel.root.visible) {
+      const playerMode = (this.animState === 'stalk' || this.animState === 'chase') ? 'walk' : 'look';
+      this.playerModel.update(dt, playerMode);
+    }
 
     // 오빗 카메라 위치 계산
     const cx = Math.sin(this.orbitYaw) * Math.cos(this.orbitPitch) * this.orbitDist;

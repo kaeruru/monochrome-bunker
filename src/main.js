@@ -113,6 +113,7 @@ class MonochromeBunker3D {
     this.btnTouchFlashlight = document.getElementById('btn-touch-flashlight');
     this.btnTriggerBlackout = document.getElementById('btn-trigger-blackout');
     this.btnOpenModelViewer = document.getElementById('btn-open-model-viewer');
+    this.btnOpenShowcaseHud = document.getElementById('btn-open-showcase');
     this.btnFullscreen = document.getElementById('btn-fullscreen');
     this.staminaFillEl = document.getElementById('stamina-bar-fill');
     this.staminaPctEl = document.getElementById('stamina-pct');
@@ -888,14 +889,17 @@ class MonochromeBunker3D {
       });
     }
 
-    if (this.btnOpenModelViewer) {
-      this.btnOpenModelViewer.addEventListener('pointerdown', (e) => e.stopPropagation());
-      this.btnOpenModelViewer.addEventListener('click', (e) => {
+    const bindShowcaseOpen = (btn) => {
+      if (!btn) return;
+      btn.addEventListener('pointerdown', (e) => e.stopPropagation());
+      btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (this.cctv && this.cctv.isOpen) this.cctv.close();
-        this.modelViewer.open();
+        this.openModelViewer();
       });
-    }
+    };
+
+    bindShowcaseOpen(this.btnOpenModelViewer);
+    bindShowcaseOpen(this.btnOpenShowcaseHud);
 
     if (this.btnFullscreen) {
       this.btnFullscreen.addEventListener('pointerdown', (e) => e.stopPropagation());
@@ -1499,12 +1503,12 @@ class MonochromeBunker3D {
   }
 
   update(dt) {
-    if (!this.isDeployed) {
-      // 투입 전 로비 상태: 배경 씬 렌더링만 유지
-      return;
-    }
     if (this.modelViewer && this.modelViewer.isOpen) {
       this.modelViewer.updateAndRender(dt);
+      return;
+    }
+    if (!this.isDeployed) {
+      // 투입 전 로비 상태: 배경 씬 렌더링만 유지
       return;
     }
 
@@ -2001,6 +2005,13 @@ class MonochromeBunker3D {
         this.monsterAI.notifyPlayerSound(this.playerPos.x, this.playerPos.z, 16.0, '시설 조작 소음');
       }
     }
+  }
+
+  openModelViewer() {
+    if (!this.modelViewer) return;
+    if (this.cctv && this.cctv.isOpen) this.cctv.close();
+    if (this.isTacticalMapOpen) this.closeTacticalMapModal();
+    this.modelViewer.open();
   }
 
   toggleTacticalMapModal() {

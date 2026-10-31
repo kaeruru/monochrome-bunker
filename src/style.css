@@ -971,13 +971,12 @@ html, body {
 
 /* 3D 모델링 쇼케이스 뷰어 모달 */
 #model-viewer-modal {
-  position: absolute;
-  top: 0;
-  left: 0;
+  position: fixed;
+  inset: 0;
   width: 100vw;
   height: 100vh;
   background: #080a0c;
-  z-index: 120;
+  z-index: 10005;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
