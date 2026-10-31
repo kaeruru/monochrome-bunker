@@ -1948,7 +1948,7 @@ export class MonsterAI {
     this.pos.x = playerPos.x + this._tmpFwd.x * 1.38;
     this.pos.z = playerPos.z + this._tmpFwd.z * 1.38;
     this.pos.y = groundY;
-    this.yaw = Math.atan2(-fwd.x, -fwd.z);
+    this.yaw = Math.atan2(-this._tmpFwd.x, -this._tmpFwd.z);
 
     this.monster.root.position.copy(this.pos);
     this.monster.root.rotation.y = this.yaw;
