@@ -125,19 +125,20 @@ export class Map3D {
     const wLvl = this.getTileLevel(col - 1, row);
     const eLvl = this.getTileLevel(col + 1, row);
 
-    if (sLvl === 'HIGH' || nLvl === 'LOW') {
-      if (sLvl === 'HIGH') return { dx: 0, dz: 1, yaw: 0 };
-    }
-    if (nLvl === 'HIGH' || sLvl === 'LOW') {
-      if (nLvl === 'HIGH') return { dx: 0, dz: -1, yaw: Math.PI };
-    }
-    if (eLvl === 'HIGH' || wLvl === 'LOW') {
-      if (eLvl === 'HIGH') return { dx: 1, dz: 0, yaw: -Math.PI / 2 };
-    }
-    if (wLvl === 'HIGH' || eLvl === 'LOW') {
-      if (wLvl === 'HIGH') return { dx: -1, dz: 0, yaw: Math.PI / 2 };
-    }
-    return { dx: 0, dz: -1, yaw: Math.PI };
+    // 1. 고지대(HIGH)가 인접한 방향을 우선 탐색 (Three.js 로컬 +Z를 (dx, dz) 방향으로 정렬)
+    // Three.js 좌표계: +Z = 남(dz=1, yaw=0), -Z = 북(dz=-1, yaw=PI), +X = 동(dx=1, yaw=PI/2), -X = 서(dx=-1, yaw=-PI/2)
+    if (sLvl === 'HIGH') return { dx: 0, dz: 1, yaw: 0 };
+    if (nLvl === 'HIGH') return { dx: 0, dz: -1, yaw: Math.PI };
+    if (eLvl === 'HIGH') return { dx: 1, dz: 0, yaw: Math.PI / 2 };
+    if (wLvl === 'HIGH') return { dx: -1, dz: 0, yaw: -Math.PI / 2 };
+
+    // 2. 인접한 저지대(LOW)의 반대편 방향으로 상승
+    if (nLvl === 'LOW') return { dx: 0, dz: 1, yaw: 0 };
+    if (sLvl === 'LOW') return { dx: 0, dz: -1, yaw: Math.PI };
+    if (wLvl === 'LOW') return { dx: 1, dz: 0, yaw: Math.PI / 2 };
+    if (eLvl === 'LOW') return { dx: -1, dz: 0, yaw: -Math.PI / 2 };
+
+    return { dx: 0, dz: 1, yaw: 0 };
   }
 
   /**
