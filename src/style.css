@@ -25,7 +25,7 @@ html, body {
   overflow: hidden;
   background-color: #030405;
   color: #e4e7eb;
-  font-family: 'Pretendard', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  font-family: 'Pretendard', 'Noto Sans KR', 'Noto Sans CJK KR', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Apple SD Gothic Neo', 'Malgun Gothic', '맑은 고딕', sans-serif;
   letter-spacing: 0.3px;
   touch-action: none;
   -webkit-font-smoothing: antialiased;
@@ -135,8 +135,48 @@ html, body {
 .hud-right {
   display: flex;
   gap: 6px;
+  align-items: center;
   pointer-events: auto;
   flex-wrap: wrap;
+}
+
+.hud-ping-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(12, 16, 20, 0.88);
+  border: 1px solid rgba(85, 204, 238, 0.35);
+  color: #9cb0c3;
+  font-family: 'Share Tech Mono', monospace, -apple-system, 'Noto Sans KR', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 5px 9px;
+  border-radius: 2px;
+}
+
+.ping-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+  background-color: #55ee99;
+  box-shadow: 0 0 6px rgba(85, 238, 153, 0.7);
+}
+
+.ping-dot.dot-good {
+  background-color: #55ee99;
+  box-shadow: 0 0 6px rgba(85, 238, 153, 0.7);
+}
+
+.ping-dot.dot-warn {
+  background-color: #eecc55;
+  box-shadow: 0 0 6px rgba(238, 204, 85, 0.7);
+}
+
+.ping-dot.dot-bad {
+  background-color: #ff5555;
+  box-shadow: 0 0 6px rgba(255, 85, 85, 0.8);
 }
 
 .hud-btn {
@@ -2222,6 +2262,13 @@ body.in-death-sequence #bottom-center-hud,
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
+}
+
+.quality-preset-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+  margin-top: 4px;
 }
 
 .preset-btn, .ctrl-mode-btn {

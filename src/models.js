@@ -2681,6 +2681,11 @@ export class PlayerCharacterEntity {
     this.root = new THREE.Group();
     this.time = Math.random() * 5;
     this.animMode = 'idle';
+    this.flashlightOn = true;
+    this.torchGroup = null;
+    this.torchBeamCone = null;
+    this.torchSpot = null;
+    this.torchLens = null;
 
     this.buildAdultTacticalOperative();
   }
@@ -3014,6 +3019,7 @@ export class PlayerCharacterEntity {
       const torchGroup = new THREE.Group();
       torchGroup.position.set(0, -0.3, 0.06);
       elbowGroup.add(torchGroup);
+      this.torchGroup = torchGroup;
 
       const body = new THREE.Mesh(
         new THREE.CylinderGeometry(0.022, 0.019, 0.2, 10),
@@ -3036,6 +3042,7 @@ export class PlayerCharacterEntity {
       );
       lens.position.z = 0.139;
       torchGroup.add(lens);
+      this.torchLens = lens;
 
       const beamConeGeo = new THREE.ConeGeometry(0.38, 1.9, 14, 1, true);
       beamConeGeo.translate(0, -0.95, 0);
@@ -3043,22 +3050,24 @@ export class PlayerCharacterEntity {
       const beamConeMat = new THREE.MeshBasicMaterial({
         color: 0xffffff,
         transparent: true,
-        opacity: 0.06,
+        opacity: 0.08,
         side: THREE.DoubleSide,
         depthWrite: false
       });
       const beamCone = new THREE.Mesh(beamConeGeo, beamConeMat);
       beamCone.position.z = 0.14;
       torchGroup.add(beamCone);
+      this.torchBeamCone = beamCone;
 
       if (this.enableLight) {
-        const spot = new THREE.SpotLight(0xffffff, 7, 13, Math.PI / 5.5, 0.55, 1.5);
+        const spot = new THREE.SpotLight(0xffffff, 6, 12, Math.PI / 5.5, 0.55, 1.5);
         spot.position.set(0, 0, 0.14);
         const target = new THREE.Object3D();
         target.position.set(0, 0, 5);
         torchGroup.add(spot);
         torchGroup.add(target);
         spot.target = target;
+        this.torchSpot = spot;
       }
     }
 
@@ -3248,5 +3257,12 @@ export class PlayerCharacterEntity {
       this.rightLeg.hipGroup.rotation.x = 0;
       this.rightLeg.kneeGroup.rotation.x = 0;
     }
+  }
+
+  setFlashlight(enabled) {
+    this.flashlightOn = !!enabled;
+    if (this.torchBeamCone) this.torchBeamCone.visible = this.flashlightOn;
+    if (this.torchSpot) this.torchSpot.visible = this.flashlightOn;
+    if (this.torchLens) this.torchLens.visible = this.flashlightOn;
   }
 }

@@ -143,6 +143,11 @@ export class MonsterAI {
     // 카운터플레이 (방호문 강타 & 조명탄 스턴)
     this.bashingDoor = null;
     this.bashHitTimer = 0;
+
+    // 가비지 컬렉션(GC) 방지용 재사용 임시 벡터 캐시
+    this._tmpHeadWorld = new THREE.Vector3();
+    this._tmpFwd = new THREE.Vector3();
+    this._tmpUpAxis = new THREE.Vector3(0, 1, 0);
     this.stunCooldown = 0;
     this.sabotageCooldown = 45; // 초반 45초 동안은 괴물 직접 정전 습격 유예
 
@@ -1205,9 +1210,8 @@ export class MonsterAI {
       const progress = 1.0 - Math.max(0, this.killTimer / 1.65);
 
       // 플레이어 카메라가 괴물의 안면 두개골과 날카로운 내턱을 강제로 정면 응시
-      const headWorld = new THREE.Vector3();
-      this.monster.headGroup.getWorldPosition(headWorld);
-      headWorld.y -= 0.08; // 안면과 턱, 이빨이 정중앙에 위치하도록 보정
+      this.monster.headGroup.getWorldPosition(this._tmpHeadWorld);
+      this._tmpHeadWorld.y -= 0.08; // 안면과 턱, 이빨이 정중앙에 위치하도록 보정
 
       // Euler 회전 왜곡 방지를 위해 카메라 위치에 미세 충격 지터를 적용하고 헤드를 직시
       const jitter = (1.0 - progress * 0.35) * 0.024;
@@ -1215,7 +1219,7 @@ export class MonsterAI {
       playerCamera.position.x = playerPos.x + (Math.random() - 0.5) * jitter;
       playerCamera.position.y = (this.pos.y + killCamHeight) + (Math.random() - 0.5) * jitter;
       playerCamera.position.z = playerPos.z + (Math.random() - 0.5) * jitter;
-      playerCamera.lookAt(headWorld);
+      playerCamera.lookAt(this._tmpHeadWorld);
 
       this.monster.update(dt, 'jumpscare');
 
@@ -1240,11 +1244,11 @@ export class MonsterAI {
       if (this.postKillTimer > 1.8) {
         this.monster.update(dt, 'stalk', 0);
       } else {
-        const fwd = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw);
+        this._tmpFwd.set(0, 0, -1).applyAxisAngle(this._tmpUpAxis, this.yaw);
         const prevX = this.pos.x;
         const prevZ = this.pos.z;
-        this.pos.x += fwd.x * dt * 0.95;
-        this.pos.z += fwd.z * dt * 0.95;
+        this.pos.x += this._tmpFwd.x * dt * 0.95;
+        this.pos.z += this._tmpFwd.z * dt * 0.95;
         const actualDist = Math.hypot(this.pos.x - prevX, this.pos.z - prevZ);
         this.monster.root.position.copy(this.pos);
         this.monster.update(dt, 'stalk', actualDist);
@@ -1864,13 +1868,13 @@ export class MonsterAI {
     }
 
     // 플레이어 시야 정면 1.38m 위치에 괴물을 즉각 배치하여 두개골, 발톱, 흉부가 모두 선명하게 프레이밍되도록 정렬
-    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(playerCamera.quaternion);
-    fwd.y = 0;
-    if (fwd.lengthSq() > 0.001) fwd.normalize();
+    this._tmpFwd.set(0, 0, -1).applyQuaternion(playerCamera.quaternion);
+    this._tmpFwd.y = 0;
+    if (this._tmpFwd.lengthSq() > 0.001) this._tmpFwd.normalize();
 
     const groundY = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(playerPos.x, playerPos.z) : 0;
-    this.pos.x = playerPos.x + fwd.x * 1.38;
-    this.pos.z = playerPos.z + fwd.z * 1.38;
+    this.pos.x = playerPos.x + this._tmpFwd.x * 1.38;
+    this.pos.z = playerPos.z + this._tmpFwd.z * 1.38;
     this.pos.y = groundY;
     this.yaw = Math.atan2(-fwd.x, -fwd.z);
 

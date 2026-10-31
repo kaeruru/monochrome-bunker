@@ -30,6 +30,10 @@
         <span class="hud-title">BUNKER</span>
       </div>
       <div class="hud-right">
+        <div id="hud-ping-badge" class="hud-ping-badge" title="네트워크 지연 시간">
+          <span class="ping-dot dot-good" id="hud-ping-dot"></span>
+          <span id="hud-ping-val">PING: --ms</span>
+        </div>
         <button id="btn-open-tactical-map" class="hud-btn" title="전술 작전 지도 [M]">지도 [M]</button>
         <button id="btn-open-showcase" class="hud-btn showcase" title="3D 모델 쇼케이스">쇼케이스</button>
         <button id="btn-open-settings" class="hud-btn" title="설정">설정 [ESC]</button>
@@ -503,6 +507,15 @@
                     <button type="button" class="preset-btn" data-suit="khaki">데저트 카키</button>
                     <button type="button" class="preset-btn" data-suit="hazmat">해즈맷 옐로우</button>
                   </div>
+                </div>
+                <div class="minimal-field">
+                  <label>그래픽 사양 모드</label>
+                  <div class="quality-preset-grid">
+                    <button type="button" class="preset-btn quality-btn active" data-quality="tab_low" title="갤럭시 탭 S9 FE 및 저사양 기기 최적화">[디벗 / 저사양]</button>
+                    <button type="button" class="preset-btn quality-btn" data-quality="balanced" title="표준 해상도 및 밸런스">[보통]</button>
+                    <button type="button" class="preset-btn quality-btn" data-quality="high" title="네이티브 해상도 및 고품질 비주얼">[고사양]</button>
+                  </div>
+                  <div class="field-help-text" id="quality-desc-text">갤럭시 탭 S9 FE 및 구형 노트북 추천: 렌더 스케일 최적화로 발열과 끊김을 줄이고 60FPS를 방어합니다.</div>
                 </div>
                 <div class="minimal-field">
                   <label>3D 모델 쇼케이스</label>

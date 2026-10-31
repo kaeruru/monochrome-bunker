@@ -15,11 +15,26 @@ export class NetworkManager {
     this.callsign = 'OPERATIVE-01';
     this.suitColor = 'steel';
 
-    this.remotePlayers = new Map(); // id -> { entity, nametag, targetPos, targetYaw, isMoving, isSprinting }
+    this.remotePlayers = new Map(); // id -> { entity, nametag, targetPos, targetYaw, isMoving, isSprinting, flashlightOn, ping }
     this.lastSyncTime = 0;
     this.syncInterval = 50; // 20Hz (50ms)
     this.lastMonsterSyncTime = 0;
     this.monsterSyncInterval = 50; // 20Hz (50ms)
+
+    // 학교 와이파이 / 모바일 대역폭 절감용 델타 압축(Deadband Filter) 캐시
+    this.lastSentPos = new THREE.Vector3(9999, 9999, 9999);
+    this.lastSentYaw = 9999;
+    this.lastSentPitch = 9999;
+    this.lastSentIsMoving = false;
+    this.lastSentIsSprinting = false;
+    this.lastSentFlashlight = true;
+    this.lastSentHeldItem = null;
+    this.lastHeartbeatTime = 0;
+    this.heartbeatInterval = 1200; // 정지 시 1.2초마다 하트비트 전송
+
+    // RTT 핑 측정
+    this.currentPing = 0;
+    this.pingIntervalId = null;
 
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     if (window.location.port === '5173') {
@@ -38,6 +53,7 @@ export class NetworkManager {
 
         this.ws.onopen = () => {
           this.isConnected = true;
+          this.startPingProbe();
           console.log('[NET] Connected to bunker co-op server:', this.serverUrl);
           resolve(true);
         };
@@ -48,6 +64,7 @@ export class NetworkManager {
 
         this.ws.onclose = () => {
           this.isConnected = false;
+          this.stopPingProbe();
           console.log('[NET] Disconnected from server');
           this.cleanupRemotePlayers();
           resolve(false);
@@ -55,6 +72,7 @@ export class NetworkManager {
 
         this.ws.onerror = (err) => {
           this.isConnected = false;
+          this.stopPingProbe();
           console.warn('[NET] Connection error / Standalone offline mode active.');
           resolve(false);
         };
@@ -151,6 +169,16 @@ export class NetworkManager {
           break;
         }
 
+        case 'pong_ack': {
+          if (msg.clientTime) {
+            this.currentPing = Math.max(1, Date.now() - msg.clientTime);
+            if (this.callbacks.onPingUpdate) {
+              this.callbacks.onPingUpdate(this.currentPing);
+            }
+          }
+          break;
+        }
+
         case 'player_sync': {
           const rp = this.remotePlayers.get(msg.id);
           if (rp) {
@@ -159,6 +187,16 @@ export class NetworkManager {
             rp.isMoving = msg.isMoving;
             rp.isSprinting = msg.isSprinting;
             rp.heldItem = msg.heldItem;
+
+            if (typeof msg.flashlightOn === 'boolean' && rp.flashlightOn !== msg.flashlightOn) {
+              rp.flashlightOn = msg.flashlightOn;
+              rp.entity.setFlashlight(rp.flashlightOn);
+            }
+
+            if (typeof msg.ping === 'number' && msg.ping !== rp.ping) {
+              rp.ping = msg.ping;
+              this.updateNameplate(rp);
+            }
           }
           break;
         }
@@ -236,6 +274,25 @@ export class NetworkManager {
     }
   }
 
+  startPingProbe() {
+    this.stopPingProbe();
+    this.pingIntervalId = setInterval(() => {
+      if (this.isConnected && this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify({
+          type: 'ping_probe',
+          clientTime: Date.now()
+        }));
+      }
+    }, 2000);
+  }
+
+  stopPingProbe() {
+    if (this.pingIntervalId) {
+      clearInterval(this.pingIntervalId);
+      this.pingIntervalId = null;
+    }
+  }
+
   spawnRemotePlayer(playerData) {
     if (this.remotePlayers.has(playerData.id)) return;
 
@@ -243,47 +300,92 @@ export class NetworkManager {
     entity.root.position.set(playerData.x || 0, 0, playerData.z || -2);
     this.scene.add(entity.root);
 
-    // 머리 위 3D 빌보드 네임태그 생성
-    const nametag = this.createNameplateSprite(playerData.callsign || 'OPERATIVE');
-    nametag.position.set(0, 2.15, 0);
-    entity.root.add(nametag);
+    const initialFlashlight = playerData.flashlightOn !== false;
+    entity.setFlashlight(initialFlashlight);
+
+    // 머리 위 3D 빌보드 네임태그 생성 (이모지 없이 전술 폰트 및 실시간 핑 표시)
+    const nameplate = this.createNameplateSprite(playerData.callsign || 'OPERATIVE', playerData.ping || 0);
+    nameplate.sprite.position.set(0, 2.18, 0);
+    entity.root.add(nameplate.sprite);
 
     this.remotePlayers.set(playerData.id, {
       entity,
-      nametag,
+      nametag: nameplate.sprite,
+      nameplateData: nameplate,
       targetPos: new THREE.Vector3(playerData.x || 0, 0, playerData.z || -2),
       targetYaw: playerData.yaw || 0,
       isMoving: false,
       isSprinting: false,
-      heldItem: null
+      heldItem: null,
+      flashlightOn: initialFlashlight,
+      ping: playerData.ping || 0
     });
   }
 
-  createNameplateSprite(text) {
+  createNameplateSprite(text, ping = 0) {
     const canvas = document.createElement('canvas');
-    canvas.width = 256;
-    canvas.height = 64;
-    const ctx = canvas.getContext('2d');
-
-    ctx.fillStyle = 'rgba(10, 14, 18, 0.85)';
-    ctx.strokeStyle = '#55ccee';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.roundRect(10, 10, 236, 44, 4);
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 22px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(`[ ${text} ]`, 128, 32);
-
+    canvas.width = 300;
+    canvas.height = 72;
     const texture = new THREE.CanvasTexture(canvas);
     const spriteMat = new THREE.SpriteMaterial({ map: texture, depthTest: false });
     const sprite = new THREE.Sprite(spriteMat);
-    sprite.scale.set(1.4, 0.35, 1);
-    return sprite;
+    sprite.scale.set(1.65, 0.40, 1);
+    sprite.renderOrder = 999;
+
+    const nameplate = { sprite, canvas, texture, callsign: text, ping };
+    this.renderNameplateCanvas(canvas, texture, text, ping);
+    return nameplate;
+  }
+
+  renderNameplateCanvas(canvas, texture, text, ping) {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    let pingColor = '#55ee99'; // < 60ms
+    if (ping >= 130) {
+      pingColor = '#ff5555'; // >= 130ms
+    } else if (ping >= 60) {
+      pingColor = '#eecc55'; // 60~129ms
+    }
+
+    // 전술 박스 외곽선
+    ctx.fillStyle = 'rgba(8, 12, 16, 0.88)';
+    ctx.strokeStyle = pingColor;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(8, 8, canvas.width - 16, canvas.height - 16, 4);
+    } else {
+      ctx.rect(8, 8, canvas.width - 16, canvas.height - 16);
+    }
+    ctx.fill();
+    ctx.stroke();
+
+    // 대원 콜사인 (한국어 시스템 폰트 체인)
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 20px "Pretendard", "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`[ ${text} ]`, 22, canvas.height / 2);
+
+    // 핑 밀리초 (이모지 일체 배제, 순수 텍스트)
+    ctx.fillStyle = pingColor;
+    ctx.font = 'bold 16px "Share Tech Mono", monospace, sans-serif';
+    ctx.textAlign = 'right';
+    const pingStr = ping > 0 ? `${ping}ms` : 'SYNC';
+    ctx.fillText(pingStr, canvas.width - 22, canvas.height / 2);
+
+    texture.needsUpdate = true;
+  }
+
+  updateNameplate(rp) {
+    if (!rp.nameplateData) return;
+    this.renderNameplateCanvas(
+      rp.nameplateData.canvas,
+      rp.nameplateData.texture,
+      rp.nameplateData.callsign,
+      rp.ping || 0
+    );
   }
 
   removeRemotePlayer(playerId) {
@@ -301,11 +403,42 @@ export class NetworkManager {
     this.remotePlayers.clear();
   }
 
-  sendPlayerSync(pos, yaw, pitch, isMoving, isSprinting, heldItem) {
+  sendPlayerSync(pos, yaw, pitch, isMoving, isSprinting, heldItem, flashlightOn = true) {
     if (!this.isConnected || !this.ws || !this.roomId) return;
     const now = performance.now();
     if (now - this.lastSyncTime < this.syncInterval) return;
+
+    // 학교 와이파이 / 모바일 대역폭 절감용 델타 압축(Deadband Filter)
+    const dx = pos.x - this.lastSentPos.x;
+    const dy = pos.y - this.lastSentPos.y;
+    const dz = pos.z - this.lastSentPos.z;
+    const distSq = dx * dx + dy * dy + dz * dz;
+
+    const dyaw = Math.abs(yaw - this.lastSentYaw);
+    const dpitch = Math.abs(pitch - this.lastSentPitch);
+
+    const stateChanged = (isMoving !== this.lastSentIsMoving) ||
+                         (isSprinting !== this.lastSentIsSprinting) ||
+                         (heldItem !== this.lastSentHeldItem) ||
+                         (flashlightOn !== this.lastSentFlashlight);
+
+    const isDeadband = (distSq < 0.0001) && (dyaw < 0.02) && (dpitch < 0.02) && !stateChanged;
+    const isHeartbeatDue = (now - this.lastHeartbeatTime >= this.heartbeatInterval);
+
+    // 정지 상태이고 하트비트 주기도 안 되었으면 전송 패스
+    if (isDeadband && !isHeartbeatDue) {
+      return;
+    }
+
     this.lastSyncTime = now;
+    this.lastHeartbeatTime = now;
+    this.lastSentPos.copy(pos);
+    this.lastSentYaw = yaw;
+    this.lastSentPitch = pitch;
+    this.lastSentIsMoving = isMoving;
+    this.lastSentIsSprinting = isSprinting;
+    this.lastSentHeldItem = heldItem;
+    this.lastSentFlashlight = flashlightOn;
 
     this.ws.send(JSON.stringify({
       type: 'player_sync',
@@ -316,7 +449,9 @@ export class NetworkManager {
       pitch: Math.round(pitch * 100) / 100,
       isMoving,
       isSprinting,
-      heldItem
+      heldItem,
+      flashlightOn,
+      ping: this.currentPing || 0
     }));
   }
 

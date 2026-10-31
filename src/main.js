@@ -23,22 +23,32 @@ class MonochromeBunker3D {
       (window.innerWidth <= 1024 && ('ontouchstart' in window));
     this.isMobile = isMobileClient;
 
-    // 1-1. Three.js WebGL 렌더러 (모바일 필레이트 폭망 방지: DPR 1.0 적용)
+    // 1-1. Three.js WebGL 렌더러
     this.renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
       antialias: !isMobileClient,
       powerPreference: 'high-performance'
     });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(isMobileClient ? 1.0 : Math.min(window.devicePixelRatio, 1.5));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 0.88;
+
+    // 1-2. 사양 모드 (Graphic Quality Preset) - 갤럭시 탭 S9 FE 및 저사양 기기 최적화
+    const savedQuality = localStorage.getItem('monochrome_quality_preset');
+    this.qualityPreset = savedQuality || (isMobileClient ? 'tab_low' : 'balanced');
+
+    // 1-3. 가비지 컬렉션(GC) 방지용 무할당 재사용 임시 벡터 풀
+    this._tmpForward = new THREE.Vector3(0, 0, -1);
+    this._tmpVecA = new THREE.Vector3();
+    this._tmpVecB = new THREE.Vector3();
 
     // 2. 3D 씬 및 모노크롬 안개 + 비플라스틱 인더스트리얼 환경광(PMREM)
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x040405);
     this.scene.fog = new THREE.FogExp2(0x040405, 0.052);
     this.scene.environment = createIndustrialEnvMap(this.renderer);
+
+    this.applyQualityPreset(this.qualityPreset);
 
     // 3. 3D 타일맵 생성
     this.map = new Map3D(this.scene);
@@ -169,6 +179,9 @@ class MonochromeBunker3D {
     // 점프스케어 및 설정 모달 DOM
     this.jumpscareOverlayEl = document.getElementById('jumpscare-overlay');
     this.gameSetupModalEl = document.getElementById('game-setup-modal');
+    this.hudPingBadge = document.getElementById('hud-ping-badge');
+    this.hudPingDot = document.getElementById('hud-ping-dot');
+    this.hudPingVal = document.getElementById('hud-ping-val');
     this.btnDeployMission = document.getElementById('btn-deploy-mission');
     this.btnOpenSettings = document.getElementById('btn-open-settings');
     this.callsignInput = document.getElementById('setup-callsign');
@@ -239,6 +252,7 @@ class MonochromeBunker3D {
     // 12. 멀티플레이어 네트워크 매니저 초기화
     this.networkManager = new NetworkManager(this.scene, {
       onToast: (msg, level) => this.showGameToast(msg, level),
+      onPingUpdate: (ping) => this.updatePingHUD(ping),
       onDoorSync: (doorId, isOpen) => {
         const d = this.map.doors.find(x => x.id === doorId);
         if (d && d.isOpen !== isOpen) {
@@ -375,8 +389,8 @@ class MonochromeBunker3D {
         }
         this.jumpscareFlashLight.visible = true;
         this.jumpscareFlashLight.position.copy(this.playerCamera.position);
-        const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(this.playerCamera.quaternion);
-        this.jumpscareFlashLightTarget.position.copy(this.playerCamera.position).addScaledVector(fwd, 1.2);
+        this._tmpForward.set(0, 0, -1).applyQuaternion(this.playerCamera.quaternion);
+        this.jumpscareFlashLightTarget.position.copy(this.playerCamera.position).addScaledVector(this._tmpForward, 1.2);
 
         // 환경광도 완전 0 대신 음산한 대비 조명 유지
         if (this.ambientLight) this.ambientLight.intensity = 0.55;
@@ -431,9 +445,83 @@ class MonochromeBunker3D {
     // 접속 초기 상태: 작전 설정 모달이 열려 있으므로 포인터 락 비활성화
     this.controls.setDisabled(true);
 
+    this.applyQualityPreset(this.qualityPreset);
     this.syncDeviceModeUI();
     this.initEvents();
     requestAnimationFrame((t) => this.loop(t));
+  }
+
+  /**
+   * 그래픽 사양 모드 적용 (갤럭시 탭 S9 FE 및 저사양 노트북 지원)
+   */
+  applyQualityPreset(preset) {
+    this.qualityPreset = preset || 'balanced';
+    localStorage.setItem('monochrome_quality_preset', this.qualityPreset);
+
+    const descEl = document.getElementById('quality-desc-text');
+
+    if (this.qualityPreset === 'tab_low') {
+      // 디벗 (갤럭시 탭 S9 FE) 및 저사양 노트북 최적화
+      this.renderer.setPixelRatio(0.85);
+      this.renderer.toneMappingExposure = 0.85;
+      if (this.scene && this.scene.fog) this.scene.fog.density = 0.048;
+      if (this.flashlight) {
+        this.flashlight.distance = 30;
+        this.flashlight.intensity = 24;
+      }
+      if (descEl) {
+        descEl.textContent = '갤럭시 탭 S9 FE 및 구형 노트북 추천: 렌더 스케일 최적화로 발열과 끊김을 줄이고 60FPS를 방어합니다.';
+      }
+    } else if (this.qualityPreset === 'high') {
+      // 고사양 게이밍 데스크톱
+      this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+      this.renderer.toneMappingExposure = 0.90;
+      if (this.scene && this.scene.fog) this.scene.fog.density = 0.055;
+      if (this.flashlight) {
+        this.flashlight.distance = 40;
+        this.flashlight.intensity = 28;
+      }
+      if (descEl) {
+        descEl.textContent = '고사양 게이밍 PC 추천: 디스플레이 네이티브 해상도 및 최고 품질 조명을 적용합니다.';
+      }
+    } else {
+      // 보통 (기본 밸런스 모드)
+      this.renderer.setPixelRatio(1.0);
+      this.renderer.toneMappingExposure = 0.88;
+      if (this.scene && this.scene.fog) this.scene.fog.density = 0.052;
+      if (this.flashlight) {
+        this.flashlight.distance = 36;
+        this.flashlight.intensity = 26;
+      }
+      if (descEl) {
+        descEl.textContent = '표준 밸런스 모드: 100% 해상도와 기본 인더스트리얼 조명을 적용합니다.';
+      }
+    }
+
+    // UI 버튼 상태 갱신 (이모지 일체 배제)
+    document.querySelectorAll('.quality-btn').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.quality === this.qualityPreset);
+    });
+  }
+
+  /**
+   * 실시간 네트워크 RTT 핑 HUD 업데이트
+   */
+  updatePingHUD(ping) {
+    if (!this.hudPingVal) return;
+    const p = Math.max(0, Math.round(ping));
+    this.hudPingVal.textContent = `PING: ${p}ms`;
+
+    if (this.hudPingDot) {
+      this.hudPingDot.classList.remove('dot-good', 'dot-warn', 'dot-bad');
+      if (p >= 130) {
+        this.hudPingDot.classList.add('dot-bad');
+      } else if (p >= 60) {
+        this.hudPingDot.classList.add('dot-warn');
+      } else {
+        this.hudPingDot.classList.add('dot-good');
+      }
+    }
   }
 
   /**
@@ -1056,6 +1144,15 @@ class MonochromeBunker3D {
       });
     });
 
+    // 그래픽 사양 모드 버튼 이벤트 (갤럭시 탭 S9 FE & 저사양 PC 프리셋)
+    document.querySelectorAll('.quality-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const quality = btn.dataset.quality;
+        this.applyQualityPreset(quality);
+        if (typeof sound.playClick === 'function') sound.playClick();
+      });
+    });
+
     // 챕터 데이터 및 네비게이션 제어
     const CHAPTERS = [
       {
@@ -1635,10 +1732,10 @@ class MonochromeBunker3D {
 
     // 2-2. 들고 있는 아이템 내려놓기 / 조명탄 점화 (Q키 또는 버리기 버튼)
     if (this.controls.consumeDrop() && this.interactionSystem) {
-      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.playerCamera.quaternion);
-      forward.y = 0;
-      if (forward.lengthSq() > 0.001) forward.normalize();
-      this.interactionSystem.dropOrUseHeldItem(this.playerPos, forward);
+      this._tmpForward.set(0, 0, -1).applyQuaternion(this.playerCamera.quaternion);
+      this._tmpForward.y = 0;
+      if (this._tmpForward.lengthSq() > 0.001) this._tmpForward.normalize();
+      this.interactionSystem.dropOrUseHeldItem(this.playerPos, this._tmpForward);
     }
 
     // 2-3. 챕터 2 소나 펄스 쿨타임 감소 및 HUD 동기화
@@ -1671,12 +1768,12 @@ class MonochromeBunker3D {
           if (this.viewModel) {
             this.viewModel.triggerSonarPulseAnim();
           }
-          const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.playerCamera.quaternion);
-          forward.y = 0;
-          if (forward.lengthSq() > 0.001) forward.normalize();
+          this._tmpForward.set(0, 0, -1).applyQuaternion(this.playerCamera.quaternion);
+          this._tmpForward.y = 0;
+          if (this._tmpForward.lengthSq() > 0.001) this._tmpForward.normalize();
 
           const repelled = this.monsterAI && this.monsterAI.repelLurkerBySonarPulse
-            ? this.monsterAI.repelLurkerBySonarPulse(this.playerPos, forward)
+            ? this.monsterAI.repelLurkerBySonarPulse(this.playerPos, this._tmpForward)
             : false;
 
           if (repelled) {
@@ -1937,7 +2034,8 @@ class MonochromeBunker3D {
         this.controls.pitch,
         isMoving,
         isActivelySprinting,
-        heldType
+        heldType,
+        this.flashlightOn
       );
       if (this.networkManager.isHost && this.monsterAI) {
         this.networkManager.sendMonsterSync(

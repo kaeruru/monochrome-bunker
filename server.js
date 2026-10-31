@@ -160,7 +160,9 @@ function handleMessage(ws, msg) {
         pitch: 0,
         isMoving: false,
         isSprinting: false,
-        heldItem: null
+        heldItem: null,
+        flashlightOn: true,
+        ping: 0
       };
 
       const room = {
@@ -221,7 +223,9 @@ function handleMessage(ws, msg) {
         pitch: 0,
         isMoving: false,
         isSprinting: false,
-        heldItem: null
+        heldItem: null,
+        flashlightOn: true,
+        ping: 0
       };
 
       room.players.set(ws, playerInfo);
@@ -250,6 +254,15 @@ function handleMessage(ws, msg) {
       break;
     }
 
+    case 'ping_probe': {
+      ws.send(JSON.stringify({
+        type: 'pong_ack',
+        clientTime: msg.clientTime,
+        serverTime: Date.now()
+      }));
+      break;
+    }
+
     case 'player_sync': {
       if (!ws.currentRoomId) return;
       const room = rooms.get(ws.currentRoomId);
@@ -265,6 +278,8 @@ function handleMessage(ws, msg) {
         p.isMoving = msg.isMoving;
         p.isSprinting = msg.isSprinting;
         p.heldItem = msg.heldItem;
+        if (typeof msg.flashlightOn === 'boolean') p.flashlightOn = msg.flashlightOn;
+        if (typeof msg.ping === 'number') p.ping = msg.ping;
 
         broadcastToRoom(room, {
           type: 'player_sync',
@@ -276,7 +291,9 @@ function handleMessage(ws, msg) {
           pitch: p.pitch,
           isMoving: p.isMoving,
           isSprinting: p.isSprinting,
-          heldItem: p.heldItem
+          heldItem: p.heldItem,
+          flashlightOn: p.flashlightOn,
+          ping: p.ping
         }, ws);
       }
       break;
