@@ -167,6 +167,11 @@ export class InteractionAndEscapeSystem {
    * 매 판 새로운 아이템 무작위 배치 및 오브젝트 초기화
    */
   setupNewMatch() {
+    // 맵 리빌드 시 mapGroup 자식이 초기화되므로, interactionSystem 그룹이 분리되지 않도록 항상 재연결
+    if (this.map && this.map.mapGroup && (!this.group.parent || this.group.parent !== this.map.mapGroup)) {
+      this.map.mapGroup.add(this.group);
+    }
+
     while (this.group.children.length > 0) {
       this.group.remove(this.group.children[0]);
     }

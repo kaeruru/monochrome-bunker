@@ -1255,6 +1255,15 @@ class AudioManager {
   }
 
   /**
+   * UI 버튼 및 지도/메뉴 열람 클릭 사운드
+   */
+  playClick(volume = 0.18) {
+    this.init();
+    if (!this.ctx || this.isMuted) return;
+    this.playTerminalKey(volume);
+  }
+
+  /**
    * CCTV 감시 카메라 채널 전환 노이즈 및 정전기 지직거림
    */
   playCctvSwitch(volume = 0.28) {

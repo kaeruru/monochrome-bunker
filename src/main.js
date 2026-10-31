@@ -545,13 +545,15 @@ class MonochromeBunker3D {
       this.viewModel.root.visible = false;
     }
 
-    // 3. 쓰러진 대원 3D 모델 현 위치에 배치
+    // 3. 쓰러진 대원 3D 모델 현 위치 바닥에 정확히 배치 (수몰 및 지하 파묻힘 방지)
+    const floorY = this.map ? this.map.getFloorHeightAt(this.playerPos.x, this.playerPos.z) : 0.0;
+
     if (!this.fallenOperative) {
       this.fallenOperative = new PlayerCharacterEntity(this.callsign || 'OPERATIVE', false);
       this.scene.add(this.fallenOperative.root);
     }
     this.fallenOperative.root.visible = true;
-    this.fallenOperative.root.position.set(this.playerPos.x, 0.12, this.playerPos.z);
+    this.fallenOperative.root.position.set(this.playerPos.x, floorY + 0.10, this.playerPos.z);
     this.fallenOperative.setFallenPose();
 
     // 바닥에 떨어진 손전등 조명 (바닥을 비추는 희미한 빛줄기)
@@ -563,20 +565,20 @@ class MonochromeBunker3D {
       this.droppedFlashlight.target = this.droppedFlashlightTarget;
     }
     this.droppedFlashlight.visible = true;
-    this.droppedFlashlight.position.set(this.playerPos.x + 0.35, 0.08, this.playerPos.z + 0.35);
+    this.droppedFlashlight.position.set(this.playerPos.x + 0.35, floorY + 0.08, this.playerPos.z + 0.35);
     const dropFwd = new THREE.Vector3(1, 0, 0.8).normalize();
     this.droppedFlashlightTarget.position.copy(this.droppedFlashlight.position).addScaledVector(dropFwd, 6.0);
 
-    // 4. CCTV 감시 카메라 위치 설정 (벽 관통 방지)
+    // 4. CCTV 감시 카메라 위치 설정 (벽 및 천장 관통 방지)
     if (!this.deathCamera) {
       this.deathCamera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 80);
     }
     this.deathCamera.aspect = window.innerWidth / window.innerHeight;
     this.deathCamera.updateProjectionMatrix();
 
-    const camPos = this.calculateDeathCamPos(this.playerPos);
+    const camPos = this.calculateDeathCamPos(this.playerPos, floorY);
     this.deathCamera.position.copy(camPos);
-    this.deathCamera.lookAt(this.playerPos.x, 0.28, this.playerPos.z);
+    this.deathCamera.lookAt(this.playerPos.x, floorY + 0.28, this.playerPos.z);
 
     // CCTV 야간 투시 스포트라이트
     if (!this.deathCamLight) {
@@ -588,7 +590,7 @@ class MonochromeBunker3D {
     }
     this.deathCamLight.visible = true;
     this.deathCamLight.position.copy(camPos);
-    this.deathCamLightTarget.position.set(this.playerPos.x, 0.2, this.playerPos.z);
+    this.deathCamLightTarget.position.set(this.playerPos.x, floorY + 0.20, this.playerPos.z);
 
     // 5. 괴물 사후 대치 및 복도 이탈 상태 진입
     if (this.monsterAI) {
@@ -607,29 +609,36 @@ class MonochromeBunker3D {
   }
 
   /**
-   * 벽 관통을 방지하는 안전한 천장 CCTV 감시 카메라 위치 탐색
+   * 벽 및 천장 관통을 방지하는 안전한 CCTV 감시 카메라 위치 탐색
    */
-  calculateDeathCamPos(targetPos) {
+  calculateDeathCamPos(targetPos, floorY = 0) {
+    const isCh2 = this.activeChapterId === 'chapter2';
+    // 천장/아치에 파묻히지 않도록 바닥 기준 1.85m(챕터2) ~ 2.10m(챕터1)로 안전하게 설정
+    const camY = floorY + (isCh2 ? 1.85 : 2.10);
+
     const candidates = [
-      { x: -2.4, z: 2.2 },
-      { x: 2.4, z: -2.2 },
-      { x: 2.2, z: 2.2 },
-      { x: -2.2, z: -2.2 },
-      { x: 0, z: 2.8 },
-      { x: 0, z: -2.8 },
-      { x: 2.8, z: 0 },
-      { x: -2.8, z: 0 }
+      { x: -1.8, z: 1.6 },
+      { x: 1.8, z: -1.6 },
+      { x: 1.6, z: 1.6 },
+      { x: -1.6, z: -1.6 },
+      { x: 0, z: 2.0 },
+      { x: 0, z: -2.0 },
+      { x: 2.0, z: 0 },
+      { x: -2.0, z: 0 }
     ];
 
     for (const cand of candidates) {
       const cx = targetPos.x + cand.x;
       const cz = targetPos.z + cand.z;
       const { col, row } = worldToTile(cx, cz);
-      if (this.map.grid && this.map.grid[row] && this.map.grid[row][col] !== 1) {
-        return new THREE.Vector3(cx, 3.25, cz);
+      const ch = this.map ? this.map.getTileChar(col, row) : ' ';
+      if (ch !== '#' && ch !== ' ') {
+        if (!this.map || !this.map.checkCollision(cx, cz, 0.35)) {
+          return new THREE.Vector3(cx, camY, cz);
+        }
       }
     }
-    return new THREE.Vector3(targetPos.x - 1.2, 3.3, targetPos.z + 1.2);
+    return new THREE.Vector3(targetPos.x - 0.8, camY, targetPos.z + 0.8);
   }
 
   /**
@@ -2022,14 +2031,18 @@ class MonochromeBunker3D {
         : '심도 140m 벙커 통제 시설 및 격벽 방호망 작전 전술 지도';
     }
     this.renderTacticalMapModal();
-    sound.playClick();
+    if (typeof sound.playClick === 'function') {
+      sound.playClick();
+    }
   }
 
   closeTacticalMapModal() {
     if (!this.tacticalMapModalEl) return;
     this.isTacticalMapOpen = false;
     this.tacticalMapModalEl.classList.add('hidden');
-    sound.playClick();
+    if (typeof sound.playClick === 'function') {
+      sound.playClick();
+    }
   }
 
   renderTacticalMapModal() {

@@ -53,7 +53,7 @@ export class CCTVSystem3D {
 
     const aspect = window.innerWidth / window.innerHeight;
     for (const cfg of this.configs) {
-      const cam = new THREE.PerspectiveCamera(72, aspect, 0.1, 90);
+      const cam = new THREE.PerspectiveCamera(72, aspect, 0.05, 90);
       const pos = cfg.pos || cfg.camPos || { x: 0, y: 2.8, z: 0 };
       cam.position.set(pos.x, pos.y, pos.z);
 

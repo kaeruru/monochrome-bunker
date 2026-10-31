@@ -1319,7 +1319,13 @@ export class Map3D {
 
     const isCh2 = this.chapterId === 'chapter2';
     const inLowPipe = isCh2 && this.isWaterTile(col, row);
-    const camMountY = isCh2 ? (inLowPipe ? 2.95 : 3.95) : (WALL_HEIGHT - 0.28);
+    const floorY = this.getFloorHeightAt(x, z);
+
+    // 카메라 설치 높이: 천장 슬래브 및 아치 리브에 파묻히지 않도록 안전한 높이로 설정
+    // 챕터2 수로 원통관(Low Pipe): 수면 0.56m, 중심선 1.82m이므로 camMountY = 2.15m에서 수로 전경이 시원하게 조망됨
+    // 챕터2 고대 벽돌 아치 회랑(High Ground): 바닥 1.40m, 아치 스프링 3.25m이므로 camMountY = 2.85m로 아치 밑 안전한 시야 확보
+    // 챕터1 벙커 복도: 바닥 0.0m, 천장 3.60m이므로 camMountY = 2.45m로 배관/천장 차폐 원천 방지
+    const camMountY = isCh2 ? (inLowPipe ? 2.15 : (floorY + 1.45)) : (floorY + 2.45);
 
     const camGroup = new THREE.Group();
     camGroup.position.set(x, camMountY, z);
@@ -1361,12 +1367,16 @@ export class Map3D {
     };
     const defaultNames = isCh2 ? defaultNamesCh2 : defaultNamesCh1;
 
+    // 카메라 시점 위치를 카메라 하우징 전방으로 배치하여 자체 모델 및 천장/벽면 간섭 원천 방지
+    const fwdX = -Math.sin(bestDir.yaw) * 0.32;
+    const fwdZ = -Math.cos(bestDir.yaw) * 0.32;
+
     this.cctvConfigs.push({
       id: num,
       name: defaultNames[num] || `CAM 0${num} - 구역 감시`,
-      pos: { x, y: camMountY - 0.10, z },
+      pos: { x: x + fwdX, y: camMountY - 0.08, z: z + fwdZ },
       baseYaw: bestDir.yaw,
-      basePitch: -0.22
+      basePitch: -0.18
     });
   }
 
