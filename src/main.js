@@ -385,6 +385,32 @@ class MonochromeBunker3D {
         if (this.jumpscareOverlayEl) this.jumpscareOverlayEl.classList.add('hidden');
         if (this.jumpscareFlashLight) this.jumpscareFlashLight.visible = false;
         this.handlePlayerCaught();
+      },
+      onPlayerBittenByLurker: (lurkerPos) => {
+        // 제2장 매복자 악어(#2) 기습: 플레이어를 수로 뒤쪽으로 강하게 밀쳐내고 2초간 이동 속도 저하 + 스태미나 타격
+        if (lurkerPos) {
+          const dx = this.playerPos.x - lurkerPos.x;
+          const dz = this.playerPos.z - lurkerPos.z;
+          const len = Math.max(0.01, Math.hypot(dx, dz));
+          const nx = dx / len;
+          const nz = dz / len;
+          for (let s = 1; s <= 6; s++) {
+            const tryX = this.playerPos.x + nx * 0.28;
+            const tryZ = this.playerPos.z + nz * 0.28;
+            if (!this.map.checkCollision(tryX, this.playerPos.z, this.playerRadius)) {
+              this.playerPos.x = tryX;
+            }
+            if (!this.map.checkCollision(this.playerPos.x, tryZ, this.playerRadius)) {
+              this.playerPos.z = tryZ;
+            }
+          }
+        }
+        this.lurkerSlowTimer = 2.0;
+        this.stamina = Math.max(0, this.stamina - 35);
+        this.showGameToast(
+          '[AMBUSH] 경사로/사다리 밑에 숨어있던 매복자 악어에게 물려 수로로 밀려났습니다! 스토커 악어가 접근합니다!',
+          'danger'
+        );
       }
     });
     this.cctv.monsterAI = this.monsterAI;
@@ -1315,6 +1341,14 @@ class MonochromeBunker3D {
     window.addEventListener('keydown', (e) => {
       if (this.isPlayerDead || this.isDeathCamActive) return;
       if (e.target && (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT')) return;
+      if (
+        !e.repeat &&
+        this.monsterAI &&
+        this.monsterAI.isPlayerSnared &&
+        (e.code === 'Space' || e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'KeyW' || e.code === 'KeyA' || e.code === 'KeyS' || e.code === 'KeyD')
+      ) {
+        this.monsterAI.addSnareStruggle(20);
+      }
       if (e.code === 'KeyM') {
         e.preventDefault();
         this.toggleTacticalMapModal();
@@ -1329,6 +1363,12 @@ class MonochromeBunker3D {
         } else if (this.isDeployed) {
           this.toggleSettingsModal();
         }
+      }
+    });
+
+    window.addEventListener('pointerdown', () => {
+      if (this.isDeployed && !this.isPlayerDead && this.monsterAI && this.monsterAI.isPlayerSnared) {
+        this.monsterAI.addSnareStruggle(18);
       }
     });
 
@@ -1607,10 +1647,15 @@ class MonochromeBunker3D {
     }
 
     // 5. 플레이어 1인칭 이동, 달리기(Sprint + 스태미나 + 시야각 연출) 및 충돌 처리
+    const isSnared = Boolean(this.monsterAI && this.monsterAI.isPlayerSnared);
     const moveDir = this.controls.getMovementDirection();
-    const isMoving = moveDir.lengthSq() > 0.0001;
+    const isMoving = !isSnared && moveDir.lengthSq() > 0.0001;
     const wantsSprint = this.controls.isSprinting();
     const isActivelySprinting = isMoving && wantsSprint && !this.staminaExhausted && this.stamina > 0;
+
+    if (this.lurkerSlowTimer && this.lurkerSlowTimer > 0) {
+      this.lurkerSlowTimer = Math.max(0, this.lurkerSlowTimer - dt);
+    }
 
     if (isActivelySprinting) {
       this.stamina = Math.max(0, this.stamina - 22 * dt);
@@ -1634,8 +1679,9 @@ class MonochromeBunker3D {
 
     const inWater = this.map ? this.map.isWaterAt(this.playerPos.x, this.playerPos.z) : false;
     const isCh2 = this.activeChapterId === 'chapter2';
-    // 챕터 2에서는 물이 허벅지까지 차올라 -35% 속도 감소 (0.65배 속도)
-    const waterMult = inWater ? (isCh2 ? (isActivelySprinting ? 0.70 : 0.65) : (isActivelySprinting ? 0.94 : 0.82)) : 1.0;
+    // 챕터 2에서는 물이 허벅지까지 차올라 -35% 속도 감소 (0.65배 속도) + 매복자 기습 피격 시 추가 감속
+    const slowMult = (this.lurkerSlowTimer && this.lurkerSlowTimer > 0) ? 0.55 : 1.0;
+    const waterMult = (inWater ? (isCh2 ? (isActivelySprinting ? 0.70 : 0.65) : (isActivelySprinting ? 0.94 : 0.82)) : 1.0) * slowMult;
 
     if (isMoving) {
       const currentSpeed = (isActivelySprinting ? this.sprintSpeed : this.walkSpeed) * waterMult;
@@ -1685,8 +1731,9 @@ class MonochromeBunker3D {
       this.playerCamera.position.y = targetEyeH;
     }
 
-    this.playerCamera.position.x = this.playerPos.x;
-    this.playerCamera.position.z = this.playerPos.z;
+    const struggleJitter = isSnared ? 0.032 : ((this.lurkerSlowTimer && this.lurkerSlowTimer > 1.4) ? 0.025 : 0);
+    this.playerCamera.position.x = this.playerPos.x + (struggleJitter ? (Math.random() - 0.5) * struggleJitter : 0);
+    this.playerCamera.position.z = this.playerPos.z + (struggleJitter ? (Math.random() - 0.5) * struggleJitter : 0);
 
     // 5-1. 1인칭 손 & 들고 있는 아이템 뷰모델 애니메이션 업데이트
     if (this.viewModel) {
@@ -1713,20 +1760,28 @@ class MonochromeBunker3D {
       const targetSonarLight = isMoving ? 15.5 : 9.5;
       this.flashlight.intensity = THREE.MathUtils.lerp(this.flashlight.intensity, targetSonarLight, Math.min(1, dt * 8));
 
-      // 크롤러와의 거리 및 상대 각도를 계산해 직육면체 레이더 화면 갱신 + 접근 시 빨라지는 비프음 재생
+      // 삼두 괴수(#1 스토커, #2 매복자, #3 맹글)와의 거리 및 상대 각도를 계산해 레이더 화면 갱신 + 접근 비프음 재생
       const mActive = Boolean(this.monsterAI && this.monsterAI.state !== 'VENT_LURK');
       let mDist = 99;
       let relAngle = 0;
+      const extraBlips = [];
       if (mActive && this.monsterAI) {
-        const dx = this.monsterAI.pos.x - this.playerPos.x;
-        const dz = this.monsterAI.pos.z - this.playerPos.z;
-        mDist = Math.hypot(dx, dz);
-        const angleToMonster = Math.atan2(dx, dz);
         const camYaw = Math.atan2(forward.x, forward.z);
-        relAngle = camYaw - angleToMonster;
+        const trioList = this.monsterAI.getTrioPositions ? this.monsterAI.getTrioPositions() : [{ pos: this.monsterAI.pos, role: 'ripper' }];
+        for (const tEntry of trioList) {
+          const dx = tEntry.pos.x - this.playerPos.x;
+          const dz = tEntry.pos.z - this.playerPos.z;
+          const d = Math.hypot(dx, dz);
+          const ang = camYaw - Math.atan2(dx, dz);
+          extraBlips.push({ dist: d, relAngle: ang, role: tEntry.role });
+          if (d < mDist) {
+            mDist = d;
+            relAngle = ang;
+          }
+        }
       }
       if (this.viewModel && this.viewModel.updateSonarRadar) {
-        this.viewModel.updateSonarRadar(dt, mDist, relAngle, mActive);
+        this.viewModel.updateSonarRadar(dt, mDist, relAngle, mActive, extraBlips);
       }
 
       if (mActive && mDist < 26.0) {
@@ -1758,8 +1813,12 @@ class MonochromeBunker3D {
     // 8. 주변 상호작용 대상(CCTV 콘솔, 1칸 상하 방호문) 탐색
     this.checkInteractables();
 
-    if (this.controls.consumeInteract() && this.nearInteractable) {
-      this.triggerInteraction(this.nearInteractable);
+    if (this.controls.consumeInteract()) {
+      if (this.monsterAI && this.monsterAI.isPlayerSnared) {
+        this.monsterAI.addSnareStruggle(24);
+      } else if (this.nearInteractable) {
+        this.triggerInteraction(this.nearInteractable);
+      }
     }
 
     if (this.controls.consumeMap()) {
@@ -1918,6 +1977,18 @@ class MonochromeBunker3D {
     }
 
     const isBlackout = this.interactionSystem && this.interactionSystem.isBlackout;
+
+    if (this.monsterAI && this.monsterAI.isPlayerSnared) {
+      const pct = Math.round(this.monsterAI.snareEscapeProgress || 0);
+      this.showPrompt(
+        '[ SPACE / E / USE 연타 ]',
+        `맹글 크롤러 결박 탈출 중... (${pct}%)`
+      );
+      if (this.btnTouchInteract) {
+        this.btnTouchInteract.classList.add('active');
+      }
+      return;
+    }
 
     if (this.nearInteractable) {
       if (this.nearInteractable.type === 'console') {

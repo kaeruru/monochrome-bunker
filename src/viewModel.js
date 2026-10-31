@@ -567,7 +567,7 @@ export class FirstPersonViewModel {
    * @param {number} relAngle 플레이어 시선 기준 괴물의 상대 방위각 (라디안, 0 = 정면)
    * @param {boolean} monsterActive
    */
-  updateSonarRadar(dt, distToMonster = 99, relAngle = 0, monsterActive = false) {
+  updateSonarRadar(dt, distToMonster = 99, relAngle = 0, monsterActive = false, extraBlips = null) {
     if (!this.radarCtx) return;
     this.radarSweepAngle = (this.radarSweepAngle + dt * 3.8) % (Math.PI * 2);
     this.radarRedrawAccum += dt;
@@ -618,25 +618,40 @@ export class FirstPersonViewModel {
     ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
     ctx.fill();
 
-    // 5. 크롤러 음파 타겟 블립 표시 (28m 이내 감지)
-    const isDanger = monsterActive && distToMonster < 28;
-    if (isDanger) {
-      const clampedR = Math.min(maxR - 3, (distToMonster / 26) * maxR);
-      const bx = cx + Math.sin(relAngle) * clampedR;
-      const by = cy - Math.cos(relAngle) * clampedR;
+    // 5. 크롤러 삼두 괴수 음파 타겟 블립 표시 (28m 이내 감지)
+    const blips = Array.isArray(extraBlips) && extraBlips.length > 0
+      ? extraBlips
+      : (monsterActive ? [{ dist: distToMonster, relAngle, role: 'ripper' }] : []);
 
-      const pulse = 0.5 + 0.5 * Math.sin(this.time * (distToMonster < 10 ? 16 : 9));
-      ctx.fillStyle = distToMonster < 10 ? '#ff3b1f' : '#ff9a2e';
+    let closestDist = distToMonster;
+    for (const b of blips) {
+      if (b.dist >= 28) continue;
+      if (b.dist < closestDist) closestDist = b.dist;
+      const clampedR = Math.min(maxR - 3, (b.dist / 26) * maxR);
+      const bx = cx + Math.sin(b.relAngle) * clampedR;
+      const by = cy - Math.cos(b.relAngle) * clampedR;
+
+      const pulse = 0.5 + 0.5 * Math.sin(this.time * (b.dist < 10 ? 16 : 9));
+      const isRipper = b.role === 'ripper' || b.role === 'stalker';
+      const isSnare = b.role === 'snare';
+
+      ctx.fillStyle = isRipper
+        ? (b.dist < 10 ? '#ff3b1f' : '#ff9a2e')
+        : (isSnare ? '#ff4488' : '#ffcc33');
       ctx.beginPath();
-      ctx.arc(bx, by, 3.8 + pulse * 2.2, 0, Math.PI * 2);
+      ctx.arc(bx, by, (isRipper ? 3.8 : 3.0) + pulse * 1.8, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.strokeStyle = distToMonster < 10 ? 'rgba(255, 68, 34, 0.85)' : 'rgba(255, 165, 55, 0.75)';
-      ctx.lineWidth = 1.4;
+      ctx.strokeStyle = isRipper
+        ? 'rgba(255, 68, 34, 0.85)'
+        : (isSnare ? 'rgba(255, 68, 136, 0.75)' : 'rgba(255, 204, 51, 0.75)');
+      ctx.lineWidth = 1.3;
       ctx.beginPath();
-      ctx.arc(bx, by, 6.5 + pulse * 4.5, 0, Math.PI * 2);
+      ctx.arc(bx, by, (isRipper ? 6.5 : 5.2) + pulse * 3.8, 0, Math.PI * 2);
       ctx.stroke();
     }
+
+    const isDanger = monsterActive && closestDist < 28;
 
     // 6. 하단 디지털 상태창 (거리 및 경고 표시)
     ctx.fillStyle = '#1a0e06';
@@ -647,8 +662,8 @@ export class FirstPersonViewModel {
     ctx.font = 'bold 11px monospace';
     ctx.textAlign = 'center';
     if (isDanger) {
-      ctx.fillStyle = distToMonster < 10 ? '#ff4422' : '#ffb84d';
-      ctx.fillText(`DIST: ${distToMonster.toFixed(1)}m`, 64, 119);
+      ctx.fillStyle = closestDist < 10 ? '#ff4422' : '#ffb84d';
+      ctx.fillText(`DIST: ${closestDist.toFixed(1)}m`, 64, 119);
     } else {
       ctx.fillStyle = '#c88232';
       ctx.fillText('SONAR: CLEAR', 64, 119);

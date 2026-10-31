@@ -152,6 +152,23 @@ function createBiomechanicalMaterials() {
     }),
     visorHudSlit: new THREE.MeshBasicMaterial({
       color: 0xd8e4ec
+    }),
+    // FNAF 나이트메어 삼두 괴수(The Flooded Trio) 전용 안구/코어/부식 철근 재질
+    nightmareEyeRing: new THREE.MeshBasicMaterial({
+      color: 0xff2a1a
+    }),
+    nightmarePupil: new THREE.MeshBasicMaterial({
+      color: 0xffffff
+    }),
+    lurkerEyeGlow: new THREE.MeshBasicMaterial({
+      color: 0xffaa22
+    }),
+    mangleEyeGlow: new THREE.MeshBasicMaterial({
+      color: 0xff3366
+    }),
+    rustedRebar: new THREE.MeshLambertMaterial({
+      color: 0x3a2d27,
+      map: exoColorTex
     })
   };
 }
@@ -1342,9 +1359,12 @@ export class MonsterEntity {
 // ============================================================================
 // 1-B. 제2장 전용 수로 괴물 모델: [심해 수로 악어형 생체기계 크롤러 (Bio-Mechanical Sewer Crocodile Crawler)]
 // - 침수된 원통형 하수관(수면 Y=0.56m) 내부에서만 서식하는 수중 매복 포식자.
-// - 낮은 전고와 넓게 뻗은 4개의 파충류 다리, 수면 위로 솟아오른 톱니형 등줄기 골판(Dorsal Scutes)과
-//   발광 슬릿 안구, 날카로운 크롬 이빨이 촘촘히 박힌 긴 악어 주둥이(Snout), S자로 물살을 가르는
-//   14마디 편평 유영 꼬리를 갖춘 로우폴리 바이오-메카닉 악어 크리처입니다.
+// ============================================================================
+// 1-B. 제2장(침수 수로) 삼두 괴수 #1: [스토커 악어 / 더 리퍼 (CrawlerCrocodileEntity)]
+// - FNAF 4 나이트메어 프레디(Nightmare Freddy) + 팩맨 블링키(Blinky) 포지션의 주력 처형 포식자입니다.
+// - 반쯤 뜯겨나간 부식 외피 사이로 노출된 엔도스켈레톤 척추와 늑골, 수면 위로 솟은 녹슨 철근(Rebar) 가시와
+//   철조망 링, 깊게 파인 암흑 안와 속에서 번뜩이는 나이트메어 붉은 링 안구, 추격/공격 시 좌·우·하단 3갈래로
+//   기괴하게 쪼개지는 분할 하악(Tri-Split Mandible)과 이중 바늘 치열, 구강 내부의 제2 엔도스켈레톤 내턱을 갖춥니다.
 // ============================================================================
 export class CrawlerCrocodileEntity {
   constructor() {
@@ -1364,17 +1384,41 @@ export class CrawlerCrocodileEntity {
     this.tailNodes = [];
     this.dorsalScutes = [];
     this.coreRings = [];
+    this.nightmareEyes = [];
 
     this.buildCrocodileAnatomy();
   }
 
   buildCrocodileAnatomy() {
-    // 1. 수중 잠복 중심 몸통 (수면 Y=0.56m 기준 등줄기 골판과 안구가 수면 위로 살짝 드러나도록 Y=0.40m 배치)
+    // 1. 수중 잠복 중심 몸통 (수면 Y=0.56m 기준 등줄기 철근 가시와 나이트메어 안구가 수면 위로 드러나도록 Y=0.40m 배치)
     this.bodyGroup = new THREE.Group();
     this.bodyGroup.position.set(0, 0.40, 0);
     this.root.add(this.bodyGroup);
 
-    // 납작하고 넓은 악어형 주 몸통 갑피 (전후 길이 약 1.35m)
+    // 뜯겨나간 외피 아래로 노출된 내부 엔도스켈레톤 강철 척추 기둥
+    const endoSpine = createSculptedBioLimb(
+      [
+        [0, 0.05, -0.72],
+        [0, 0.09, -0.25],
+        [0, 0.11, 0.15],
+        [0, 0.07, 0.68]
+      ],
+      0.11,
+      0.09,
+      {
+        segments: 24,
+        radialSegs: 10,
+        flutes: 6,
+        fluteDepth: 0.18,
+        ribFreq: 32,
+        ribAmp: 0.14,
+        bulge: 0.08,
+        mat: this.mats.endoSteel
+      }
+    );
+    this.bodyGroup.add(endoSpine);
+
+    // 비대칭으로 찢어지고 파손된 나이트메어 외골격 갑피 (전후 길이 약 1.38m)
     const torsoCore = createSculptedBioLimb(
       [
         [0, -0.02, -0.68],
@@ -1387,74 +1431,62 @@ export class CrawlerCrocodileEntity {
       0.19,
       {
         segments: 28,
-        radialSegs: 16,
+        radialSegs: 14,
         flutes: 8,
-        fluteDepth: 0.12,
+        fluteDepth: 0.16,
         ribFreq: 22,
-        ribAmp: 0.08,
+        ribAmp: 0.10,
         bulge: 0.22,
         mat: this.mats.exoChitin
       }
     );
-    torsoCore.scale.set(1.42, 0.66, 1.0);
+    torsoCore.scale.set(1.42, 0.64, 1.0);
     this.bodyGroup.add(torsoCore);
 
-    // 등 상부 중장갑 오스테오덤(Osteoderm) 골판 덮개
-    const carapacePlate = createSculptedBioLimb(
-      [
-        [0, 0.09, -0.62],
-        [0, 0.13, -0.20],
-        [0, 0.14, 0.22],
-        [0, 0.10, 0.60]
-      ],
-      0.21,
-      0.16,
-      {
-        segments: 20,
-        radialSegs: 12,
-        flutes: 6,
-        fluteDepth: 0.14,
-        ribFreq: 16,
-        ribAmp: 0.10,
-        bulge: 0.15,
-        mat: this.mats.exoCarapaceDome
-      }
-    );
-    carapacePlate.scale.set(1.35, 0.48, 1.0);
-    this.bodyGroup.add(carapacePlate);
+    // 등 상부 파손된 장갑판 조각들 (중간중간 틈새로 내부 기계 척추 노출)
+    for (let p = 0; p < 4; p++) {
+      const zCenter = -0.48 + p * 0.32;
+      const armorShard = new THREE.Mesh(
+        new THREE.BoxGeometry(0.38 - p * 0.02, 0.055, 0.21),
+        p % 2 === 0 ? this.mats.exoCarapaceDome : this.mats.rustedRebar
+      );
+      armorShard.position.set((p % 2 === 0 ? 1 : -1) * 0.02, 0.135, zCenter);
+      armorShard.rotation.set(-0.08, (p - 1.5) * 0.08, (p % 2 === 0 ? 1 : -1) * 0.09);
+      this.bodyGroup.add(armorShard);
+    }
 
-    // 옆구리를 감싸는 노출형 엔도스켈레톤 강철 늑골 프레임 (좌우 6쌍)
+    // 옆구리를 감싸는 노출형 엔도스켈레톤 강철 늑골 프레임 & 얽힌 고압 전선 (좌우 6쌍)
     for (let side of [-1, 1]) {
       for (let r = 0; r < 6; r++) {
         const zPos = -0.46 + r * 0.18;
-        const spread = 0.29 + Math.sin((r / 5) * Math.PI) * 0.08;
+        const spread = 0.30 + Math.sin((r / 5) * Math.PI) * 0.09;
         const rib = createSculptedBioLimb(
           [
-            [side * 0.10, 0.12, zPos],
-            [side * spread, 0.02, zPos + 0.03],
-            [side * (spread * 0.78), -0.10, zPos + 0.01]
+            [side * 0.08, 0.14, zPos],
+            [side * spread, 0.03, zPos + 0.03],
+            [side * (spread * 0.78), -0.11, zPos + 0.01]
           ],
-          0.024,
+          0.026,
           0.014,
-          { segments: 10, flutes: 4, ribFreq: 12, ribAmp: 0.08, mat: this.mats.endoSteel }
+          { segments: 10, flutes: 4, ribFreq: 14, ribAmp: 0.09, mat: this.mats.endoSteel }
         );
         this.bodyGroup.add(rib);
       }
     }
 
-    // 등 중앙에 매립된 생체 반응로 코어 (수면 위에서 은은하게 맥동하며 상태를 표시)
+    // 등 중앙에 매립된 생체 반응로 코어 (수면 위에서 불길하게 맥동)
     this.heartGroup = new THREE.Group();
-    this.heartGroup.position.set(0, 0.17, 0.04);
+    this.heartGroup.position.set(0, 0.18, 0.04);
     this.bodyGroup.add(this.heartGroup);
 
-    const coreGeo = new THREE.OctahedronGeometry(0.085, 1);
+    const coreGeo = new THREE.OctahedronGeometry(0.088, 1);
     this.heartMesh = new THREE.Mesh(coreGeo, this.mats.heartCoreMat);
-    this.heartMesh.scale.set(0.85, 0.55, 1.65);
+    this.heartMesh.scale.set(0.88, 0.58, 1.65);
     this.heartGroup.add(this.heartMesh);
 
     for (let rIdx = 0; rIdx < 2; rIdx++) {
       const ring = new THREE.Mesh(
-        new THREE.TorusGeometry(0.095 + rIdx * 0.018, 0.008, 6, 16),
+        new THREE.TorusGeometry(0.098 + rIdx * 0.02, 0.009, 6, 16),
         this.mats.endoSteel
       );
       ring.rotation.x = Math.PI / 2;
@@ -1466,34 +1498,43 @@ export class CrawlerCrocodileEntity {
     this.heartLight.position.set(0, 0.12, 0);
     this.heartGroup.add(this.heartLight);
 
-    // 수면(Y=0.56m) 위로 날카롭게 솟아올라 물살을 가르는 3열 등줄기 톱니 골판 (Dorsal Scutes)
+    // 수면(Y=0.56m) 위로 날카롭게 솟아오른 나이트메어 녹슨 철근(Rebar) 등가시 & 철조망 코일
     for (let i = 0; i < 7; i++) {
-      const zPos = 0.52 - i * 0.18;
-      const scuteH = 0.18 + Math.sin((i / 6) * Math.PI) * 0.08;
+      const zPos = 0.54 - i * 0.18;
+      const scuteH = 0.22 + Math.sin((i / 6) * Math.PI) * 0.10;
       const centerScute = new THREE.Mesh(
-        new THREE.ConeGeometry(0.055, scuteH, 4),
+        new THREE.ConeGeometry(0.052, scuteH, 4),
         this.mats.endoSteel
       );
-      centerScute.position.set(0, 0.16 + scuteH * 0.42, zPos);
-      centerScute.rotation.x = -0.32;
+      centerScute.position.set(0, 0.16 + scuteH * 0.45, zPos);
+      centerScute.rotation.x = -0.35;
       centerScute.rotation.y = Math.PI / 4;
       this.bodyGroup.add(centerScute);
       this.dorsalScutes.push(centerScute);
 
-      // 좌우 보조 측면 골판 돌기
+      // 등가시를 휘감는 날카로운 철조망 링 & 삐죽 튀어나온 녹슨 철근 핀
+      const wireLoop = new THREE.Mesh(
+        new THREE.TorusGeometry(0.052, 0.005, 5, 10),
+        this.mats.exoChromeTeeth
+      );
+      wireLoop.position.set(0, 0.17 + scuteH * 0.3, zPos);
+      wireLoop.rotation.set(0.5 + i * 0.3, i * 0.4, 0.3);
+      this.bodyGroup.add(wireLoop);
+
+      // 좌우 비대칭 철근/칼날 돌기
       for (let side of [-1, 1]) {
-        const sideScute = new THREE.Mesh(
-          new THREE.ConeGeometry(0.036, scuteH * 0.68, 4),
-          this.mats.exoChitin
+        const rebarSpike = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.006, 0.022, scuteH * 0.85, 5),
+          this.mats.rustedRebar
         );
-        sideScute.position.set(side * 0.16, 0.13 + scuteH * 0.25, zPos - 0.02);
-        sideScute.rotation.x = -0.25;
-        sideScute.rotation.z = -side * 0.35;
-        this.bodyGroup.add(sideScute);
+        rebarSpike.position.set(side * 0.165, 0.14 + scuteH * 0.32, zPos - 0.02);
+        rebarSpike.rotation.x = -0.28 + (i % 2) * 0.14;
+        rebarSpike.rotation.z = -side * (0.38 + (i % 3) * 0.08);
+        this.bodyGroup.add(rebarSpike);
       }
     }
 
-    // 2. 목(Neck) & 장갑 악어 두개골(HeadGroup) + 거대 하악(JawGroup)
+    // 2. 목(Neck) & 나이트메어 악어 두개골(HeadGroup) + 3분할 크래셔 하악(JawGroup)
     this.neckGroup = new THREE.Group();
     this.neckGroup.position.set(0, 0.06, 0.64);
     this.bodyGroup.add(this.neckGroup);
@@ -1502,63 +1543,85 @@ export class CrawlerCrocodileEntity {
     this.headGroup.position.set(0, 0.04, 0.06);
     this.neckGroup.add(this.headGroup);
 
-    // 2-1. 상악 두개골 및 길게 뻗은 악어 주둥이 (Snout, 길이 0.78m)
+    // 2-1. 상악 두개골 및 흉측하게 갈라진 악어 주둥이 (Snout, 길이 0.84m)
     const upperSnout = createSculptedBioLimb(
       [
         [0, 0.06, -0.06],
         [0, 0.07, 0.18],
         [0, 0.04, 0.48],
         [0, 0.03, 0.74],
-        [0, 0.01, 0.84]
+        [0, 0.01, 0.86]
       ],
-      0.165,
-      0.095,
+      0.172,
+      0.098,
       {
         segments: 24,
         radialSegs: 14,
-        flutes: 6,
-        fluteDepth: 0.10,
-        ribFreq: 20,
-        ribAmp: 0.07,
-        bulge: 0.08,
+        flutes: 8,
+        fluteDepth: 0.14,
+        ribFreq: 24,
+        ribAmp: 0.09,
+        bulge: 0.09,
         mat: this.mats.exoChitin
       }
     );
-    upperSnout.scale.set(1.25, 0.52, 1.0);
+    upperSnout.scale.set(1.28, 0.52, 1.0);
     this.headGroup.add(upperSnout);
 
-    // 주둥이 상단 장갑 브릿지 및 비공(Nostril) 돔
+    // 주둥이 상단 노출된 엔도스켈레톤 강철 브릿지 & 피스톤 레일
     const snoutBridge = createSculptedBioLimb(
       [
-        [0, 0.12, 0.02],
-        [0, 0.10, 0.36],
-        [0, 0.08, 0.72]
+        [0, 0.13, 0.02],
+        [0, 0.11, 0.38],
+        [0, 0.085, 0.76]
       ],
-      0.085,
-      0.065,
-      { segments: 14, flutes: 4, ribFreq: 16, ribAmp: 0.08, mat: this.mats.endoSteel }
+      0.09,
+      0.068,
+      { segments: 14, flutes: 4, ribFreq: 18, ribAmp: 0.10, mat: this.mats.endoSteel }
     );
-    snoutBridge.scale.set(1.1, 0.45, 1.0);
+    snoutBridge.scale.set(1.12, 0.46, 1.0);
     this.headGroup.add(snoutBridge);
 
-    // 수면 위로 솟아오른 악어 특유의 잠망경형 안와 융기(Raised Eye Turrets) & 발광 광학 슬릿 센서
+    // FNAF 나이트메어 특유의 깊게 파인 암흑 안와(Hollow Eye Socket) + 붉은 발광 링 + 백색 핀포인트 동공
     for (let side of [-1, 1]) {
       const eyeTurret = new THREE.Mesh(
-        new THREE.BoxGeometry(0.075, 0.065, 0.13),
-        this.mats.endoSteel
+        new THREE.BoxGeometry(0.088, 0.082, 0.145),
+        this.mats.exoCarapaceDome
       );
-      eyeTurret.position.set(side * 0.105, 0.135, 0.12);
-      eyeTurret.rotation.y = side * 0.18;
+      eyeTurret.position.set(side * 0.112, 0.142, 0.12);
+      eyeTurret.rotation.y = side * 0.16;
       this.headGroup.add(eyeTurret);
 
-      // 전방과 측면을 동시에 노려보는 날카로운 발광 안구 센서
-      const eyeSlitFront = new THREE.Mesh(
-        new THREE.BoxGeometry(0.036, 0.022, 0.045),
-        this.mats.heartCoreMat
+      // 안와 주변을 감싸는 톱니형 강철 가드
+      const browSpike = new THREE.Mesh(
+        new THREE.ConeGeometry(0.024, 0.075, 4),
+        this.mats.endoSteel
       );
-      eyeSlitFront.position.set(side * 0.115, 0.142, 0.165);
-      eyeSlitFront.rotation.y = side * 0.25;
-      this.headGroup.add(eyeSlitFront);
+      browSpike.position.set(side * 0.125, 0.19, 0.10);
+      browSpike.rotation.set(-0.3, 0, -side * 0.35);
+      this.headGroup.add(browSpike);
+
+      const eyeNode = new THREE.Group();
+      eyeNode.position.set(side * 0.118, 0.145, 0.188);
+      eyeNode.rotation.y = side * 0.18;
+      this.headGroup.add(eyeNode);
+
+      // 붉은 나이트메어 홍채 링
+      const irisRing = new THREE.Mesh(
+        new THREE.TorusGeometry(0.022, 0.0055, 6, 14),
+        this.mats.nightmareEyeRing
+      );
+      eyeNode.add(irisRing);
+
+      // 중앙 백색 핀포인트 동공
+      const pinPupil = new THREE.Mesh(
+        new THREE.SphereGeometry(0.0085, 6, 6),
+        this.mats.nightmarePupil
+      );
+      pinPupil.position.z = 0.004;
+      eyeNode.add(pinPupil);
+
+      this.nightmareEyes.push(eyeNode);
     }
 
     // 점프스케어 시 주둥이 정면을 비추는 강렬한 라이트 (평상시 0)
@@ -1566,108 +1629,159 @@ export class CrawlerCrocodileEntity {
     this.faceLight.position.set(0, 0.08, 0.92);
     this.headGroup.add(this.faceLight);
 
-    // 상악 좌우 크롬 송곳니 배열 (총 22개 - 크고 작은 이빨이 불규칙하게 맞물리는 악어 치열)
+    // 상악 2중 바늘 치열 (외열 24개 거대 칼날 송곳니 + 내열 18개 바늘 이빨 = 상악만 42개!)
     for (let side of [-1, 1]) {
+      for (let i = 0; i < 12; i++) {
+        const t = i / 11;
+        const tz = 0.12 + t * 0.68;
+        const widthAtZ = (0.152 - t * 0.055) * (i % 3 === 1 ? 1.07 : 0.96);
+        const isBigFang = (i === 1 || i === 4 || i === 7 || i === 10);
+        const toothLen = isBigFang ? 0.085 : 0.056;
+        const toothRad = isBigFang ? 0.013 : 0.0085;
+
+        const tooth = new THREE.Mesh(
+          new THREE.ConeGeometry(toothRad, toothLen, 5),
+          this.mats.exoChromeTeeth
+        );
+        tooth.position.set(side * widthAtZ, -0.025 - toothLen * 0.38, tz);
+        tooth.rotation.x = Math.PI - 0.06;
+        tooth.rotation.z = -side * 0.14;
+        this.headGroup.add(tooth);
+
+        // 내측 제2열 바늘 송곳니 (FNAF Nightmare 이중 치열)
+        if (i < 9) {
+          const innerTooth = new THREE.Mesh(
+            new THREE.ConeGeometry(0.0065, 0.048, 4),
+            this.mats.exoChromeTeeth
+          );
+          innerTooth.position.set(side * (widthAtZ * 0.68), -0.02 - 0.02, tz + 0.03);
+          innerTooth.rotation.x = Math.PI - 0.12;
+          innerTooth.rotation.z = side * 0.08;
+          this.headGroup.add(innerTooth);
+        }
+      }
+    }
+
+    // 2-2. 3갈래 분할 나이트메어 하악 (Tri-Split Lower Mandible: 중앙 프레임 + 좌/우 분할 턱)
+    this.jawGroup = new THREE.Group();
+    this.jawGroup.position.set(0, -0.03, 0.02);
+    this.headGroup.add(this.jawGroup);
+
+    // 중앙 엔도스켈레톤 하악 코어 레일
+    const centerMandible = createSculptedBioLimb(
+      [
+        [0, -0.02, 0.0],
+        [0, -0.045, 0.30],
+        [0, -0.035, 0.68]
+      ],
+      0.065,
+      0.042,
+      { segments: 14, flutes: 4, ribFreq: 18, ribAmp: 0.08, mat: this.mats.endoSteel }
+    );
+    this.jawGroup.add(centerMandible);
+
+    // 좌/우로 쩍 벌어지는 분할 하악 (Split Mandibles)
+    this.jawLeftGroup = new THREE.Group();
+    this.jawRightGroup = new THREE.Group();
+    this.jawGroup.add(this.jawLeftGroup);
+    this.jawGroup.add(this.jawRightGroup);
+
+    for (let side of [-1, 1]) {
+      const targetSplitGroup = side < 0 ? this.jawLeftGroup : this.jawRightGroup;
+
+      const splitJawBranch = createSculptedBioLimb(
+        [
+          [side * 0.06, -0.015, 0.02],
+          [side * 0.115, -0.035, 0.32],
+          [side * 0.088, -0.025, 0.62],
+          [side * 0.045, -0.01, 0.80]
+        ],
+        0.072,
+        0.046,
+        {
+          segments: 18,
+          radialSegs: 10,
+          flutes: 5,
+          fluteDepth: 0.12,
+          ribFreq: 18,
+          ribAmp: 0.08,
+          bulge: 0.08,
+          mat: this.mats.exoChitin
+        }
+      );
+      targetSplitGroup.add(splitJawBranch);
+
+      // 하악 좌우 유압 피스톤 실린더
+      const jawPiston = createSculptedBioLimb(
+        [
+          [side * 0.135, 0.065, 0.04],
+          [side * 0.125, -0.03, 0.24]
+        ],
+        0.019,
+        0.014,
+        { segments: 8, flutes: 4, ribFreq: 10, ribAmp: 0.06, mat: this.mats.exoChromeTeeth }
+      );
+      targetSplitGroup.add(jawPiston);
+
+      // 분할 하악 2중 크롬 바늘 송곳니 배열 (좌우 각 18개 = 총 36개)
       for (let i = 0; i < 11; i++) {
         const t = i / 10;
-        const tz = 0.14 + t * 0.64;
-        const widthAtZ = (0.145 - t * 0.055) * (i === 3 || i === 8 ? 1.06 : 0.96);
-        const isBigFang = (i === 1 || i === 4 || i === 8);
-        const toothLen = isBigFang ? 0.068 : 0.044;
+        const tz = 0.13 + t * 0.64;
+        const widthAtZ = 0.132 - t * 0.052;
+        const isBigFang = (i === 0 || i === 3 || i === 6 || i === 9);
+        const toothLen = isBigFang ? 0.076 : 0.048;
         const toothRad = isBigFang ? 0.012 : 0.008;
 
         const tooth = new THREE.Mesh(
           new THREE.ConeGeometry(toothRad, toothLen, 5),
           this.mats.exoChromeTeeth
         );
-        tooth.position.set(side * widthAtZ, -0.025 - toothLen * 0.35, tz);
-        tooth.rotation.x = Math.PI - 0.08;
-        tooth.rotation.z = -side * 0.12;
-        this.headGroup.add(tooth);
+        tooth.position.set(side * widthAtZ, 0.012 + toothLen * 0.36, tz);
+        tooth.rotation.x = 0.12;
+        tooth.rotation.z = side * 0.14;
+        targetSplitGroup.add(tooth);
+
+        if (i < 7) {
+          const innerFang = new THREE.Mesh(
+            new THREE.ConeGeometry(0.006, 0.042, 4),
+            this.mats.exoChromeTeeth
+          );
+          innerFang.position.set(side * (widthAtZ * 0.65), 0.01 + 0.018, tz + 0.02);
+          innerFang.rotation.x = 0.18;
+          innerFang.rotation.z = -side * 0.12;
+          targetSplitGroup.add(innerFang);
+        }
       }
     }
 
-    // 2-2. 경첩으로 벌어지는 거대 하악 (Lower Jaw, jawGroup)
-    this.jawGroup = new THREE.Group();
-    this.jawGroup.position.set(0, -0.03, 0.02);
-    this.headGroup.add(this.jawGroup);
-
-    const lowerJawBody = createSculptedBioLimb(
-      [
-        [0, -0.02, 0.0],
-        [0, -0.04, 0.26],
-        [0, -0.03, 0.56],
-        [0, -0.01, 0.78]
-      ],
-      0.14,
-      0.082,
-      {
-        segments: 20,
-        radialSegs: 12,
-        flutes: 6,
-        fluteDepth: 0.10,
-        ribFreq: 18,
-        ribAmp: 0.07,
-        bulge: 0.06,
-        mat: this.mats.endoSteel
-      }
-    );
-    lowerJawBody.scale.set(1.18, 0.46, 1.0);
-    this.jawGroup.add(lowerJawBody);
-
-    // 하악 좌우 유압 피스톤 실린더 (입을 벌릴 때 기계적인 위압감 부여)
-    for (let side of [-1, 1]) {
-      const jawPiston = createSculptedBioLimb(
-        [
-          [side * 0.13, 0.06, 0.04],
-          [side * 0.12, -0.03, 0.22]
-        ],
-        0.018,
-        0.014,
-        { segments: 8, flutes: 4, ribFreq: 10, ribAmp: 0.06, mat: this.mats.exoChromeTeeth }
-      );
-      this.jawGroup.add(jawPiston);
-
-      // 하악 좌우 크롬 송곳니 배열 (총 20개)
-      for (let i = 0; i < 10; i++) {
-        const t = i / 9;
-        const tz = 0.15 + t * 0.60;
-        const widthAtZ = 0.125 - t * 0.048;
-        const isBigFang = (i === 2 || i === 6 || i === 9);
-        const toothLen = isBigFang ? 0.062 : 0.040;
-        const toothRad = isBigFang ? 0.011 : 0.0075;
-
-        const tooth = new THREE.Mesh(
-          new THREE.ConeGeometry(toothRad, toothLen, 5),
-          this.mats.exoChromeTeeth
-        );
-        tooth.position.set(side * widthAtZ, 0.01 + toothLen * 0.35, tz);
-        tooth.rotation.x = 0.10;
-        tooth.rotation.z = side * 0.10;
-        this.jawGroup.add(tooth);
-      }
-    }
-
-    // 구강 내부에서 뻗어나오는 작살형 내턱 피스톤 (Inner Jaw Harpoon)
+    // 구강 내부에서 뻗어나오는 나이트메어 제2 엔도스켈레톤 해골 내턱 & 회전 작살 (Inner Nightmare Endo-Skull Jaw)
     this.innerJaw = new THREE.Group();
     this.innerJaw.position.set(0, 0.01, 0.12);
     this.headGroup.add(this.innerJaw);
 
     const harpoonRod = createSculptedBioLimb(
-      [[0, 0, 0], [0, 0, 0.42]],
-      0.022,
-      0.016,
-      { segments: 10, flutes: 4, ribFreq: 16, ribAmp: 0.1, mat: this.mats.endoSteel }
+      [[0, 0, 0], [0, 0, 0.46]],
+      0.032,
+      0.024,
+      { segments: 10, flutes: 6, ribFreq: 18, ribAmp: 0.12, mat: this.mats.endoSteel }
     );
     this.innerJaw.add(harpoonRod);
 
-    for (let k = 0; k < 3; k++) {
-      const ang = (k / 3) * Math.PI * 2;
+    // 내턱 끝에 달린 소형 엔도스켈레톤 금속 아가리와 6개의 갈고리 이빨
+    const innerSkullRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.038, 0.009, 6, 12),
+      this.mats.endoSteel
+    );
+    innerSkullRing.position.z = 0.44;
+    this.innerJaw.add(innerSkullRing);
+
+    for (let k = 0; k < 6; k++) {
+      const ang = (k / 6) * Math.PI * 2;
       const barb = new THREE.Mesh(
-        new THREE.ConeGeometry(0.01, 0.045, 5),
+        new THREE.ConeGeometry(0.011, 0.058, 5),
         this.mats.exoChromeTeeth
       );
-      barb.position.set(Math.cos(ang) * 0.016, Math.sin(ang) * 0.016, 0.43);
+      barb.position.set(Math.cos(ang) * 0.034, Math.sin(ang) * 0.034, 0.47);
       barb.rotation.x = Math.PI / 2;
       this.innerJaw.add(barb);
     }
@@ -1690,7 +1804,7 @@ export class CrawlerCrocodileEntity {
     const hipGroup = new THREE.Group();
     hipGroup.position.set(side * 0.28, -0.02, zOffset);
 
-    // 양옆으로 넓게 벌어져 뻗는 파충류 상완/대퇴골 (Splayed Femur/Humerus)
+    // 양옆으로 넓게 벌어져 뻗는 파충류 상완/대퇴골 + 노출된 강철 피스톤
     const upperLimb = createSculptedBioLimb(
       [
         [0, 0, 0],
@@ -1702,6 +1816,15 @@ export class CrawlerCrocodileEntity {
       { segments: 14, flutes: 6, ribFreq: 16, ribAmp: 0.08, bulge: 0.14, mat: this.mats.exoChitin }
     );
     hipGroup.add(upperLimb);
+
+    // 관절 부위 튀어나온 녹슨 철근 스파이크
+    const jointSpike = new THREE.Mesh(
+      new THREE.ConeGeometry(0.022, 0.09, 4),
+      this.mats.rustedRebar
+    );
+    jointSpike.position.set(side * 0.22, -0.08, isFront ? 0.05 : -0.05);
+    jointSpike.rotation.z = -side * 0.85;
+    hipGroup.add(jointSpike);
 
     const kneeGroup = new THREE.Group();
     kneeGroup.position.set(side * 0.24, -0.14, isFront ? 0.06 : -0.06);
@@ -1724,15 +1847,15 @@ export class CrawlerCrocodileEntity {
     ankleGroup.position.set(side * 0.05, -0.22, 0.06);
     kneeGroup.add(ankleGroup);
 
-    // 4개의 날카로운 물갈퀴 갈퀴 발톱
+    // 4개의 거대하고 날카로운 크롬 갈퀴 발톱
     for (let c = -1.5; c <= 1.5; c += 1.0) {
       const claw = createSculptedBioLimb(
         [
-          [c * 0.022, 0, 0],
-          [c * 0.036, -0.02, 0.09],
-          [c * 0.044, -0.03, 0.17]
+          [c * 0.024, 0, 0],
+          [c * 0.038, -0.02, 0.10],
+          [c * 0.048, -0.035, 0.19]
         ],
-        0.016,
+        0.018,
         0.003,
         { segments: 8, flutes: 4, ribFreq: 8, ribAmp: 0.05, mat: this.mats.exoChromeTeeth }
       );
@@ -1759,20 +1882,19 @@ export class CrawlerCrocodileEntity {
       const radius = 0.135 * (1 - t * 0.78);
       const segCore = new THREE.Mesh(
         new THREE.CylinderGeometry(radius * 0.86, radius, segLen * 1.08, 10),
-        this.mats.exoChitin
+        i % 2 === 0 ? this.mats.exoChitin : this.mats.endoSteel
       );
       segCore.rotation.x = Math.PI / 2;
       segCore.position.z = -segLen * 0.5;
-      // 악어 꼬리처럼 좌우는 납작하고 위아래로 높은 수중 추진 패들 단면
       segCore.scale.set(0.68, 1.24, 1.0);
       segCore.castShadow = true;
       node.add(segCore);
 
       // 수면 위로 솟아오르는 꼬리 상단 삼각 톱니 골판 (Tail Scute Fin)
-      const scuteH = 0.14 * (1 - t * 0.55);
+      const scuteH = 0.15 * (1 - t * 0.52);
       const tailScute = new THREE.Mesh(
-        new THREE.ConeGeometry(radius * 0.42, scuteH, 4),
-        this.mats.endoSteel
+        new THREE.ConeGeometry(radius * 0.44, scuteH, 4),
+        this.mats.exoChromeTeeth
       );
       tailScute.position.set(0, radius * 1.15 + scuteH * 0.35, -segLen * 0.5);
       tailScute.rotation.x = -0.35;
@@ -1805,7 +1927,7 @@ export class CrawlerCrocodileEntity {
     this.time += dt * speedMult;
     const t = this.time;
 
-    // 1. 등 코어 및 안구 박동 업데이트
+    // 1. 등 코어 및 나이트메어 안구 떨림 업데이트
     const beatRate = mode === 'chase' ? 3.2 : mode === 'attack' ? 3.5 : 1.35;
     const beatCycle = (this.time * beatRate) % 1.0;
     const curBeatIdx = Math.floor(this.time * beatRate);
@@ -1844,7 +1966,15 @@ export class CrawlerCrocodileEntity {
       this.coreRings[1].rotation.z -= dt * (mode === 'chase' ? 4.8 : 1.6);
     }
 
-    // 2. 모드별 악어 주둥이(Jaw) 개폐, S자 수중 유영 파동 & 4족 보행 애니메이션
+    // 나이트메어 안구 고주파 마이크로 트위칭
+    for (let eIdx = 0; eIdx < this.nightmareEyes.length; eIdx++) {
+      const eye = this.nightmareEyes[eIdx];
+      const jitter = mode === 'chase' || mode === 'attack' || mode === 'jumpscare' ? 0.12 : 0.04;
+      eye.rotation.x = (Math.random() - 0.5) * jitter;
+      eye.rotation.z += dt * 8.0 * (eIdx === 0 ? 1 : -1);
+    }
+
+    // 2. 모드별 3분할 하악(Tri-Split Jaw) 개폐, S자 수중 유영 파동 & 4족 보행 애니메이션
     if (mode === 'jumpscare') {
       this.jumpscareProgress = (this.jumpscareProgress || 0) + dt;
       const jp = this.jumpscareProgress;
@@ -1861,9 +1991,17 @@ export class CrawlerCrocodileEntity {
       this.headGroup.rotation.y = (Math.random() - 0.5) * 0.12;
       this.headGroup.rotation.z = (Math.random() - 0.5) * 0.18;
 
-      // 거대한 악어 턱을 찢어질 듯 벌리고 내턱 작살을 사출
-      this.jawGroup.rotation.x = 1.02 + Math.sin(jp * 34) * 0.16;
-      this.innerJaw.position.z = 0.18 + surge * 0.36 + Math.sin(jp * 42) * 0.05;
+      // 거대한 악어 하악이 아래로 꺾이면서 동시에 좌우 턱이 양옆으로 쩍 갈라짐!
+      this.jawGroup.rotation.x = 1.05 + Math.sin(jp * 34) * 0.16;
+      if (this.jawLeftGroup && this.jawRightGroup) {
+        const splitAngle = 0.38 + Math.sin(jp * 40) * 0.08;
+        this.jawLeftGroup.rotation.y = -splitAngle;
+        this.jawRightGroup.rotation.y = splitAngle;
+        this.jawLeftGroup.rotation.z = -0.22;
+        this.jawRightGroup.rotation.z = 0.22;
+      }
+      this.innerJaw.position.z = 0.18 + surge * 0.38 + Math.sin(jp * 42) * 0.05;
+      this.innerJaw.rotation.z += dt * 18.0;
 
       for (let i = 0; i < this.tailNodes.length; i++) {
         this.tailNodes[i].rotation.y = Math.sin(jp * 20 - i * 0.4) * 0.18;
@@ -1896,7 +2034,7 @@ export class CrawlerCrocodileEntity {
       sound.playMonsterFootstep(this.soundVolume, isChase);
     }
 
-    // 몸통 S자 좌우 유영 파동 (악어가 물속에서 헤엄치듯 몸통과 꼬리가 물결침)
+    // 몸통 S자 좌우 유영 파동
     const swimWave = isMoving
       ? Math.sin(phase) * (isChase ? 0.18 : 0.10)
       : Math.sin(t * 1.6) * 0.03;
@@ -1909,28 +2047,48 @@ export class CrawlerCrocodileEntity {
     this.bodyGroup.rotation.y = swimWave;
     this.bodyGroup.rotation.z = isMoving ? Math.cos(phase) * (isChase ? 0.06 : 0.03) : 0;
 
-    // 두개골 및 악어 하악(Jaw) 개폐 모션
+    // 두개골 및 3분할 나이트메어 하악(Tri-Split Jaw) 개폐 모션
     if (isAttack) {
-      // 고지대로 도망친 플레이어를 향해 주둥이를 쳐들고 위협적으로 딱딱거리며 깨무는 모션
       const snap = Math.max(0, Math.sin(t * 7.5));
       this.headGroup.rotation.x = -0.28 - snap * 0.18;
       this.headGroup.rotation.y = chaoticNoise(t * 2.2, 11.3) * 0.28;
       this.headGroup.rotation.z = chaoticNoise(t * 3.5, 22.1) * 0.12;
-      this.jawGroup.rotation.x = 0.25 + Math.pow(snap, 0.6) * 0.72;
-      this.innerJaw.position.z = 0.12 + snap * 0.28;
+      this.jawGroup.rotation.x = 0.28 + Math.pow(snap, 0.6) * 0.74;
+      if (this.jawLeftGroup && this.jawRightGroup) {
+        const split = snap * 0.34;
+        this.jawLeftGroup.rotation.y = -split;
+        this.jawRightGroup.rotation.y = split;
+        this.jawLeftGroup.rotation.z = -split * 0.5;
+        this.jawRightGroup.rotation.z = split * 0.5;
+      }
+      this.innerJaw.position.z = 0.12 + snap * 0.30;
+      this.innerJaw.rotation.z += dt * 12.0;
     } else if (isChase) {
-      // 추격 시 거대한 악어 입을 벌린 채 맹렬히 쇄도
+      const chomp = 0.5 + 0.5 * Math.sin(t * 8.5);
       this.headGroup.rotation.x = -0.12 + Math.sin(phase * 2) * 0.06;
-      this.headGroup.rotation.y = -swimWave * 0.65; // 시선은 목표 정면 고정
+      this.headGroup.rotation.y = -swimWave * 0.65;
       this.headGroup.rotation.z = 0;
-      this.jawGroup.rotation.x = 0.56 + Math.sin(t * 8.5) * 0.22;
-      this.innerJaw.position.z = 0.14 + Math.max(0, Math.sin(t * 9.0)) * 0.20;
+      this.jawGroup.rotation.x = 0.42 + chomp * 0.42;
+      if (this.jawLeftGroup && this.jawRightGroup) {
+        const split = 0.14 + chomp * 0.24;
+        this.jawLeftGroup.rotation.y = -split;
+        this.jawRightGroup.rotation.y = split;
+        this.jawLeftGroup.rotation.z = -split * 0.45;
+        this.jawRightGroup.rotation.z = split * 0.45;
+      }
+      this.innerJaw.position.z = 0.14 + chomp * 0.24;
+      this.innerJaw.rotation.z += dt * 10.0;
     } else {
-      // 수중 잠복/순찰 시 수면에 주둥이와 눈만 내밀고 조용히 유영
       this.headGroup.rotation.x = 0.02 + Math.sin(t * 1.5) * 0.02;
       this.headGroup.rotation.y = -swimWave * 0.55 + chaoticNoise(t * 0.9, 14.2) * 0.16;
       this.headGroup.rotation.z = 0;
       this.jawGroup.rotation.x = 0.08 + Math.max(0, chaoticNoise(t * 1.8, 7.7)) * 0.14;
+      if (this.jawLeftGroup && this.jawRightGroup) {
+        this.jawLeftGroup.rotation.y = 0;
+        this.jawRightGroup.rotation.y = 0;
+        this.jawLeftGroup.rotation.z = 0;
+        this.jawRightGroup.rotation.z = 0;
+      }
       this.innerJaw.position.z = 0.08;
     }
 
@@ -1946,7 +2104,7 @@ export class CrawlerCrocodileEntity {
       this.tailNodes[i].rotation.x = Math.cos(wavePhase * 0.5) * 0.025;
     }
 
-    // 대각선 교차 4족 파충류 보행/유영 모션 (좌전+우후 동위상, 우전+좌후 역위상)
+    // 대각선 교차 4족 파충류 보행/유영 모션
     const stride = isChase ? 0.58 : 0.38;
     this.animateCrocLimb(this.frontLeftLeg, phase, stride, isMoving);
     this.animateCrocLimb(this.rearRightLeg, phase, stride, isMoving);
@@ -1967,6 +2125,535 @@ export class CrawlerCrocodileEntity {
     limb.hipGroup.rotation.z = limb.side * lift * 0.26;
     limb.kneeGroup.rotation.z = -limb.side * lift * 0.34;
     limb.ankleGroup.rotation.x = swing * 0.22;
+  }
+}
+
+// ============================================================================
+// 1-C. 제2장(침수 수로) 삼두 괴수 #2: [매복자 악어 / 더 러커 (LurkerCrocodileEntity)]
+// - FNAF 4 프레들(Freddles - 손전등으로 확인/퇴치해야 하는 매복 괴물) + 팩맨 핑키(Pinky - 앞길/퇴로 차단)
+//   포지션의 수로 탈출구(경사로 M / 사다리 H) 잠복 포식자입니다.
+// - 평상시('idle'/'stalk')에는 납작한 곰덫(Bear-Trap) 형태의 몸통 전체가 수면(Y=0.56m) 아래에 완전히 잠겨 있고,
+//   수면 위로는 전선이 감긴 비대칭 잠망경 안구 기둥 2개(Periscope Eye Stalks)와 등줄기 바늘 안테나만 솟아올라
+//   두리번거립니다. 플레이어가 손전등을 비추지 않고 접근하면('chase'/'attack') 수면을 뚫고 솟구치며 180도
+//   강철 곰덫 아가리를 벌려 물어뜯습니다.
+// ============================================================================
+export class LurkerCrocodileEntity {
+  constructor() {
+    this.mats = getMaterials();
+    this.root = new THREE.Group();
+    this.time = Math.random() * 10;
+    this.animMode = 'stalk';
+    this.lastMode = 'stalk';
+
+    this.enableSound = false;
+    this.soundVolume = 0.22;
+    this.eyeStalks = [];
+    this.tailNodes = [];
+    this.limbs = [];
+
+    this.buildLurkerAnatomy();
+  }
+
+  buildLurkerAnatomy() {
+    // 잠복 시(Y=0.14m) 몸통은 수면(0.56m) 아래에 완전히 잠기고, 높이 0.56m의 잠망경 눈기둥만 수면 위로 노출(Y=0.70m)
+    this.bodyGroup = new THREE.Group();
+    this.bodyGroup.position.set(0, 0.14, 0);
+    this.root.add(this.bodyGroup);
+
+    // 1. 넓고 극단적으로 납작한 아귀/악어 거북형 매복 몸통
+    const flatCarapace = createSculptedBioLimb(
+      [
+        [0, 0.02, -0.58],
+        [0, 0.05, -0.15],
+        [0, 0.06, 0.25],
+        [0, 0.03, 0.55]
+      ],
+      0.26,
+      0.22,
+      {
+        segments: 20,
+        radialSegs: 12,
+        flutes: 8,
+        fluteDepth: 0.15,
+        ribFreq: 18,
+        ribAmp: 0.09,
+        bulge: 0.18,
+        mat: this.mats.rustedRebar
+      }
+    );
+    flatCarapace.scale.set(1.65, 0.38, 1.0);
+    this.bodyGroup.add(flatCarapace);
+
+    // 등 위에 촘촘히 박힌 수면 돌파용 바늘 안테나 스파이크 (수면 위로 가시 끝만 살짝 드러남)
+    for (let i = 0; i < 6; i++) {
+      const zPos = 0.36 - i * 0.16;
+      for (let side of [-1, 1]) {
+        const needlePin = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.003, 0.015, 0.42, 4),
+          this.mats.endoSteel
+        );
+        needlePin.position.set(side * (0.14 + (i % 2) * 0.06), 0.28, zPos);
+        needlePin.rotation.z = -side * 0.12;
+        needlePin.rotation.x = -0.15;
+        this.bodyGroup.add(needlePin);
+      }
+    }
+
+    // 2. 수면(0.56m) 위로 불쑥 솟아올라 사방을 감시하는 비대칭 잠망경 안구 기둥 (Periscope Eye Stalks)
+    for (let side of [-1, 1]) {
+      const stalkGroup = new THREE.Group();
+      const stalkHeight = side < 0 ? 0.54 : 0.49; // 비대칭 높이로 기괴함 강조
+      stalkGroup.position.set(side * 0.14, 0.10, 0.38 + (side > 0 ? 0.04 : -0.02));
+      this.bodyGroup.add(stalkGroup);
+
+      // 유연하게 휘어진 강철 주름관 + 전선 기둥
+      const stalkTube = createSculptedBioLimb(
+        [
+          [0, 0, 0],
+          [side * 0.03, stalkHeight * 0.5, -0.02],
+          [0, stalkHeight, 0.03]
+        ],
+        0.026,
+        0.020,
+        { segments: 12, flutes: 4, ribFreq: 20, ribAmp: 0.12, mat: this.mats.endoSteel }
+      );
+      stalkGroup.add(stalkTube);
+
+      // 기둥 상단의 카메라 조리개형 안구 하우징 (수면 Y=0.56m 바로 위 Y=0.64~0.68m에 위치)
+      const turretHead = new THREE.Group();
+      turretHead.position.set(0, stalkHeight, 0.03);
+      stalkGroup.add(turretHead);
+
+      const hood = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.042, 0.036, 0.085, 8),
+        this.mats.exoCarapaceDome
+      );
+      hood.rotation.x = Math.PI / 2;
+      turretHead.add(hood);
+
+      // 호박색/진홍색으로 빛나는 잠망경 링 홍채
+      const eyeRing = new THREE.Mesh(
+        new THREE.TorusGeometry(0.026, 0.006, 6, 14),
+        this.mats.lurkerEyeGlow
+      );
+      eyeRing.position.z = 0.044;
+      turretHead.add(eyeRing);
+
+      const pupil = new THREE.Mesh(
+        new THREE.SphereGeometry(0.010, 6, 6),
+        this.mats.nightmarePupil
+      );
+      pupil.position.z = 0.048;
+      turretHead.add(pupil);
+
+      this.eyeStalks.push({ stalkGroup, turretHead, side });
+    }
+
+    // 3. 180도 벌어지는 곰덫(Bear-Trap) 상악 & 하악 프레임
+    this.upperTrapJaw = new THREE.Group();
+    this.upperTrapJaw.position.set(0, 0.05, 0.46);
+    this.bodyGroup.add(this.upperTrapJaw);
+
+    this.lowerTrapJaw = new THREE.Group();
+    this.lowerTrapJaw.position.set(0, -0.02, 0.46);
+    this.bodyGroup.add(this.lowerTrapJaw);
+
+    for (let isUpper of [true, false]) {
+      const jawTarget = isUpper ? this.upperTrapJaw : this.lowerTrapJaw;
+      const ySign = isUpper ? 1 : -1;
+
+      // 반원형 강철 곰덫 턱 프레임
+      const jawArch = new THREE.Mesh(
+        new THREE.TorusGeometry(0.34, 0.032, 6, 14, Math.PI),
+        this.mats.endoSteel
+      );
+      jawArch.rotation.x = Math.PI / 2;
+      jawArch.scale.set(1.05, 1.35, 0.8);
+      jawTarget.add(jawArch);
+
+      // 곰덫 테두리를 따라 빽빽하게 솟은 15개의 장검형 크롬 이빨
+      for (let i = 0; i < 15; i++) {
+        const ang = (i / 14) * Math.PI;
+        const tx = Math.cos(ang) * 0.34;
+        const tz = Math.sin(ang) * 0.45;
+        const isLong = i % 2 === 0;
+        const fangLen = isLong ? 0.11 : 0.072;
+
+        const fang = new THREE.Mesh(
+          new THREE.ConeGeometry(isLong ? 0.014 : 0.009, fangLen, 4),
+          this.mats.exoChromeTeeth
+        );
+        fang.position.set(tx, -ySign * fangLen * 0.42, tz);
+        fang.rotation.x = isUpper ? Math.PI - 0.12 : 0.12;
+        jawTarget.add(fang);
+      }
+    }
+
+    // 구강 한가운데 박힌 발광 미끼 코어 (Anglerfish Lure Core)
+    const lureCore = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.055, 0),
+      this.mats.lurkerEyeGlow
+    );
+    lureCore.position.set(0, 0.02, 0.62);
+    this.bodyGroup.add(lureCore);
+
+    // 4. 바닥에 납작하게 밀착된 4개의 게/악어 혼합형 갈고리 다리
+    for (let side of [-1, 1]) {
+      for (let isFront of [true, false]) {
+        const legGroup = new THREE.Group();
+        legGroup.position.set(side * 0.36, -0.02, isFront ? 0.26 : -0.28);
+        const legMesh = createSculptedBioLimb(
+          [
+            [0, 0, 0],
+            [side * 0.22, -0.04, isFront ? 0.08 : -0.08],
+            [side * 0.34, -0.14, isFront ? 0.14 : -0.12]
+          ],
+          0.052,
+          0.022,
+          { segments: 10, flutes: 4, ribFreq: 14, ribAmp: 0.08, mat: this.mats.exoChitin }
+        );
+        legGroup.add(legMesh);
+        this.bodyGroup.add(legGroup);
+        this.limbs.push({ legGroup, side, isFront });
+      }
+    }
+
+    // 5. 짧은 8마디 톱니 꼬리
+    let parentTail = this.bodyGroup;
+    for (let i = 0; i < 8; i++) {
+      const node = new THREE.Group();
+      node.position.set(0, 0, i === 0 ? -0.58 : -0.11);
+      const r = 0.12 * (1 - i / 9);
+      const seg = new THREE.Mesh(
+        new THREE.ConeGeometry(r, 0.13, 5),
+        this.mats.exoChitin
+      );
+      seg.rotation.x = -Math.PI / 2;
+      seg.position.z = -0.055;
+      node.add(seg);
+      parentTail.add(node);
+      this.tailNodes.push(node);
+      parentTail = node;
+    }
+  }
+
+  update(dt, mode = this.animMode) {
+    this.animMode = mode;
+    this.time += dt * (mode === 'chase' || mode === 'attack' ? 2.4 : 1.0);
+    const t = this.time;
+
+    const isErupting = mode === 'chase' || mode === 'attack' || mode === 'jumpscare';
+
+    if (isErupting) {
+      // 기습 시: 수면 위로 몸통 전체가 솟구쳐 오르며 곰덫 아가리를 쩍 벌리고 물어뜯음!
+      const snapWave = Math.abs(Math.sin(t * 7.5));
+      this.bodyGroup.position.y = THREE.MathUtils.lerp(this.bodyGroup.position.y, 0.56 + snapWave * 0.14, dt * 10);
+      this.bodyGroup.rotation.x = -0.25 + Math.sin(t * 9.0) * 0.12;
+      this.upperTrapJaw.rotation.x = -0.65 - snapWave * 0.35;
+      this.lowerTrapJaw.rotation.x = 0.65 + snapWave * 0.35;
+    } else {
+      // 잠복 시('idle'/'stalk'): 몸통은 수면(0.56m) 아래 Y=0.14m에 완전히 숨고, 잠망경 눈기둥만 수면 위에서 스캔!
+      this.bodyGroup.position.y = THREE.MathUtils.lerp(this.bodyGroup.position.y, 0.14 + Math.sin(t * 1.8) * 0.012, dt * 6);
+      this.bodyGroup.rotation.x = 0;
+      this.upperTrapJaw.rotation.x = -0.05;
+      this.lowerTrapJaw.rotation.x = 0.05;
+    }
+
+    // 잠망경 안구 기둥이 서로 다른 주기로 기괴하게 두리번거림
+    for (let i = 0; i < this.eyeStalks.length; i++) {
+      const es = this.eyeStalks[i];
+      const lookYaw = Math.sin(t * (1.7 + i * 0.6) + i * 2.1) * 0.55;
+      const lookPitch = Math.cos(t * (2.3 - i * 0.4)) * 0.16;
+      es.turretHead.rotation.y = lookYaw;
+      es.turretHead.rotation.x = lookPitch;
+      es.stalkGroup.rotation.z = Math.sin(t * 2.0 + i) * 0.08;
+    }
+
+    for (let i = 0; i < this.tailNodes.length; i++) {
+      this.tailNodes[i].rotation.y = Math.sin(t * 3.2 - i * 0.5) * (isErupting ? 0.22 : 0.08);
+    }
+
+    for (let i = 0; i < this.limbs.length; i++) {
+      const l = this.limbs[i];
+      l.legGroup.rotation.y = Math.sin(t * 4.0 + i * 1.5) * (isErupting ? 0.35 : 0.08);
+    }
+  }
+}
+
+// ============================================================================
+// 1-D. 제2장(침수 수로) 삼두 괴수 #3: [맹글 악어 / 더 스네어 (SnareMangleEntity)]
+// - FNAF 2/4 맹글(Mangle - 천장에 거꾸로 매달려 라디오 전파 잡음을 내며 덮치는 고철 괴물) 포지션의
+//   천장 낙하 결박(Bind/Snare) 디버퍼입니다.
+// - 배수관 천장 파이프에 매달리는 4개의 긴 거미형 기계 다리, 전선과 호스가 뒤엉킨 기형적인 엔도스켈레톤 척추,
+//   거꾸로 매달린 메인 악어 해골 머리 옆에 전선 목으로 대롱대롱 매달려 흔들리는 '두 번째 부서진 내골격 머리',
+//   그리고 아래쪽 플레이어를 향해 길게 뻗어 내려온 2개의 작살 포획 팔(Snare Harpoon Arms)을 갖춥니다.
+// ============================================================================
+export class SnareMangleEntity {
+  constructor() {
+    this.mats = getMaterials();
+    this.root = new THREE.Group();
+    this.time = Math.random() * 10;
+    this.animMode = 'stalk';
+    this.lastMode = 'stalk';
+
+    this.ceilingLegs = [];
+    this.snareArms = [];
+    this.cableTendrils = [];
+
+    this.buildMangleAnatomy();
+  }
+
+  buildMangleAnatomy() {
+    // 중심 코어 그룹 (쇼케이스 및 인게임에서 Y=1.15m 전후에 매달린 기괴한 고철 덩어리)
+    this.bodyGroup = new THREE.Group();
+    this.bodyGroup.position.set(0, 1.15, 0);
+    this.root.add(this.bodyGroup);
+
+    // 1. 뒤엉킨 엔도스켈레톤 흉곽 & 꼬인 척추 코어
+    const mangledSpine = createSculptedBioLimb(
+      [
+        [0, 0.48, -0.22],
+        [0.08, 0.22, 0.0],
+        [-0.06, -0.05, 0.14],
+        [0, -0.24, 0.22]
+      ],
+      0.11,
+      0.085,
+      {
+        segments: 20,
+        radialSegs: 10,
+        flutes: 6,
+        fluteDepth: 0.18,
+        ribFreq: 26,
+        ribAmp: 0.14,
+        mat: this.mats.endoSteel
+      }
+    );
+    this.bodyGroup.add(mangledSpine);
+
+    // 노출된 강철 갈비뼈 케이지 & 라디오 송수신 코어 박스
+    for (let r = 0; r < 5; r++) {
+      const ribRing = new THREE.Mesh(
+        new THREE.TorusGeometry(0.22 - r * 0.015, 0.016, 6, 12),
+        r % 2 === 0 ? this.mats.endoSteel : this.mats.rustedRebar
+      );
+      ribRing.position.set((r % 2 === 0 ? 1 : -1) * 0.03, 0.28 - r * 0.09, -0.02 + r * 0.04);
+      ribRing.rotation.set(0.4 + r * 0.2, r * 0.3, 0.2);
+      this.bodyGroup.add(ribRing);
+    }
+
+    // 2. 천장 아치를 움켜쥐는 4개의 긴 거미/박쥐형 기계 관절 다리 (위로 뻗음)
+    for (let side of [-1, 1]) {
+      for (let zDir of [-1, 1]) {
+        const legAnchor = new THREE.Group();
+        legAnchor.position.set(side * 0.16, 0.36, zDir * 0.16);
+        this.bodyGroup.add(legAnchor);
+
+        const spiderLeg = createSculptedBioLimb(
+          [
+            [0, 0, 0],
+            [side * 0.38, 0.32, zDir * 0.22],
+            [side * 0.56, 0.58, zDir * 0.36],
+            [side * 0.42, 0.72, zDir * 0.42]
+          ],
+          0.038,
+          0.018,
+          { segments: 14, flutes: 4, ribFreq: 18, ribAmp: 0.10, mat: this.mats.endoSteel }
+        );
+        legAnchor.add(spiderLeg);
+        this.ceilingLegs.push({ legAnchor, side, zDir });
+      }
+    }
+
+    // 3. 거꾸로 매달린 제1 메인 악어 해골 머리 (Upside-Down Primary Croc Skull)
+    this.mainHeadGroup = new THREE.Group();
+    this.mainHeadGroup.position.set(0, -0.22, 0.26);
+    // 천장에서 내려다보듯 뒤집힌 각도
+    this.mainHeadGroup.rotation.z = Math.PI * 0.92;
+    this.bodyGroup.add(this.mainHeadGroup);
+
+    const skullUpper = createSculptedBioLimb(
+      [
+        [0, 0.04, 0],
+        [0, 0.03, 0.32],
+        [0, 0.01, 0.58]
+      ],
+      0.13,
+      0.075,
+      { segments: 14, flutes: 6, ribFreq: 16, ribAmp: 0.08, mat: this.mats.exoChitin }
+    );
+    skullUpper.scale.set(1.15, 0.55, 1.0);
+    this.mainHeadGroup.add(skullUpper);
+
+    for (let side of [-1, 1]) {
+      const mEye = new THREE.Mesh(
+        new THREE.TorusGeometry(0.020, 0.005, 6, 12),
+        this.mats.mangleEyeGlow
+      );
+      mEye.position.set(side * 0.095, 0.08, 0.14);
+      mEye.rotation.y = side * 0.25;
+      this.mainHeadGroup.add(mEye);
+
+      for (let i = 0; i < 8; i++) {
+        const fang = new THREE.Mesh(
+          new THREE.ConeGeometry(0.009, 0.058, 4),
+          this.mats.exoChromeTeeth
+        );
+        fang.position.set(side * (0.11 - i * 0.005), -0.03, 0.12 + i * 0.055);
+        fang.rotation.x = Math.PI;
+        this.mainHeadGroup.add(fang);
+      }
+    }
+
+    this.mainJaw = new THREE.Group();
+    this.mainJaw.position.set(0, -0.02, 0.02);
+    this.mainHeadGroup.add(this.mainJaw);
+
+    const jawBar = createSculptedBioLimb(
+      [[0, -0.02, 0], [0, -0.02, 0.52]],
+      0.095,
+      0.055,
+      { segments: 12, flutes: 4, ribFreq: 14, ribAmp: 0.08, mat: this.mats.endoSteel }
+    );
+    jawBar.scale.set(1.05, 0.45, 1.0);
+    this.mainJaw.add(jawBar);
+
+    // 4. FNAF 맹글의 상징: 전선 목 끝에 대롱대롱 매달린 '두 번째 부서진 엔도스켈레톤 머리' (Second Broken Endo-Head)
+    this.secondNeckGroup = new THREE.Group();
+    this.secondNeckGroup.position.set(0.24, -0.10, 0.12);
+    this.bodyGroup.add(this.secondNeckGroup);
+
+    const cableNeck = createSculptedBioLimb(
+      [
+        [0, 0, 0],
+        [0.12, -0.18, 0.08],
+        [0.06, -0.36, 0.16]
+      ],
+      0.028,
+      0.022,
+      { segments: 10, flutes: 4, ribFreq: 20, ribAmp: 0.12, mat: this.mats.exoSinew }
+    );
+    this.secondNeckGroup.add(cableNeck);
+
+    this.secondHeadGroup = new THREE.Group();
+    this.secondHeadGroup.position.set(0.06, -0.36, 0.16);
+    this.secondHeadGroup.rotation.set(0.3, -0.4, 2.2); // 기괴하게 꺾인 모가지
+    this.secondNeckGroup.add(this.secondHeadGroup);
+
+    const endoCrania = new THREE.Mesh(
+      new THREE.BoxGeometry(0.14, 0.15, 0.18),
+      this.mats.endoSteel
+    );
+    this.secondHeadGroup.add(endoCrania);
+
+    // 한쪽 눈만 남아 깜빡거리는 맹글 서브 헤드 안구
+    const loneEyeRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.024, 0.006, 6, 12),
+      this.mats.mangleEyeGlow
+    );
+    loneEyeRing.position.set(-0.038, 0.02, 0.092);
+    this.secondHeadGroup.add(loneEyeRing);
+
+    const lonePupil = new THREE.Mesh(
+      new THREE.SphereGeometry(0.009, 6, 6),
+      this.mats.nightmarePupil
+    );
+    lonePupil.position.set(-0.038, 0.02, 0.096);
+    this.secondHeadGroup.add(lonePupil);
+
+    // 5. 아래쪽 플레이어를 움켜쥐기 위해 길게 늘어뜨린 2개의 포획 작살 팔 (Snare Harpoon Arms)
+    for (let side of [-1, 1]) {
+      const armGroup = new THREE.Group();
+      armGroup.position.set(side * 0.24, -0.12, 0.18);
+      this.bodyGroup.add(armGroup);
+
+      const upperArm = createSculptedBioLimb(
+        [
+          [0, 0, 0],
+          [side * 0.12, -0.36, 0.10],
+          [side * 0.06, -0.74, 0.22]
+        ],
+        0.045,
+        0.028,
+        { segments: 14, flutes: 5, ribFreq: 18, ribAmp: 0.10, mat: this.mats.endoSteel }
+      );
+      armGroup.add(upperArm);
+
+      // 끝부분 3갈래 포획 클램프 갈고리
+      for (let k = 0; k < 3; k++) {
+        const ang = (k / 3) * Math.PI * 2;
+        const hook = new THREE.Mesh(
+          new THREE.ConeGeometry(0.014, 0.16, 4),
+          this.mats.exoChromeTeeth
+        );
+        hook.position.set(
+          side * 0.06 + Math.cos(ang) * 0.045,
+          -0.80,
+          0.22 + Math.sin(ang) * 0.045
+        );
+        hook.rotation.x = Math.PI - 0.35;
+        armGroup.add(hook);
+      }
+
+      this.snareArms.push({ armGroup, side });
+    }
+
+    // 6. 아래로 축 늘어진 끊어진 전선 가닥들
+    for (let c = 0; c < 5; c++) {
+      const tendril = createSculptedBioLimb(
+        [
+          [(c - 2) * 0.08, 0.0, -0.05],
+          [(c - 2) * 0.11, -0.42, 0.04],
+          [(c - 2) * 0.09, -0.78, -0.02]
+        ],
+        0.012,
+        0.005,
+        { segments: 10, flutes: 3, ribFreq: 12, ribAmp: 0.06, mat: this.mats.exoSinew }
+      );
+      this.bodyGroup.add(tendril);
+      this.cableTendrils.push(tendril);
+    }
+  }
+
+  update(dt, mode = this.animMode) {
+    this.animMode = mode;
+    const isSnaring = mode === 'chase' || mode === 'attack' || mode === 'jumpscare';
+    this.time += dt * (isSnaring ? 3.2 : 1.15);
+    const t = this.time;
+
+    // 몸통 전체가 천장에서 불규칙한 진자 운동 + 기계 경련
+    this.bodyGroup.rotation.y = Math.sin(t * 1.4) * (isSnaring ? 0.35 : 0.18);
+    this.bodyGroup.rotation.z = Math.cos(t * 1.9) * (isSnaring ? 0.18 : 0.06);
+
+    // 메인 악어 해골 턱 딱딱거림
+    if (this.mainJaw) {
+      this.mainJaw.rotation.x = 0.25 + Math.abs(Math.sin(t * (isSnaring ? 11.0 : 3.5))) * (isSnaring ? 0.65 : 0.22);
+    }
+
+    // 두 번째 부서진 엔도스켈레톤 머리가 전선 목에 매달려 덜렁거림
+    if (this.secondNeckGroup && this.secondHeadGroup) {
+      this.secondNeckGroup.rotation.z = Math.sin(t * 2.8) * 0.28;
+      this.secondNeckGroup.rotation.x = Math.cos(t * 2.1) * 0.22;
+      this.secondHeadGroup.rotation.z = 2.2 + chaoticNoise(t * 4.5, 9.1) * 0.45;
+    }
+
+    // 아래로 뻗은 2개의 작살 포획 팔이 허공을 휘젓거나 플레이어를 조임
+    for (let i = 0; i < this.snareArms.length; i++) {
+      const arm = this.snareArms[i];
+      if (isSnaring) {
+        arm.armGroup.rotation.x = -0.45 + Math.sin(t * 9.0 + i * Math.PI) * 0.38;
+        arm.armGroup.rotation.z = -arm.side * (0.28 + Math.sin(t * 7.0) * 0.22);
+      } else {
+        arm.armGroup.rotation.x = Math.sin(t * 2.0 + i * 1.8) * 0.18;
+        arm.armGroup.rotation.z = Math.cos(t * 1.6 + i) * 0.12;
+      }
+    }
+
+    // 천장 거미 다리 꿈틀거림
+    for (let i = 0; i < this.ceilingLegs.length; i++) {
+      const leg = this.ceilingLegs[i];
+      leg.legAnchor.rotation.z = Math.sin(t * 3.0 + i * 1.2) * (isSnaring ? 0.22 : 0.07);
+    }
   }
 }
 

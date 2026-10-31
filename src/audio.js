@@ -1411,6 +1411,219 @@ class AudioManager {
       noise.stop(t + dur);
     }
   }
+
+  /**
+   * 챕터 2 맹글 크롤러(#3) 천장 잠복 시 FNAF Mangle 풍 기괴한 라디오 전파 혼선 + 금속 갈리는 소리
+   */
+  playMangleStatic(volume = 0.22) {
+    this.init();
+    if (!this.ctx || this.isMuted) return;
+
+    const t = this.ctx.currentTime;
+    const dur = 0.38;
+    const vol = Math.max(0.02, Math.min(0.6, volume));
+
+    // 1. 깨진 무전기 정전기 노이즈 버스트
+    if (this.noiseBuffer) {
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = this.noiseBuffer;
+      const bp = this.ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.setValueAtTime(1450 + Math.random() * 900, t);
+      bp.Q.setValueAtTime(4.2, t);
+
+      const nGain = this.ctx.createGain();
+      nGain.gain.setValueAtTime(vol * 0.55, t);
+      nGain.gain.setValueAtTime(vol * 0.12, t + 0.09);
+      nGain.gain.setValueAtTime(vol * 0.65, t + 0.16);
+      nGain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+
+      noise.connect(bp);
+      bp.connect(nGain);
+      nGain.connect(this.masterGain || this.ctx.destination);
+      noise.start(t);
+      noise.stop(t + dur);
+    }
+
+    // 2. 변조된 고주파 전자 반송파 워블 (Garbled Radio Carrier)
+    const carrier = this.ctx.createOscillator();
+    const mod = this.ctx.createOscillator();
+    const modGain = this.ctx.createGain();
+    const cGain = this.ctx.createGain();
+
+    carrier.type = 'sawtooth';
+    carrier.frequency.setValueAtTime(620 + Math.random() * 480, t);
+    carrier.frequency.linearRampToValueAtTime(1180 - Math.random() * 520, t + dur * 0.7);
+
+    mod.type = 'square';
+    mod.frequency.setValueAtTime(28 + Math.random() * 35, t);
+    modGain.gain.setValueAtTime(340, t);
+
+    cGain.gain.setValueAtTime(vol * 0.28, t);
+    cGain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+
+    mod.connect(modGain);
+    modGain.connect(carrier.frequency);
+    carrier.connect(cGain);
+    cGain.connect(this.masterGain || this.ctx.destination);
+
+    mod.start(t);
+    carrier.start(t);
+    mod.stop(t + dur);
+    carrier.stop(t + dur);
+  }
+
+  /**
+   * 챕터 2 맹글 크롤러(#3)가 천장에서 덮쳐 플레이어를 결박할 때 + 스토커 호출 괴성
+   */
+  playSnareGrab() {
+    this.init();
+    if (!this.ctx || this.isMuted) return;
+
+    const t = this.ctx.currentTime;
+    const dur = 0.75;
+
+    // 1. 거대한 수면 낙하 충격음 + 강철 사슬 결박 클램프
+    const thud = this.ctx.createOscillator();
+    const thudGain = this.ctx.createGain();
+    thud.type = 'triangle';
+    thud.frequency.setValueAtTime(160, t);
+    thud.frequency.exponentialRampToValueAtTime(34, t + 0.35);
+    thudGain.gain.setValueAtTime(0.55, t);
+    thudGain.gain.exponentialRampToValueAtTime(0.001, t + 0.38);
+    thud.connect(thudGain);
+    thudGain.connect(this.masterGain || this.ctx.destination);
+    thud.start(t);
+    thud.stop(t + 0.4);
+
+    // 2. 스토커(#1)를 호출하는 찢어지는 이중 사이렌 괴성
+    [780, 1140].forEach((freq, idx) => {
+      const shriek = this.ctx.createOscillator();
+      const sGain = this.ctx.createGain();
+      shriek.type = idx === 0 ? 'sawtooth' : 'square';
+      shriek.frequency.setValueAtTime(freq, t + 0.04);
+      shriek.frequency.exponentialRampToValueAtTime(freq * 1.45, t + 0.24);
+      shriek.frequency.exponentialRampToValueAtTime(freq * 0.72, t + dur);
+
+      sGain.gain.setValueAtTime(0.24, t + 0.04);
+      sGain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+
+      shriek.connect(sGain);
+      sGain.connect(this.masterGain || this.ctx.destination);
+      shriek.start(t + 0.04);
+      shriek.stop(t + dur);
+    });
+
+    if (this.noiseBuffer) {
+      const splash = this.ctx.createBufferSource();
+      splash.buffer = this.noiseBuffer;
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(920, t);
+      const nGain = this.ctx.createGain();
+      nGain.gain.setValueAtTime(0.42, t);
+      nGain.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+      splash.connect(filter);
+      filter.connect(nGain);
+      nGain.connect(this.masterGain || this.ctx.destination);
+      splash.start(t);
+      splash.stop(t + 0.56);
+    }
+  }
+
+  /**
+   * 챕터 2 매복자 악어(#2)가 손전등/조명탄 불빛에 눈이 부셔 물속으로 급잠수하며 퇴각할 때
+   */
+  playLurkerSubmerge() {
+    this.init();
+    if (!this.ctx || this.isMuted) return;
+
+    const t = this.ctx.currentTime;
+    const dur = 0.48;
+
+    // 금속 조리개 수축음 + 잠수 저음
+    const osc = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(520, t);
+    osc.frequency.exponentialRampToValueAtTime(68, t + dur);
+    gain.gain.setValueAtTime(0.28, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    osc.connect(gain);
+    gain.connect(this.masterGain || this.ctx.destination);
+    osc.start(t);
+    osc.stop(t + dur);
+
+    if (this.noiseBuffer) {
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = this.noiseBuffer;
+      const lp = this.ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.setValueAtTime(1100, t);
+      lp.frequency.exponentialRampToValueAtTime(220, t + dur);
+      const nGain = this.ctx.createGain();
+      nGain.gain.setValueAtTime(0.32, t);
+      nGain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      noise.connect(lp);
+      lp.connect(nGain);
+      nGain.connect(this.masterGain || this.ctx.destination);
+      noise.start(t);
+      noise.stop(t + dur);
+    }
+  }
+
+  /**
+   * 챕터 2 매복자 악어(#2)가 경사로/사다리 입구에서 수면을 뚫고 솟구치며 덫처럼 깨물 때
+   */
+  playLurkerBite() {
+    this.init();
+    if (!this.ctx || this.isMuted) return;
+
+    const t = this.ctx.currentTime;
+    const dur = 0.55;
+
+    // 1. 강철 곰덫(Bear-Trap) 맞물리는 파열음
+    const snap = this.ctx.createOscillator();
+    const snapGain = this.ctx.createGain();
+    snap.type = 'square';
+    snap.frequency.setValueAtTime(280, t);
+    snap.frequency.exponentialRampToValueAtTime(42, t + 0.25);
+    snapGain.gain.setValueAtTime(0.52, t);
+    snapGain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+    snap.connect(snapGain);
+    snapGain.connect(this.masterGain || this.ctx.destination);
+    snap.start(t);
+    snap.stop(t + 0.3);
+
+    // 2. 포효 저음
+    const roar = this.ctx.createOscillator();
+    const roarGain = this.ctx.createGain();
+    roar.type = 'sawtooth';
+    roar.frequency.setValueAtTime(145, t + 0.03);
+    roar.frequency.exponentialRampToValueAtTime(55, t + dur);
+    roarGain.gain.setValueAtTime(0.38, t + 0.03);
+    roarGain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    roar.connect(roarGain);
+    roarGain.connect(this.masterGain || this.ctx.destination);
+    roar.start(t + 0.03);
+    roar.stop(t + dur);
+
+    if (this.noiseBuffer) {
+      const burst = this.ctx.createBufferSource();
+      burst.buffer = this.noiseBuffer;
+      const bp = this.ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.setValueAtTime(840, t);
+      const nGain = this.ctx.createGain();
+      nGain.gain.setValueAtTime(0.45, t);
+      nGain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+      burst.connect(bp);
+      bp.connect(nGain);
+      nGain.connect(this.masterGain || this.ctx.destination);
+      burst.start(t);
+      burst.stop(t + 0.46);
+    }
+  }
 }
 
 export const sound = new AudioManager();

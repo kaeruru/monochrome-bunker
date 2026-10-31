@@ -1,27 +1,32 @@
 import * as THREE from 'three';
-import { MonsterEntity, PlayerCharacterEntity, CrawlerCrocodileEntity } from './models.js';
+import {
+  MonsterEntity,
+  PlayerCharacterEntity,
+  CrawlerCrocodileEntity,
+  LurkerCrocodileEntity,
+  SnareMangleEntity
+} from './models.js';
 import { createIndustrialEnvMap } from './textures.js';
 
 /**
  * 3D 괴물 & 캐릭터 모델링 쇼케이스 뷰어 (360도 회전 / 줌 / 애니메이션 테스트 스튜디오)
  * - 마우스/터치 드래그로 360도 회전, 마우스 휠로 줌인/줌아웃
- * - 괴물 단독 / 플레이어(친구) 단독 / 나란히 크기 비교 모드 지원
+ * - 제2장 수로 삼두 괴수(#1 스토커 악어, #2 매복자 악어, #3 맹글 악어), 제1장 스토커, 전술 대원 관찰 지원
  * - 애니메이션 상태(대기, 보행, 추격, 공격) 및 조명(스튜디오 밝은 조명 vs 호러 핀조명) 전환
  */
 export class ModelShowcaseViewer {
   constructor(onStateChange = null) {
     this.onStateChange = onStateChange;
     this.isOpen = false;
-    this.viewTarget = 'compare'; // 'monster' | 'player' | 'compare'
-    this.animState = 'stalk';    // 'idle' | 'stalk' | 'chase' | 'attack'
+    this.viewTarget = 'trio';     // 'trio' | 'crawler' | 'lurker' | 'snare' | 'monster' | 'player' | 'compare'
+    this.animState = 'chase';     // 'idle' | 'stalk' | 'chase' | 'attack'
     this.lightingMode = 'studio'; // 'studio' | 'horror'
     this.soundEnabled = true;
 
-    // 오빗 카메라 상태 (측면 45도 각도에서 장두형 두개골, 등 파이프, 긴 칼날 꼬리가 한눈에 보이도록 설정)
-    this.orbitYaw = 0.68;
-    this.orbitPitch = 0.14;
-    this.orbitDist = 3.5;
-    this.orbitCenterY = 1.22;
+    this.orbitYaw = 0.55;
+    this.orbitPitch = 0.16;
+    this.orbitDist = 3.8;
+    this.orbitCenterY = 0.85;
     this.autoRotate = true;
 
     this.isDragging = false;
@@ -55,26 +60,29 @@ export class ModelShowcaseViewer {
       <div class="mv-Viewport">
         <canvas id="modelViewerCanvas"></canvas>
         <div id="mv-info-card">
-          <h4 id="mv-info-title">[COMPARE] 괴물 vs 전술 대원 체격/디테일 비교</h4>
-          <p id="mv-info-desc">좌측: 제노-엔도스켈레톤 스토커 (2.65m, 개방형 갈비뼈·생체 심장 코어·24마디 칼날 꼬리) / 우측: CBRN 전술 대원 (1.82m, 방탄 헬멧·고글·방독면·플레이트 캐리어)</p>
+          <h4 id="mv-info-title">[THE FLOODED TRIO] 제2장 침수 수로 삼두 괴수</h4>
+          <p id="mv-info-desc">좌측: #2 매복자 악어 (잠망경 안구·180도 곰덫 턱) / 중앙: #1 스토커 악어 (3분할 나이트메어 하악·노출 척추·철근 가시) / 우측: #3 맹글 악어 (천장 거미 다리·듀얼 엔도 헤드·포획 작살 팔)</p>
         </div>
       </div>
 
       <div class="mv-toolbar">
         <div class="mv-tool-group">
           <span class="mv-label">관찰 대상:</span>
-          <button class="tool-btn mv-target-btn active" data-target="compare">[COMPARE] 체격 나란히 비교</button>
-          <button class="tool-btn mv-target-btn" data-target="monster">[STALKER] 제1장 스토커</button>
-          <button class="tool-btn mv-target-btn" data-target="crawler">[CRAWLER] 제2장 수로 악어</button>
+          <button class="tool-btn mv-target-btn active" data-target="trio">[TRIO] 제2장 삼두 괴수</button>
+          <button class="tool-btn mv-target-btn" data-target="crawler">[#1 RIPPER] 스토커 악어</button>
+          <button class="tool-btn mv-target-btn" data-target="lurker">[#2 LURKER] 매복자 악어</button>
+          <button class="tool-btn mv-target-btn" data-target="snare">[#3 SNARE] 맹글 악어</button>
+          <button class="tool-btn mv-target-btn" data-target="monster">[CH.1] 제1장 스토커</button>
           <button class="tool-btn mv-target-btn" data-target="player">[PLAYER] 전술 대원</button>
+          <button class="tool-btn mv-target-btn" data-target="compare">[COMPARE] 제1장 비교</button>
         </div>
 
         <div class="mv-tool-group">
           <span class="mv-label">애니메이션 모션:</span>
-          <button class="tool-btn mv-anim-btn" data-anim="idle">대기 / 호흡 (IDLE)</button>
-          <button class="tool-btn mv-anim-btn active" data-anim="stalk">순찰 보행 (STALK)</button>
-          <button class="tool-btn mv-anim-btn" data-anim="chase">폭주 질주 (CHASE)</button>
-          <button class="tool-btn mv-anim-btn" data-anim="attack">포효 / 내려찍기 (ATTACK)</button>
+          <button class="tool-btn mv-anim-btn" data-anim="idle">대기 / 잠복 (IDLE)</button>
+          <button class="tool-btn mv-anim-btn" data-anim="stalk">순찰 / 잠망경 (STALK)</button>
+          <button class="tool-btn mv-anim-btn active" data-anim="chase">광폭 추격 / 돌출 (CHASE)</button>
+          <button class="tool-btn mv-anim-btn" data-anim="attack">처형 / 결박 (ATTACK)</button>
         </div>
       </div>
     `;
@@ -90,7 +98,7 @@ export class ModelShowcaseViewer {
     this.camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 50);
 
     // 바닥 원형 턴테이블 그리드 페데스탈
-    const pedestalGeo = new THREE.CylinderGeometry(2.4, 2.55, 0.12, 48);
+    const pedestalGeo = new THREE.CylinderGeometry(2.8, 2.95, 0.12, 48);
     const pedestalMat = new THREE.MeshStandardMaterial({
       color: 0x1c1c1c,
       roughness: 0.6,
@@ -101,11 +109,11 @@ export class ModelShowcaseViewer {
     pedestal.receiveShadow = true;
     this.scene.add(pedestal);
 
-    const grid = new THREE.GridHelper(4.4, 16, 0x555555, 0x2a2a2a);
+    const grid = new THREE.GridHelper(5.2, 18, 0x555555, 0x2a2a2a);
     grid.position.y = 0.005;
     this.scene.add(grid);
 
-    // 조명 세팅 (심장 코어 발광과 엔도스켈레톤 음영이 돋보이도록 조도 최적화)
+    // 조명 세팅
     this.ambientLight = new THREE.AmbientLight(0xd0d8e0, 0.85);
     this.scene.add(this.ambientLight);
 
@@ -120,14 +128,17 @@ export class ModelShowcaseViewer {
     // 모델 인스턴스 생성
     this.monster = new MonsterEntity();
     this.crawler = new CrawlerCrocodileEntity();
+    this.lurker = new LurkerCrocodileEntity();
+    this.snare = new SnareMangleEntity();
     this.playerModel = new PlayerCharacterEntity('동료 대원 #02', false);
 
     this.scene.add(this.monster.root);
     this.scene.add(this.crawler.root);
+    this.scene.add(this.lurker.root);
+    this.scene.add(this.snare.root);
     this.scene.add(this.playerModel.root);
 
-    this.crawler.root.visible = false;
-    this.applyViewTarget('compare');
+    this.applyViewTarget('trio');
   }
 
   ensureRenderer() {
@@ -146,18 +157,66 @@ export class ModelShowcaseViewer {
   applyViewTarget(target) {
     this.viewTarget = target;
     const isMonsterSound = this.isOpen && this.soundEnabled && (target === 'monster' || target === 'compare');
-    const isCrawlerSound = this.isOpen && this.soundEnabled && target === 'crawler';
+    const isCrawlerSound = this.isOpen && this.soundEnabled && (target === 'crawler' || target === 'trio');
     this.monster.enableSound = isMonsterSound;
     if (this.crawler) this.crawler.enableSound = isCrawlerSound;
 
     const titleEl = document.getElementById('mv-info-title');
     const descEl = document.getElementById('mv-info-desc');
 
-    if (target === 'monster') {
+    this.monster.root.visible = false;
+    this.crawler.root.visible = false;
+    this.lurker.root.visible = false;
+    this.snare.root.visible = false;
+    this.playerModel.root.visible = false;
+
+    if (target === 'trio') {
+      this.lurker.root.visible = true;
+      this.crawler.root.visible = true;
+      this.snare.root.visible = true;
+      this.lurker.root.position.set(-1.35, 0, 0);
+      this.crawler.root.position.set(0, 0, 0);
+      this.snare.root.position.set(1.35, -0.1, 0);
+      this.orbitDist = 3.9;
+      this.orbitCenterY = 0.78;
+      if (titleEl) titleEl.textContent = '[THE FLOODED TRIO] 제2장 침수 수로 나이트메어 삼두 괴수';
+      if (descEl) {
+        descEl.textContent =
+          '좌측: #2 매복자 악어(경사로/사다리 입구 잠복, 불빛으로 퇴치) | 중앙: #1 스토커 악어(3분할 나이트메어 하악 주력 추격자) | 우측: #3 맹글 악어(천장 낙하 결박 및 스토커 호출)';
+      }
+    } else if (target === 'crawler') {
+      this.crawler.root.visible = true;
+      this.crawler.root.position.set(0, 0, 0);
+      this.orbitDist = 3.1;
+      this.orbitCenterY = 0.55;
+      if (titleEl) titleEl.textContent = '[#1 THE RIPPER] 제2장 스토커 악어 (Nightmare Freddy 포지션)';
+      if (descEl) {
+        descEl.textContent =
+          '물소리 파동과 맹글의 괴성을 추적하는 주력 처형 괴수입니다. 뜯겨나간 갑피 사이로 노출된 엔도 척추, 녹슨 철근 가시와 철조망, 추격/공격 시 좌·우·하단 3갈래로 쪼개지는 나이트메어 하악을 갖춥니다.';
+      }
+    } else if (target === 'lurker') {
+      this.lurker.root.visible = true;
+      this.lurker.root.position.set(0, 0, 0);
+      this.orbitDist = 2.8;
+      this.orbitCenterY = 0.48;
+      if (titleEl) titleEl.textContent = '[#2 THE LURKER] 제2장 매복자 악어 (FNAF Freddles / Pinky 포지션)';
+      if (descEl) {
+        descEl.textContent =
+          '경사로(M)와 사다리(H) 입구 수면 아래에 몸을 숨긴 채 비대칭 잠망경 안구 기둥 2개만 물 위로 내밀고 감시합니다. 불빛을 비추면 도망치지만, 그냥 밟으면 180도 곰덫 아가리로 기습합니다. ([STALK]와 [CHASE] 모션을 비교해보세요)';
+      }
+    } else if (target === 'snare') {
+      this.snare.root.visible = true;
+      this.snare.root.position.set(0, -0.1, 0);
+      this.orbitDist = 3.0;
+      this.orbitCenterY = 0.95;
+      if (titleEl) titleEl.textContent = '[#3 THE SNARE] 제2장 맹글 악어 (FNAF Mangle 포지션)';
+      if (descEl) {
+        descEl.textContent =
+          '배수관 천장에 거꾸로 매달려 기괴한 라디오 전파 잡음을 내는 고철 괴수입니다. 거꾸로 달린 악어 해골 옆에 전선 목으로 매달린 두 번째 부서진 내골격 머리와 2개의 포획 작살 팔로 플레이어를 결박하고 #1 스토커 악어를 불러모읍니다.';
+      }
+    } else if (target === 'monster') {
       this.monster.root.visible = true;
       this.monster.root.position.set(0, 0, 0);
-      if (this.crawler) this.crawler.root.visible = false;
-      this.playerModel.root.visible = false;
       this.orbitDist = 3.0;
       this.orbitCenterY = 1.25;
       if (titleEl) titleEl.textContent = '[STALKER] 제1장 제노-엔도스켈레톤 스토커 (2.65m)';
@@ -165,23 +224,7 @@ export class ModelShowcaseViewer {
         descEl.textContent =
           '속이 들여다보이는 16개의 엔도스켈레톤 금속 갈비뼈와 유압 피스톤, 흉곽 중앙에 동맥 케이블로 매달려 박동하는 심장 코어(Heart Core), 그리고 폭주/포효 사운드가 결합된 생체-기계 괴물입니다.';
       }
-    } else if (target === 'crawler') {
-      this.monster.root.visible = false;
-      if (this.crawler) {
-        this.crawler.root.visible = true;
-        this.crawler.root.position.set(0, 0, 0);
-      }
-      this.playerModel.root.visible = false;
-      this.orbitDist = 3.2;
-      this.orbitCenterY = 0.55;
-      if (titleEl) titleEl.textContent = '[CRAWLER] 제2장 침수 수로 악어형 크롤러 (Sewer Crocodile)';
-      if (descEl) {
-        descEl.textContent =
-          '침수 하수관(수면 Y=0.56m)에서 서식하는 악어형 생체기계 포식자입니다. 3열 톱니 등줄기 골판, 거대한 이중 크롬 하악, S자 수중 유영 꼬리 파동 모션을 갖추고 있습니다.';
-      }
     } else if (target === 'player') {
-      this.monster.root.visible = false;
-      if (this.crawler) this.crawler.root.visible = false;
       this.playerModel.root.visible = true;
       this.playerModel.root.position.set(0, 0, 0);
       this.orbitDist = 2.45;
@@ -193,7 +236,6 @@ export class ModelShowcaseViewer {
       }
     } else {
       this.monster.root.visible = true;
-      if (this.crawler) this.crawler.root.visible = false;
       this.playerModel.root.visible = true;
       this.monster.root.position.set(-0.78, 0, 0);
       this.playerModel.root.position.set(0.78, 0, 0);
@@ -202,7 +244,7 @@ export class ModelShowcaseViewer {
       if (titleEl) titleEl.textContent = '[COMPARE] 제노-엔도스켈레톤(2.6m) vs 성인 기동대원(1.82m)';
       if (descEl) {
         descEl.textContent =
-          '하단의 [폭주 질주 (CHASE)] 또는 [포효 / 내려찍기 (ATTACK)] 버튼을 눌러 괴성 사운드와 흉곽 심장 코어 박동, 전갈 꼬리 모션을 확인해보세요.';
+          '하단의 [광폭 추격 (CHASE)] 또는 [처형 / 결박 (ATTACK)] 버튼을 눌러 괴성 사운드와 흉곽 심장 코어 박동, 전갈 꼬리 모션을 확인해보세요.';
       }
     }
   }
@@ -356,6 +398,12 @@ export class ModelShowcaseViewer {
     }
     if (this.crawler && this.crawler.root.visible) {
       this.crawler.update(dt, this.animState);
+    }
+    if (this.lurker && this.lurker.root.visible) {
+      this.lurker.update(dt, this.animState);
+    }
+    if (this.snare && this.snare.root.visible) {
+      this.snare.update(dt, this.animState);
     }
     if (this.playerModel && this.playerModel.root.visible) {
       const playerMode = (this.animState === 'stalk' || this.animState === 'chase') ? 'walk' : 'look';
