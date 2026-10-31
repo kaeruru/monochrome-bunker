@@ -30,6 +30,7 @@
         <span class="hud-title">BUNKER</span>
       </div>
       <div class="hud-right">
+        <button id="btn-open-tactical-map" class="hud-btn" title="전술 작전 지도 [M]">지도 [M]</button>
         <button id="btn-open-settings" class="hud-btn" title="설정">설정 [ESC]</button>
         <button id="btn-fullscreen" class="hud-btn" title="전체화면">전체화면</button>
       </div>
@@ -84,6 +85,11 @@
         <span class="btn-label">DROP</span>
       </button>
 
+      <button id="btn-touch-map" class="touch-btn hud-touch-item" data-hud-id="map" title="전술 작전 지도">
+        <span class="btn-sub">[ M ]</span>
+        <span class="btn-label">MAP</span>
+      </button>
+
       <button id="btn-touch-cctv" class="touch-btn hud-touch-item" data-hud-id="cctv" title="보안 콘솔 CCTV">
         <span class="btn-sub">[ CAM ]</span>
         <span class="btn-label">CCTV</span>
@@ -126,6 +132,41 @@
         </div>
         <div class="stamina-bar-bg">
           <div id="stamina-bar-fill"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 시설 종합 전술 작전 지도 오버레이 모달 (M 키 / 벙커 지도판 / MAP 버튼) -->
+    <div id="tactical-map-modal" class="hidden">
+      <div class="tactical-map-backdrop"></div>
+      <div class="tactical-map-container">
+        <div class="tactical-map-header">
+          <div class="tactical-map-title-group">
+            <span class="tactical-map-badge">[TACTICAL SCHEMATIC]</span>
+            <h2 id="tactical-map-title">FACILITY SECTOR TACTICAL MAP</h2>
+            <span id="tactical-map-subtitle" class="tactical-map-sub">시설 종합 작전 배치도 // 실시간 위치 추적</span>
+          </div>
+          <button type="button" id="btn-close-tactical-map" class="tactical-map-close-btn" title="지도 닫기 [ESC / M]">닫기 [ESC / M]</button>
+        </div>
+
+        <div class="tactical-map-canvas-wrapper">
+          <canvas id="fullscreen-map-canvas" width="1024" height="640"></canvas>
+          <div class="tactical-map-scanline"></div>
+        </div>
+
+        <div class="tactical-map-footer">
+          <div class="tactical-map-legend">
+            <span class="legend-chip ch-water">[W] 수로 침수</span>
+            <span class="legend-chip ch-ramp">[M] 경사로</span>
+            <span class="legend-chip ch-ladder">[H] 사다리</span>
+            <span class="legend-chip ch-door">[D] 격벽 수문</span>
+            <span class="legend-chip ch-core">[G] 터빈 발전기</span>
+            <span class="legend-chip ch-cctv">[C] CCTV 콘솔</span>
+            <span class="legend-chip ch-player">[●] 현재 작전 대원</span>
+          </div>
+          <div class="tactical-map-tip">
+            벙커 스폰 룸 서측 전술 지도판 근접 상호작용 [E] 또는 키보드 [M], 상단 HUD [지도], 터치 [MAP]으로 열람 가능합니다.
+          </div>
         </div>
       </div>
     </div>

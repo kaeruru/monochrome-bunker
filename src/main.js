@@ -190,6 +190,14 @@ class MonochromeBunker3D {
     this.btnTriggerHudEdit = document.getElementById('btn-trigger-hud-edit');
     this.btnResetHudLayout = document.getElementById('btn-reset-hud-layout');
 
+    // 시설 종합 전술 작전 지도 DOM
+    this.tacticalMapModalEl = document.getElementById('tactical-map-modal');
+    this.fullscreenMapCanvas = document.getElementById('fullscreen-map-canvas');
+    this.btnCloseTacticalMap = document.getElementById('btn-close-tactical-map');
+    this.btnOpenTacticalMap = document.getElementById('btn-open-tactical-map');
+    this.btnTouchMap = document.getElementById('btn-touch-map');
+    this.isTacticalMapOpen = false;
+
     this.showGameToast = (msg, level = 'info') => {
       if (!this.gameToastEl) {
         this.gameToastEl = document.getElementById('game-toast');
@@ -1087,12 +1095,28 @@ class MonochromeBunker3D {
       });
     }
 
-    // 상단 HUD 설정 열기/닫기 버튼
+    // 상단 HUD 설정 및 전술 지도 버튼
     if (this.btnOpenSettings) {
       this.btnOpenSettings.addEventListener('pointerdown', (e) => e.stopPropagation());
       this.btnOpenSettings.addEventListener('click', (e) => {
         e.stopPropagation();
         this.toggleSettingsModal();
+      });
+    }
+
+    if (this.btnOpenTacticalMap) {
+      this.btnOpenTacticalMap.addEventListener('pointerdown', (e) => e.stopPropagation());
+      this.btnOpenTacticalMap.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.toggleTacticalMapModal();
+      });
+    }
+
+    if (this.btnCloseTacticalMap) {
+      this.btnCloseTacticalMap.addEventListener('pointerdown', (e) => e.stopPropagation());
+      this.btnCloseTacticalMap.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.closeTacticalMapModal();
       });
     }
 
@@ -1280,15 +1304,12 @@ class MonochromeBunker3D {
       if (e.target && (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT')) return;
       if (e.code === 'KeyM') {
         e.preventDefault();
-        if (this.cctv && this.cctv.isOpen) this.cctv.close();
-        if (this.modelViewer.isOpen) {
-          this.modelViewer.close();
-        } else {
-          this.modelViewer.open();
-        }
+        this.toggleTacticalMapModal();
       } else if (e.code === 'Escape') {
         e.preventDefault();
-        if (this.modelViewer && this.modelViewer.isOpen) {
+        if (this.isTacticalMapOpen) {
+          this.closeTacticalMapModal();
+        } else if (this.modelViewer && this.modelViewer.isOpen) {
           this.modelViewer.close();
         } else if (this.cctv && this.cctv.isOpen) {
           this.cctv.close();
@@ -1728,6 +1749,40 @@ class MonochromeBunker3D {
       this.triggerInteraction(this.nearInteractable);
     }
 
+    if (this.controls.consumeMap()) {
+      this.toggleTacticalMapModal();
+    }
+
+    if (this.isTacticalMapOpen) {
+      this.renderTacticalMapModal();
+    }
+
+    // 메인 벙커 벽면 3D 전술 지도판 실시간 동적 갱신
+    if (this.map && this.map.tacticalMapBoard && this.map.tacticalMapBoard.screenTex) {
+      const distToBoard = Math.hypot(
+        this.playerPos.x - this.map.tacticalMapBoard.x,
+        this.playerPos.z - this.map.tacticalMapBoard.z
+      );
+      if (distToBoard < 12.0) {
+        this.mapBoardUpdateTimer = (this.mapBoardUpdateTimer || 0) + dt;
+        if (this.mapBoardUpdateTimer > 0.08) {
+          this.mapBoardUpdateTimer = 0;
+          const isCh2 = this.map.chapterId === 'chapter2';
+          const remotePlayers = this.networkManager ? this.networkManager.remotePlayers : null;
+          this.map.drawTacticalMapToCanvas(
+            this.map.tacticalMapBoard.canvas,
+            isCh2,
+            this.playerPos.x,
+            this.playerPos.z,
+            this.controls.yaw,
+            remotePlayers,
+            this.map.doors
+          );
+          this.map.tacticalMapBoard.screenTex.needsUpdate = true;
+        }
+      }
+    }
+
     // 9. 멀티플레이어 위치/동작 및 괴물 동기화 브로드캐스트
     if (this.networkManager && this.networkManager.roomId) {
       const heldType = this.interactionSystem ? this.interactionSystem.getHeldItemType() : null;
@@ -1834,6 +1889,21 @@ class MonochromeBunker3D {
       }
     }
 
+    // 4) 메인 벙커 상시 전술 지도판(tacticalMapBoard) 거리 체크
+    if (this.map && this.map.tacticalMapBoard) {
+      const dx = this.playerPos.x - this.map.tacticalMapBoard.x;
+      const dz = this.playerPos.z - this.map.tacticalMapBoard.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist < 3.2 && dist < bestDist) {
+        bestDist = dist;
+        this.nearInteractable = {
+          type: 'map_board',
+          keyText: '[ E / MAP ]',
+          descText: '시설 종합 작전 전술 지도 확인'
+        };
+      }
+    }
+
     const isBlackout = this.interactionSystem && this.interactionSystem.isBlackout;
 
     if (this.nearInteractable) {
@@ -1904,6 +1974,10 @@ class MonochromeBunker3D {
   }
 
   triggerInteraction(item) {
+    if (item.type === 'map_board') {
+      this.openTacticalMapModal();
+      return;
+    }
     if (item.type === 'console') {
       if (this.interactionSystem && this.interactionSystem.isBlackout) {
         this.showGameToast('[ERROR] CCTV 관제 전원이 차단되었습니다. 전기실 배전반을 먼저 복구하십시오.', 'danger');
@@ -1918,6 +1992,59 @@ class MonochromeBunker3D {
         this.monsterAI.notifyPlayerSound(this.playerPos.x, this.playerPos.z, 16.0, '시설 조작 소음');
       }
     }
+  }
+
+  toggleTacticalMapModal() {
+    if (this.isTacticalMapOpen) {
+      this.closeTacticalMapModal();
+    } else {
+      this.openTacticalMapModal();
+    }
+  }
+
+  openTacticalMapModal() {
+    if (!this.tacticalMapModalEl) return;
+    this.isTacticalMapOpen = true;
+    this.tacticalMapModalEl.classList.remove('hidden');
+    if (this.controls && this.controls.isLocked) {
+      this.controls.unlock();
+    }
+    const titleEl = document.getElementById('tactical-map-title');
+    const subEl = document.getElementById('tactical-map-subtitle');
+    if (titleEl && this.map) {
+      titleEl.textContent = this.map.chapterId === 'chapter2'
+        ? 'CHAPTER 2 // SECTOR-02 FLOODED CISTERN'
+        : 'CHAPTER 1 // SECTOR-01 SKELD BUNKER';
+    }
+    if (subEl && this.map) {
+      subEl.textContent = this.map.chapterId === 'chapter2'
+        ? '심도 140m 침수 저류조 및 대구경 수로망 작전 전술 지도'
+        : '심도 140m 벙커 통제 시설 및 격벽 방호망 작전 전술 지도';
+    }
+    this.renderTacticalMapModal();
+    sound.playClick();
+  }
+
+  closeTacticalMapModal() {
+    if (!this.tacticalMapModalEl) return;
+    this.isTacticalMapOpen = false;
+    this.tacticalMapModalEl.classList.add('hidden');
+    sound.playClick();
+  }
+
+  renderTacticalMapModal() {
+    if (!this.fullscreenMapCanvas || !this.map) return;
+    const isCh2 = this.map.chapterId === 'chapter2';
+    const remotePlayers = this.networkManager ? this.networkManager.remotePlayers : null;
+    this.map.drawTacticalMapToCanvas(
+      this.fullscreenMapCanvas,
+      isCh2,
+      this.playerPos.x,
+      this.playerPos.z,
+      this.controls ? this.controls.yaw : 0,
+      remotePlayers,
+      this.map.doors
+    );
   }
 
   render() {

@@ -45,6 +45,7 @@ export class FPSControls {
     this.flashlightRequested = false;
     this.cctvRequested = false;
     this.dropRequested = false;
+    this.mapRequested = false;
     this.slotRequested = null;
     this.touchSprintActive = false;
 
@@ -175,7 +176,7 @@ export class FPSControls {
       if (this.disabled || this.isHudEditing) return;
       if (this.controlPref === 'touch' || this.deviceMode === 'tablet') return;
       if (e.pointerType === 'touch') return;
-      if (e.target && e.target.closest && e.target.closest('button, input, select, textarea, .inv-slot, .hud-touch-item, #model-viewer-modal, #escape-success-modal, #game-over-modal, #cctv-overlay, #game-setup-modal, #jumpscare-overlay, #hud-edit-overlay')) {
+      if (e.target && e.target.closest && e.target.closest('button, input, select, textarea, .inv-slot, .hud-touch-item, #model-viewer-modal, #escape-success-modal, #game-over-modal, #cctv-overlay, #game-setup-modal, #jumpscare-overlay, #hud-edit-overlay, #tactical-map-modal')) {
         return;
       }
       this.ensurePcMode();
@@ -284,6 +285,8 @@ export class FPSControls {
         this.cctvRequested = true;
       } else if (e.code === 'KeyQ') {
         this.dropRequested = true;
+      } else if (e.code === 'KeyM') {
+        this.mapRequested = true;
       } else if (e.code === 'Digit1') {
         this.slotRequested = 0;
       } else if (e.code === 'Digit2') {
@@ -374,6 +377,9 @@ export class FPSControls {
     });
     bindActionButton('btn-touch-drop', () => {
       this.dropRequested = true;
+    });
+    bindActionButton('btn-touch-map', () => {
+      this.mapRequested = true;
     });
 
     for (let i = 0; i < 3; i++) {
@@ -648,6 +654,12 @@ export class FPSControls {
   consumeDrop() {
     const val = this.dropRequested;
     this.dropRequested = false;
+    return val;
+  }
+
+  consumeMap() {
+    const val = this.mapRequested;
+    this.mapRequested = false;
     return val;
   }
 

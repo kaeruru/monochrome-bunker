@@ -60,12 +60,12 @@ const CANDIDATE_SPAWN_SPOTS = [
 const CANDIDATE_SPAWN_SPOTS_CH2 = [
   { col: 11, row: 6,  zone: '북서 수문 제어실 (배전 캐비닛)', isLocker: true },
   { col: 8,  row: 7,  zone: '북서 수문 제어실 (정비 선반)', isLocker: false },
-  { col: 9,  row: 21, zone: '남서 수질 정화실 (시약 보관함)', isLocker: true },
+  { col: 10, row: 20, zone: '남서 수질 정화실 (시약 보관함)', isLocker: true },
   { col: 13, row: 22, zone: '남서 수질 정화실 (필터 작업대)', isLocker: false },
-  { col: 39, row: 9,  zone: '동측 벽돌 기둥 홀 (북측 석조 선반)', isLocker: false },
+  { col: 40, row: 8,  zone: '동측 벽돌 기둥 홀 (북측 석조 선반)', isLocker: false },
   { col: 43, row: 14, zone: '동측 벽돌 기둥 홀 (비상 캐비닛)', isLocker: true },
   { col: 39, row: 19, zone: '동측 벽돌 기둥 홀 (남측 보급함)', isLocker: true },
-  { col: 44, row: 21, zone: '동측 벽돌 기둥 홀 (남동 선반)', isLocker: false },
+  { col: 41, row: 22, zone: '동측 벽돌 기둥 홀 (남동 선반)', isLocker: false },
   { col: 18, row: 3,  zone: '북측 대구경 하수관 (북서 침수 선반)', isLocker: false },
   { col: 30, row: 3,  zone: '북측 대구경 하수관 (북동 방수 캐비닛)', isLocker: true },
   { col: 18, row: 25, zone: '남측 침수 배수관 (남서 침수 선반)', isLocker: false },
@@ -446,15 +446,44 @@ export class InteractionAndEscapeSystem {
   buildSupplyCrateProp(x, z) {
     const floorY = this.map.getFloorHeightAt(x, z);
     const inCh2Water = this.map.chapterId === 'chapter2' && this.map.isWaterAt(x, z);
-    const crateH = inCh2Water ? 0.88 : 0.56;
+    const crateH = inCh2Water ? 0.98 : 0.56;
+    const group = new THREE.Group();
+    group.position.set(x, floorY, z);
+
+    // 보급 상자 본체
     const crate = new THREE.Mesh(
-      new THREE.BoxGeometry(0.82, crateH, 0.62),
+      new THREE.BoxGeometry(0.88, crateH, 0.68),
       this.crateMat
     );
-    crate.position.set(x, floorY + crateH / 2, z);
+    crate.position.y = crateH / 2;
     crate.castShadow = true;
     crate.receiveShadow = true;
-    this.group.add(crate);
+    group.add(crate);
+
+    // 수로 침수 구역에서는 물 위로 솟아오른 노란색 방수 실링 캡 + 발광 비콘 추가
+    if (inCh2Water) {
+      const capMat = new THREE.MeshStandardMaterial({
+        color: 0xd49b28,
+        roughness: 0.45,
+        metalness: 0.65
+      });
+      const topCap = new THREE.Mesh(
+        new THREE.BoxGeometry(0.92, 0.08, 0.72),
+        capMat
+      );
+      topCap.position.y = crateH - 0.04;
+      group.add(topCap);
+
+      const beaconMat = new THREE.MeshBasicMaterial({ color: 0xffaa33 });
+      const beacon = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.04, 0.04, 0.09, 8),
+        beaconMat
+      );
+      beacon.position.set(0.36, crateH + 0.045, 0.26);
+      group.add(beacon);
+    }
+
+    this.group.add(group);
     return floorY + crateH;
   }
 
@@ -489,7 +518,7 @@ export class InteractionAndEscapeSystem {
       } else {
         const crateTopY = this.buildSupplyCrateProp(pos.x, pos.z);
         if (itemType) {
-          this.spawnWorldItem(itemType, pos.x, crateTopY + 0.06, pos.z, spot.zone);
+          this.spawnWorldItem(itemType, pos.x, crateTopY + 0.08, pos.z, spot.zone);
         }
       }
     }
@@ -499,10 +528,24 @@ export class InteractionAndEscapeSystem {
    * 문을 열어 내부를 조사할 수 있는 철제 전술 보관함(Locker) 생성
    */
   buildInteractiveLocker(x, z, zoneName, hiddenItemType = null) {
-    const baseY = this.map.getFloorHeightAt(x, z);
+    const floorY = this.map.getFloorHeightAt(x, z);
+    const inCh2Water = this.map.chapterId === 'chapter2' && this.map.isWaterAt(x, z);
+    const waterBaseH = inCh2Water ? 0.58 : 0.0;
+    const lockerBaseY = floorY + waterBaseH;
+
     const lockerGroup = new THREE.Group();
-    lockerGroup.position.set(x, baseY, z);
+    lockerGroup.position.set(x, lockerBaseY, z);
     this.group.add(lockerGroup);
+
+    // 수로 구역에서는 침수를 방지하는 0.58m 콘크리트 방수 받침대(Pedestal) 추가
+    if (inCh2Water) {
+      const pedestal = new THREE.Mesh(
+        new THREE.BoxGeometry(1.08, 0.58, 0.84),
+        this.cabinetMat
+      );
+      pedestal.position.set(0, -0.29, 0);
+      lockerGroup.add(pedestal);
+    }
 
     // 캐비닛 몸체
     const body = new THREE.Mesh(
@@ -532,9 +575,18 @@ export class InteractionAndEscapeSystem {
     doorMesh.position.set(0.42, 0, 0);
     doorPivot.add(doorMesh);
 
+    // 캐비닛 상단 방수 상태 표시 LED 비콘
+    const beaconMat = new THREE.MeshBasicMaterial({ color: inCh2Water ? 0xffb844 : 0x55ff99 });
+    const beacon = new THREE.Mesh(
+      new THREE.BoxGeometry(0.18, 0.06, 0.06),
+      beaconMat
+    );
+    beacon.position.set(0, 1.98, 0.28);
+    lockerGroup.add(beacon);
+
     const lockerObj = {
       x,
-      baseY,
+      baseY: lockerBaseY,
       z,
       zoneName,
       isOpen: false,
@@ -550,15 +602,18 @@ export class InteractionAndEscapeSystem {
    */
   spawnWorldItem(itemType, x, y, z, zoneName = '시설 내부') {
     const { group, updateItemAnim } = buildItemMesh3D(itemType);
-    group.position.set(x, y, z);
+    const inCh2Water = this.map.chapterId === 'chapter2' && this.map.isWaterAt(x, z);
+    // 수로 침수 구역에서는 수면(0.56m) 아래로 묻히지 않도록 최소 높이 0.72m 보장
+    const safeY = inCh2Water ? Math.max(y, 0.72) : y;
+    group.position.set(x, safeY, z);
 
-    // 어두운 방에서도 아이템 위치를 선명히 식별하는 네온 오라 비콘 (동적 PointLight 대신 사용해 쉐이더 재컴파일 프레임드랍 원천 방지)
+    // 어두운 방과 수로에서도 아이템 위치를 선명히 식별하는 네온 오라 비콘 (발광 구체 확장)
     const glowColor = itemType === 'energy_cell' ? 0x88dcff : itemType === 'security_keycard' ? 0x55ff99 : (itemType === 'flare' ? 0xff5544 : 0xffaa77);
-    const auraGeo = new THREE.SphereGeometry(0.12, 10, 8);
+    const auraGeo = new THREE.SphereGeometry(0.16, 12, 10);
     const auraMat = new THREE.MeshBasicMaterial({
       color: glowColor,
       transparent: true,
-      opacity: 0.65,
+      opacity: 0.75,
       blending: THREE.AdditiveBlending,
       depthWrite: false
     });
@@ -572,9 +627,9 @@ export class InteractionAndEscapeSystem {
       id: `item_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       type: itemType,
       x,
-      y,
+      y: safeY,
       z,
-      baseY: y,
+      baseY: safeY,
       zoneName,
       mesh: group,
       updateItemAnim

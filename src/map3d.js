@@ -419,24 +419,24 @@ export class Map3D {
             addPlaneTo(floorWaterBedGeos, TILE_SIZE, TILE_SIZE, pos.x, 0.015, pos.z);
             addPlaneTo(floorWaterGeos, TILE_SIZE, TILE_SIZE, pos.x, 0, pos.z);
 
-            // 경사 슬래브 본체 (0.0m -> 1.40m)
-            const rampGeo = new THREE.BoxGeometry(TILE_SIZE - 0.08, 0.24, slopeLen);
+            // 경사 슬래브 본체 (저지대 0.0m -> 고지대 1.40m를 향해 위로 상승하도록 -pitch 적용)
+            const rampGeo = new THREE.BoxGeometry(TILE_SIZE - 0.08, 0.22, slopeLen);
             const rMat = new THREE.Matrix4();
-            rMat.makeTranslation(pos.x, CH2_HIGH_Y / 2 - 0.08, pos.z);
+            rMat.makeTranslation(pos.x, CH2_HIGH_Y / 2, pos.z);
             rMat.multiply(new THREE.Matrix4().makeRotationY(tDir.yaw));
-            rMat.multiply(new THREE.Matrix4().makeRotationX(pitch));
+            rMat.multiply(new THREE.Matrix4().makeRotationX(-pitch));
             rampGeo.applyMatrix4(rMat);
             floorStoneWalkwayGeos.push(rampGeo);
 
             // 미끄럼 방지 석조 단차(Tread Bars) 5단 배치
             for (let s = -2; s <= 2; s++) {
               const frac = s / 5.2;
-              const barGeo = new THREE.BoxGeometry(TILE_SIZE - 0.24, 0.08, 0.14);
+              const barGeo = new THREE.BoxGeometry(TILE_SIZE - 0.24, 0.065, 0.14);
               const bMat = new THREE.Matrix4();
               bMat.makeTranslation(pos.x, CH2_HIGH_Y / 2, pos.z);
               bMat.multiply(new THREE.Matrix4().makeRotationY(tDir.yaw));
-              bMat.multiply(new THREE.Matrix4().makeRotationX(pitch));
-              bMat.multiply(new THREE.Matrix4().makeTranslation(0, 0.06, -frac * slopeLen));
+              bMat.multiply(new THREE.Matrix4().makeRotationX(-pitch));
+              bMat.multiply(new THREE.Matrix4().makeTranslation(0, 0.12, frac * slopeLen));
               barGeo.applyMatrix4(bMat);
               wallBrickGeos.push(barGeo);
             }
@@ -608,8 +608,9 @@ export class Map3D {
     // 카메라 번호순 정렬 (1 -> 2 -> 3 -> 4)
     this.cctvConfigs.sort((a, b) => a.id - b.id);
 
-    // 4. 인게임 동료 캐릭터(벙커 내부) 배치
+    // 4. 인게임 동료 캐릭터(벙커 내부) 및 메인 벙커 상시 전술 지도판 배치
     this.spawnEntities();
+    this.buildTacticalMapBoard();
   }
 
   spawnEntities() {
@@ -626,6 +627,365 @@ export class Map3D {
       z: this.companion.root.position.z,
       r: 0.48
     });
+  }
+
+  /**
+   * 메인 벙커 서쪽 벽면에 항상 설치되는 대형 발광 전술 시설 지도판 (Tactical Map Display Board)
+   * - 혼자 플레이하는 솔로 유저들이 언제든 시설 구조, 수로 경로, 경사로/사다리 위치를 확인할 수 있습니다.
+   */
+  buildTacticalMapBoard() {
+    const isCh2 = this.chapterId === 'chapter2';
+    // 스폰 지점 서쪽 벽면 앞 위치
+    const mapTileCol = 20;
+    const mapTileRow = isCh2 ? 16 : 8;
+    const wallWorld = tileToWorld(mapTileCol, mapTileRow);
+    const baseY = this.getFloorHeightAt(wallWorld.x, wallWorld.z);
+
+    const boardGroup = new THREE.Group();
+    // 서쪽 벽면(x - 0.5) 살짝 앞 (+0.42m)에 동쪽(+X 방향)을 향하도록 배치
+    const boardX = wallWorld.x + 0.38;
+    const boardZ = wallWorld.z;
+    const boardY = baseY + 1.62;
+    boardGroup.position.set(boardX, boardY, boardZ);
+    boardGroup.rotation.y = Math.PI / 2; // 동쪽을 바라봄
+
+    // 1. 외곽 강철 베젤 하우징 프레임
+    const frameGeo = new THREE.BoxGeometry(2.7, 1.65, 0.12);
+    const frameMat = new THREE.MeshStandardMaterial({
+      color: 0x1e242c,
+      roughness: 0.45,
+      metalness: 0.85
+    });
+    const frameMesh = new THREE.Mesh(frameGeo, frameMat);
+    boardGroup.add(frameMesh);
+
+    // 2. 상/하단 고정 브래킷 및 비상 LED 바
+    for (const by of [-0.80, 0.80]) {
+      const bracket = new THREE.Mesh(
+        new THREE.BoxGeometry(2.74, 0.08, 0.16),
+        this.materials.doorFrame
+      );
+      bracket.position.y = by;
+      boardGroup.add(bracket);
+    }
+
+    const ledMat = new THREE.MeshBasicMaterial({ color: isCh2 ? 0xffaa33 : 0x44ddaa });
+    const ledBar = new THREE.Mesh(
+      new THREE.BoxGeometry(2.5, 0.03, 0.02),
+      ledMat
+    );
+    ledBar.position.set(0, 0.80, 0.07);
+    boardGroup.add(ledBar);
+
+    // 3. 정적 캔버스 캐시 (배경 그리드, 복도, 수로, 경사로, 사다리, 라벨)
+    const staticCanvas = document.createElement('canvas');
+    staticCanvas.width = 1024;
+    staticCanvas.height = 640;
+    this.drawTacticalMapStatic(staticCanvas, isCh2);
+    this.tacticalMapStaticCanvas = staticCanvas;
+
+    // 4. 고해상도 2D 전술 캔버스 지도 생성 및 텍스처 매핑
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 640;
+    this.drawTacticalMapToCanvas(canvas, isCh2);
+    this.tacticalMapCanvas = canvas;
+
+    const screenTex = new THREE.CanvasTexture(canvas);
+    const screenMat = new THREE.MeshStandardMaterial({
+      map: screenTex,
+      roughness: 0.32,
+      metalness: 0.2,
+      emissive: isCh2 ? 0x442a12 : 0x143238,
+      emissiveIntensity: 0.72
+    });
+    const screenMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(2.52, 1.48),
+      screenMat
+    );
+    screenMesh.position.z = 0.065;
+    boardGroup.add(screenMesh);
+
+    this.mapGroup.add(boardGroup);
+
+    this.tacticalMapBoard = {
+      x: boardX,
+      y: boardY,
+      z: boardZ,
+      canvas,
+      screenTex,
+      isCh2
+    };
+  }
+
+  /**
+   * 전술 지도 캔버스 정적 배경 도면 드로잉 (그리드, 구역, 수로, 경사로, 사다리, 라벨, 범례)
+   */
+  drawTacticalMapStatic(canvas, isCh2) {
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+
+    // 1. 군용 터미널 짙은 차콜/그리드 배경
+    ctx.fillStyle = '#0a0e14';
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.strokeStyle = 'rgba(38, 55, 75, 0.35)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < w; x += 32) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    }
+    for (let y = 0; y < h; y += 32) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+    }
+
+    // 2. 상단 헤더
+    ctx.fillStyle = isCh2 ? '#ff9822' : '#44e5a0';
+    ctx.font = 'bold 22px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('FACILITY TACTICAL MAP // 시설 종합 작전 배치도', 28, 38);
+
+    ctx.font = '14px monospace';
+    ctx.fillStyle = '#8ca2b8';
+    const subTitle = isCh2
+      ? 'SECTOR-02: SUB-SURFACE FLOODED CISTERN & CONDUIT NETWORK'
+      : 'SECTOR-01: SKELD SUB-SURFACE BUNKER & SERVICE CORRIDORS';
+    ctx.fillText(subTitle, 28, 62);
+
+    // 3. 맵 타일 그리드 축척 투영
+    const mapRows = MAP_ROWS;
+    const mapCols = MAP_COLS;
+    const gridOffsetX = 32;
+    const gridOffsetY = 84;
+    const gridW = w - 64;
+    const gridH = h - 140;
+    const cellW = gridW / mapCols;
+    const cellH = gridH / mapRows;
+
+    // 3-1. 타일별 기본 블록 렌더링
+    for (let r = 0; r < mapRows; r++) {
+      const line = this.activeMap[r] || '';
+      for (let c = 0; c < mapCols; c++) {
+        const ch = line[c] || ' ';
+        const px = gridOffsetX + c * cellW;
+        const py = gridOffsetY + r * cellH;
+
+        if (ch === '#') {
+          ctx.fillStyle = '#1c2430';
+          ctx.fillRect(px, py, cellW, cellH);
+        } else if (ch === 'B' || ch === 'S') {
+          ctx.fillStyle = isCh2 ? '#422814' : '#14383a';
+          ctx.fillRect(px, py, cellW, cellH);
+        } else if (ch === 'R') {
+          ctx.fillStyle = isCh2 ? '#3a2018' : '#222838';
+          ctx.fillRect(px, py, cellW, cellH);
+        } else if (ch === '.') {
+          ctx.fillStyle = '#181e28';
+          ctx.fillRect(px, py, cellW, cellH);
+        } else if (ch === 'W' || ch === 'L') {
+          ctx.fillStyle = isCh2 ? '#0d47a1' : '#181e28';
+          ctx.fillRect(px, py, cellW, cellH);
+        }
+      }
+    }
+
+    // 3-2. 특수 오브젝트 및 텍스트 마커 강조
+    for (let r = 0; r < mapRows; r++) {
+      const line = this.activeMap[r] || '';
+      for (let c = 0; c < mapCols; c++) {
+        const ch = line[c] || ' ';
+        const px = gridOffsetX + c * cellW;
+        const py = gridOffsetY + r * cellH;
+
+        if (ch === 'M') {
+          // 경사로 (주황 사선)
+          ctx.fillStyle = '#ff9800';
+          ctx.fillRect(px, py, cellW, cellH);
+          ctx.strokeStyle = '#fff';
+          ctx.strokeRect(px, py, cellW, cellH);
+        } else if (ch === 'H') {
+          // 사다리 (노랑)
+          ctx.fillStyle = '#ffd600';
+          ctx.fillRect(px, py, cellW, cellH);
+          ctx.strokeStyle = '#fff';
+          ctx.strokeRect(px, py, cellW, cellH);
+        } else if (ch === 'D') {
+          // 수문/방호문 (녹색 바)
+          ctx.fillStyle = '#00e676';
+          ctx.fillRect(px, py, cellW, cellH);
+        } else if (ch === 'G') {
+          // 발전기 코어
+          ctx.fillStyle = '#ff3d00';
+          ctx.beginPath();
+          ctx.arc(px + cellW / 2, py + cellH / 2, cellW * 0.9, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (ch === 'C') {
+          // CCTV 콘솔
+          ctx.fillStyle = '#00e5ff';
+          ctx.fillRect(px, py, cellW, cellH);
+        }
+      }
+    }
+
+    // 4. 구역 라벨 표시
+    ctx.font = 'bold 12px monospace';
+    ctx.textAlign = 'center';
+    if (isCh2) {
+      ctx.fillStyle = '#ffcc80';
+      ctx.fillText('중앙 저류 펌프실 [CORE]', gridOffsetX + 24 * cellW, gridOffsetY + 14 * cellH - 12);
+      ctx.fillText('← 고대 벽돌 아치 회랑', gridOffsetX + 12 * cellW, gridOffsetY + 14 * cellH);
+      ctx.fillText('북서 수문실 ↑', gridOffsetX + 10 * cellW, gridOffsetY + 6 * cellH);
+      ctx.fillText('남서 정화실 ↓', gridOffsetX + 10 * cellW, gridOffsetY + 22 * cellH);
+      ctx.fillText('동측 기둥 홀 →', gridOffsetX + 41 * cellW, gridOffsetY + 14 * cellH);
+
+      ctx.fillStyle = '#64b5f6';
+      ctx.fillText('▲ 북측 대구경 하수관 (DEEP WATER)', gridOffsetX + 24 * cellW, gridOffsetY + 3.5 * cellH);
+      ctx.fillText('▼ 남측 방류 터널 (DEEP WATER)', gridOffsetX + 24 * cellW, gridOffsetY + 26 * cellH);
+    } else {
+      ctx.fillStyle = '#80deea';
+      ctx.fillText('중앙 식당 / 통제 벙커 [CORE]', gridOffsetX + 24 * cellW, gridOffsetY + 6 * cellH - 8);
+      ctx.fillText('의무실', gridOffsetX + 14 * cellW, gridOffsetY + 10 * cellH);
+      ctx.fillText('전기실', gridOffsetX + 15 * cellW, gridOffsetY + 21 * cellH);
+      ctx.fillText('관리실', gridOffsetX + 29 * cellW, gridOffsetY + 14 * cellH);
+      ctx.fillText('항해실', gridOffsetX + 43 * cellW, gridOffsetY + 14 * cellH);
+    }
+
+    // 5. 하단 범례 표시
+    ctx.fillStyle = '#0e1622';
+    ctx.fillRect(28, h - 46, w - 56, 36);
+    ctx.strokeStyle = 'rgba(70, 95, 125, 0.45)';
+    ctx.strokeRect(28, h - 46, w - 56, 36);
+
+    ctx.font = 'bold 12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#b0bec5';
+    const legendText = isCh2
+      ? '[W] 침수 수로(물)   [M] 오르막 경사로   [H] 철제 사다리   [D] 수문 격벽   [G] 터빈 코어   [C] CCTV 관제 콘솔'
+      : '[B] 벙커 본부   [R] 격실   [.] 복도   [D] 방호문   [G] 발전기 코어   [C] CCTV 모니터';
+    ctx.fillText(legendText, w / 2, h - 23);
+  }
+
+  /**
+   * 전술 지도 캔버스 동적 오버레이 드로잉 (실시간 플레이어 위치, 시야각, 동료 대원, 방호문 개폐 상태)
+   */
+  drawTacticalMapToCanvas(canvas, isCh2, playerX, playerZ, playerYaw, remotePlayers, doors) {
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+
+    if (this.tacticalMapStaticCanvas) {
+      ctx.drawImage(this.tacticalMapStaticCanvas, 0, 0);
+    } else {
+      this.drawTacticalMapStatic(canvas, isCh2);
+    }
+
+    const mapRows = MAP_ROWS;
+    const mapCols = MAP_COLS;
+    const gridOffsetX = 32;
+    const gridOffsetY = 84;
+    const gridW = w - 64;
+    const gridH = h - 140;
+    const cellW = gridW / mapCols;
+    const cellH = gridH / mapRows;
+    const halfMapX = (mapCols * 2.0) / 2;
+    const halfMapZ = (mapRows * 2.0) / 2;
+
+    // 1. 방호문/수문 동적 상태 표시 (doors)
+    const doorList = doors || this.doors || [];
+    for (const d of doorList) {
+      const c = (d.x + halfMapX) / 2.0;
+      const r = (d.z + halfMapZ) / 2.0;
+      const px = gridOffsetX + c * cellW;
+      const py = gridOffsetY + r * cellH;
+      ctx.fillStyle = d.isOpen ? '#00e676' : '#ff1744';
+      ctx.fillRect(px, py, cellW, cellH);
+    }
+
+    // 2. 플레이어 및 동료 대원 위치 마커
+    if (playerX !== undefined && playerZ !== undefined) {
+      const pCol = (playerX + halfMapX) / 2.0;
+      const pRow = (playerZ + halfMapZ) / 2.0;
+      const spX = gridOffsetX + pCol * cellW;
+      const spY = gridOffsetY + pRow * cellH;
+
+      // 시야각 원뿔 (Yaw)
+      if (playerYaw !== undefined) {
+        const fov = Math.PI / 3.5;
+        const viewLen = 22;
+        const dirAngle = -playerYaw - Math.PI / 2;
+        ctx.beginPath();
+        ctx.moveTo(spX, spY);
+        ctx.arc(spX, spY, viewLen, dirAngle - fov / 2, dirAngle + fov / 2);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(118, 255, 3, 0.28)';
+        ctx.fill();
+      }
+
+      // 펄싱 위치 인디케이터
+      const pulse = (Math.sin(performance.now() * 0.007) + 1) * 0.5;
+      ctx.fillStyle = '#76ff03';
+      ctx.beginPath();
+      ctx.arc(spX, spY, 5.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = `rgba(118, 255, 3, ${0.4 + 0.6 * pulse})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(spX, spY, 8 + 5 * pulse, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.font = 'bold 12px monospace';
+      ctx.fillStyle = '#76ff03';
+      ctx.textAlign = 'left';
+      ctx.fillText('YOU [현재 대원]', spX + 12, spY + 4);
+    } else {
+      // 기본 스폰 마커
+      const spawnCol = 24;
+      const spawnRow = isCh2 ? 16 : 8;
+      const spX = gridOffsetX + spawnCol * cellW + cellW / 2;
+      const spY = gridOffsetY + spawnRow * cellH + cellH / 2;
+      ctx.fillStyle = '#76ff03';
+      ctx.beginPath();
+      ctx.arc(spX, spY, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(spX, spY, 11, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.font = 'bold 13px monospace';
+      ctx.fillStyle = '#76ff03';
+      ctx.textAlign = 'left';
+      ctx.fillText('◀ YOU ARE HERE (현재 위치)', spX + 18, spY + 4);
+    }
+
+    // 3. 멀티플레이어 동료 대원들 마커
+    if (remotePlayers && remotePlayers.size > 0) {
+      for (const [id, rp] of remotePlayers) {
+        if (!rp.position) continue;
+        const rCol = (rp.position.x + halfMapX) / 2.0;
+        const rRow = (rp.position.z + halfMapZ) / 2.0;
+        const rx = gridOffsetX + rCol * cellW;
+        const ry = gridOffsetY + rRow * cellH;
+
+        ctx.fillStyle = '#00e5ff';
+        ctx.beginPath();
+        ctx.arc(rx, ry, 5, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.font = 'bold 11px monospace';
+        ctx.fillStyle = '#00e5ff';
+        ctx.textAlign = 'left';
+        ctx.fillText(rp.name || '동료 대원', rx + 8, ry + 4);
+      }
+    }
   }
 
   /**
