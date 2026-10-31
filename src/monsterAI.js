@@ -1537,34 +1537,35 @@ export class MonsterAI {
 
         const playerFootY = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(playerPos.x, playerPos.z) : 0;
 
-        // 플레이어 포획 판정: 챕터 2에서는 플레이어가 물속/경사로 하단(playerFootY < 0.58)에 있을 때만 포획 가능!
-        const canCatchElevation = isCh2 ? (playerFootY < 0.58) : (Math.abs(this.pos.y - playerFootY) < 0.85);
-        const catchRadius = isCh2 ? 1.32 : 1.15;
-        if (
-          distToPlayer < catchRadius &&
-          canCatchElevation &&
-          this.hasGridLineOfSight(this.pos.x, this.pos.z, playerPos.x, playerPos.z)
-        ) {
+        // 플레이어 포획 판정:
+        // 챕터 1: 반경 1.65m 이내
+        // 챕터 2 수로 크롤러: 거대한 4m 주둥이 공격 사정거리 2.35m 이내
+        const catchRadius = isCh2 ? 2.35 : 1.65;
+        const elevDiff = Math.abs(this.pos.y - playerFootY);
+        // 플레이어가 수로에 있든, 경사로나 물가 턱에 걸쳐 있든 크롤러 2.35m 이내면 덮쳐서 처형!
+        const canCatchElevation = isCh2 ? (elevDiff < 1.65) : (elevDiff < 0.95);
+
+        if (distToPlayer < catchRadius && canCatchElevation) {
           this.triggerPlayerKill(playerPos, playerCamera);
           return;
         }
 
-        // 챕터 2 전용: 플레이어가 경사로('M')나 사다리('H')를 통해 고지대(안전지대)로 올라갔을 때의 연출 및 추격 포기
-        if (isCh2 && playerFootY >= 0.58) {
+        // 챕터 2 전용: 플레이어가 고지대 깊숙이(거리 3.2m 이상, 고도 1.20m 이상) 도망쳤을 때만 물가에서 위협 후 순찰 복귀
+        if (isCh2 && playerFootY >= 1.20 && distToPlayer > 3.2) {
           const arrivedEdge = this.moveAlongPath(dt, (this.chaseSpeed || 7.6) * speedMult, false);
           this.pos.y = 0.0;
-          if (arrivedEdge || distToPlayer < 4.2) {
+          if (arrivedEdge || distToPlayer < 4.8) {
             animMode = 'attack'; // 물가 경계에서 고지대를 향해 악어 턱을 딱딱거리며 위협
             this.targetYaw = Math.atan2(playerPos.x - this.pos.x, playerPos.z - this.pos.z);
             this.waterEdgeFrustrationTimer = (this.waterEdgeFrustrationTimer || 0) + dt;
-            if (this.waterEdgeFrustrationTimer >= 2.2) {
+            if (this.waterEdgeFrustrationTimer >= 2.5) {
               this.waterEdgeFrustrationTimer = 0;
               this.state = 'PATROL';
               this.patrolDuration = 9999;
               this.setHeartCoreColor(0xdbe8ff);
               this.pickRandomPatrolPoint(true);
               if (this.callbacks.onToast) {
-                this.callbacks.onToast('[SAFE ZONE] 고지대 통로로 대피하여 수로 크롤러의 추격을 따돌렸습니다!', 'info');
+                this.callbacks.onToast('[SAFE ZONE] 고지대 통로 깊숙이 대피하여 수로 크롤러의 추격을 따돌렸습니다!', 'info');
               }
               this.updateBioSignHUD();
             }
@@ -1853,7 +1854,13 @@ export class MonsterAI {
         }
       }
 
-      if (this.snareEscapeProgress >= 100 || this.snareTimer <= 0 || this.isKillingPlayer) {
+      // 제한시간 내 탈출 연타 실패 시 천장 맹글 악어가 플레이어를 낚아채 즉시 처형!
+      if (this.snareTimer <= 0 && this.snareEscapeProgress < 100 && !this.isKillingPlayer) {
+        this.triggerPlayerKill(playerPos, playerCamera);
+        return;
+      }
+
+      if (this.snareEscapeProgress >= 100 || this.isKillingPlayer) {
         const escapedAlive = !this.isKillingPlayer;
         this.isPlayerSnared = false;
         this.snareEscapeProgress = 0;
@@ -1940,14 +1947,16 @@ export class MonsterAI {
     }
 
     // 플레이어 시야 정면 1.38m 위치에 괴물을 즉각 배치하여 두개골, 발톱, 흉부가 모두 선명하게 프레이밍되도록 정렬
+    const isCh2 = this.chapterId === 'chapter2';
+    const offsetDist = isCh2 ? 1.62 : 1.35;
     this._tmpFwd.set(0, 0, -1).applyQuaternion(playerCamera.quaternion);
     this._tmpFwd.y = 0;
     if (this._tmpFwd.lengthSq() > 0.001) this._tmpFwd.normalize();
 
     const groundY = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(playerPos.x, playerPos.z) : 0;
-    this.pos.x = playerPos.x + this._tmpFwd.x * 1.38;
-    this.pos.z = playerPos.z + this._tmpFwd.z * 1.38;
-    this.pos.y = groundY;
+    this.pos.x = playerPos.x + this._tmpFwd.x * offsetDist;
+    this.pos.z = playerPos.z + this._tmpFwd.z * offsetDist;
+    this.pos.y = isCh2 ? 0.0 : groundY;
     this.yaw = Math.atan2(-this._tmpFwd.x, -this._tmpFwd.z);
 
     this.monster.root.position.copy(this.pos);
