@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { MonsterEntity } from './models.js';
+import { MonsterEntity, CrawlerCrocodileEntity } from './models.js';
 import {
   TILE_MAP,
   MAP_COLS,
@@ -57,11 +57,19 @@ export class MonsterAI {
     this.chapterId = 'chapter1';
     this.monsterType = 'stalker';
 
-    // 1. 괴물 3D 모델 인스턴스 생성 (쉐이더 재컴파일 방지를 위해 항상 씬에 유지)
-    this.monster = new MonsterEntity();
-    this.monster.enableSound = true;
-    this.monster.soundVolume = 0.0;
-    this.rootGroup.add(this.monster.root);
+    // 1. 괴물 3D 모델 인스턴스 생성 (챕터 1 스켈드 스토커 & 챕터 2 수로 악어 크롤러)
+    this.stalkerEntity = new MonsterEntity();
+    this.stalkerEntity.enableSound = true;
+    this.stalkerEntity.soundVolume = 0.0;
+    this.rootGroup.add(this.stalkerEntity.root);
+
+    this.crawlerEntity = new CrawlerCrocodileEntity();
+    this.crawlerEntity.enableSound = true;
+    this.crawlerEntity.soundVolume = 0.0;
+    this.crawlerEntity.root.visible = false;
+    this.rootGroup.add(this.crawlerEntity.root);
+
+    this.monster = this.stalkerEntity;
 
     // 2. 환기구(Vent) 3D 그릴 메쉬 생성
     this.ventMeshes = [];
@@ -74,6 +82,7 @@ export class MonsterAI {
     this.yaw = 0;
     this.targetYaw = 0;
     this.radius = 0.44;
+    this.waterEdgeFrustrationTimer = 0;
 
     // 벤트 이동 관련
     this.currentVentIdx = 6; // 항해실(플레이어와 가장 먼 곳)에서 시작
@@ -122,7 +131,9 @@ export class MonsterAI {
   }
 
   /**
-   * 새 매치 시작 시 괴물을 가장 먼 환기구(항해실/원자로실)에 잠복 상태로 초기화
+   * 새 매치 시작 시 괴물 초기화
+   * - 챕터 1: 가장 먼 환기구(항해실/원자로실)에 잠복 상태로 초기화
+   * - 챕터 2: 수로 전용 악어 크롤러를 북측 원통 하수관(수면 아래)에 배치하여 수로 순찰 시작
    */
   resetForNewMatch() {
     this.isKillingPlayer = false;
@@ -131,6 +142,26 @@ export class MonsterAI {
     this.bashingDoor = null;
     this.path = [];
     this.pathIndex = 0;
+    this.waterEdgeFrustrationTimer = 0;
+
+    if (this.chapterId === 'chapter2') {
+      const startSpawns = [
+        { col: 24, row: 3 },
+        { col: 4, row: 4 },
+        { col: 42, row: 4 }
+      ];
+      const pick = startSpawns[Math.floor(Math.random() * startSpawns.length)];
+      const wPos = tileToWorld(pick.col, pick.row);
+      this.pos.set(wPos.x, 0.0, wPos.z);
+      this.monster.root.position.copy(this.pos);
+      this.state = 'PATROL';
+      this.stateTimer = 0;
+      this.patrolDuration = 9999;
+      this.setHeartCoreColor(0xdbe8ff);
+      this.pickRandomPatrolPoint();
+      this.updateBioSignHUD();
+      return;
+    }
 
     // 항해실(6) 또는 원자로실(0)에서 환기구 잠복 상태로 시작 (초반 10초 안전 유예)
     const count = this.activeVentNodes.length;
@@ -200,6 +231,18 @@ export class MonsterAI {
     if (chapterConfig.ventNodes && chapterConfig.ventNodes.length > 0) {
       this.activeVentNodes = [...chapterConfig.ventNodes];
     }
+
+    // 챕터별 전용 괴물 모델 전환 (챕터 1: 스토커, 챕터 2: 수로 악어 크롤러)
+    if (this.chapterId === 'chapter2') {
+      this.monster = this.crawlerEntity;
+      this.stalkerEntity.root.visible = false;
+      this.crawlerEntity.root.visible = true;
+    } else {
+      this.monster = this.stalkerEntity;
+      this.stalkerEntity.root.visible = true;
+      this.crawlerEntity.root.visible = false;
+    }
+
     this.rebuildVentNetworkMeshes();
     this.resetForNewMatch();
   }
@@ -216,8 +259,10 @@ export class MonsterAI {
 
   /**
    * 환기구 노드에 바닥 그릴(개폐 회전 애니메이션 포함) 및 천장 덕트 설치
+   * - 챕터 2의 악어 크롤러는 천장 환기구를 쓰지 않고 침수 수로('W') 내부에서만 서식하므로 생성 생략
    */
   buildVentNetworkMeshes() {
+    if (this.chapterId === 'chapter2') return;
     const frameMat = new THREE.MeshStandardMaterial({
       color: 0x22262a,
       roughness: 0.55,
@@ -304,14 +349,44 @@ export class MonsterAI {
   }
 
   /**
+   * 챕터 2 전용: 해당 타일이 수로 크롤러가 유영/진입 가능한 저지대 침수 하수관('W')인지 판별
+   */
+  isCrawlerWaterTile(col, row) {
+    if (col < 0 || col >= MAP_COLS || row < 0 || row >= MAP_ROWS) return false;
+    if (this.map && this.map.isWaterTile && this.map.isWaterTile(col, row)) return true;
+    const ch = this.map && this.map.getTileChar ? this.map.getTileChar(col, row) : getTile(col, row);
+    return ch === 'W';
+  }
+
+  /**
+   * 괴물이 (x, z) 월드 좌표로 이동 가능한지 검사 (챕터 2에서는 침수 수로 밖으로 절대 나가지 않도록 제한)
+   */
+  canMonsterOccupy(x, z) {
+    if (this.map && this.map.checkCollision(x, z, this.radius)) return false;
+    if (this.chapterId === 'chapter2') {
+      const t = worldToTile(x, z);
+      if (!this.isCrawlerWaterTile(t.col, t.row)) return false;
+    }
+    return true;
+  }
+
+  /**
    * 플레이어가 달리기, 문 조작, 캐비닛 열기 등 소음을 냈을 때 호출
    */
   notifyPlayerSound(px, pz, hearingRadius, soundLabel = '소음') {
     if (this.isKillingPlayer || this.state === 'STUNNED' || this.state === 'CHASE') return;
 
-    // 수로 물살을 걷거나 달리면 소음이 파이프라인을 타고 훨씬 멀리 전달됨!
+    const isCh2 = this.chapterId === 'chapter2';
     const inWater = this.map && this.map.isWaterAt ? this.map.isWaterAt(px, pz) : false;
-    const effectiveHearingRadius = inWater ? hearingRadius * 1.35 : hearingRadius;
+
+    // 챕터 2 수로 크롤러는 물속 진동에 극도로 민감하며, 고지대(건조 구역)의 일반 발소리는 무시함
+    if (isCh2 && !inWater) {
+      const playerFootY = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(px, pz) : 1.4;
+      if (playerFootY >= 0.60) return;
+    }
+
+    // 수로 물살을 걷거나 달리면 소음이 파이프라인을 타고 훨씬 멀리 전달됨!
+    const effectiveHearingRadius = inWater ? hearingRadius * 1.45 : hearingRadius;
 
     const dist = Math.hypot(px - this.pos.x, pz - this.pos.z);
     if (dist > effectiveHearingRadius) return;
@@ -332,7 +407,7 @@ export class MonsterAI {
       this.ventHopsRemaining = 0; // 다음 벤트 도착 즉시 지상으로 강하!
       this.investigateTarget = { x: px, z: pz };
     } else if (this.state === 'PATROL' || this.state === 'INVESTIGATE') {
-      // 지상 순찰 중 소리를 들으면 즉시 해당 좌표로 수색 경로 설정
+      // 지상/수로 순찰 중 소리를 들으면 즉시 해당 좌표로 수색 경로 설정
       this.investigateTarget = { x: px, z: pz };
       this.state = 'INVESTIGATE';
       this.stateTimer = 0;
@@ -454,22 +529,28 @@ export class MonsterAI {
 
   /**
    * 괴물이 플레이어를 시각적으로 발견했는지 판정
-   * - 손전등 ON: 17.5m (챕터 2 약한 작업등은 10.5m) 거리까지 발각
+   * - 손전등 ON: 17.5m (챕터 2 약한 작업등은 12.5m) 거리까지 발각
    * - 손전등 OFF: 6.0m (정전 시 4.2m) 이내로 접근해야만 발각 -> 손전등을 끄고 숨는 전략 유효!
+   * - 챕터 2: 수로 크롤러는 수면 아래(Y=0.0~0.56m)에 있으므로 고지대(Y >= 0.65m)에 올라간 플레이어는 시야로 포착하지 못함
    */
   canSeePlayer(playerPos, flashlightOn, isBlackout) {
+    const isCh2 = this.chapterId === 'chapter2';
+    if (isCh2 && this.map && this.map.getFloorHeightAt) {
+      const playerFootY = this.map.getFloorHeightAt(playerPos.x, playerPos.z);
+      if (playerFootY >= 0.65) return false;
+    }
+
     const dx = playerPos.x - this.pos.x;
     const dz = playerPos.z - this.pos.z;
     const dist = Math.hypot(dx, dz);
 
-    const isCh2 = this.chapterId === 'chapter2';
     const maxSightDist = isCh2
-      ? (flashlightOn ? 10.8 : (isBlackout ? 4.5 : 6.2))
+      ? (flashlightOn ? 12.5 : (isBlackout ? 5.0 : 7.2))
       : (flashlightOn ? 17.5 : (isBlackout ? 4.2 : 6.0));
     if (dist > maxSightDist) return false;
 
-    // 초근접(2.1m 이내)이 아니면 괴물의 정면 시야각(약 104도, 반각 52도) 이내여야 함
-    if (dist > 2.1) {
+    // 초근접(2.4m 이내)이 아니면 괴물의 정면 시야각 이내여야 함
+    if (dist > 2.4) {
       const fwdX = Math.sin(this.yaw);
       const fwdZ = Math.cos(this.yaw);
       const dirX = dx / dist;
@@ -477,7 +558,7 @@ export class MonsterAI {
       const dot = fwdX * dirX + fwdZ * dirZ;
 
       // 손전등을 켜고 괴물 근처(9m)를 비추면 시야각이 넓어짐
-      const minDot = (flashlightOn && dist < 9.0) ? 0.35 : 0.58;
+      const minDot = (flashlightOn && dist < 9.0) ? 0.35 : 0.55;
       if (dot < minDot) return false;
     }
 
@@ -494,6 +575,8 @@ export class MonsterAI {
 
   /**
    * 타일맵 BFS 최단 경로 탐색
+   * - 챕터 2의 악어 크롤러는 오직 저지대 침수 수로('W') 타일로만 경로를 탐색하며,
+   *   목표가 고지대에 있을 경우 목표와 가장 가까운 수로 경계(경사로/사다리 입구)까지만 접근합니다.
    * @param {number} targetX
    * @param {number} targetZ
    * @param {boolean} allowClosedDoors 추격(CHASE) 시 닫힌 문 앞까지 가서 부술 수 있도록 허용할지 여부
@@ -501,6 +584,7 @@ export class MonsterAI {
   computePathToWorld(targetX, targetZ, allowClosedDoors = false) {
     const start = worldToTile(this.pos.x, this.pos.z);
     let goal = worldToTile(targetX, targetZ);
+    const isCh2 = this.chapterId === 'chapter2';
     const readTile = (c, r) => (this.map && this.map.getTileChar ? this.map.getTileChar(c, r) : getTile(c, r));
 
     // 목표 지점이 발전기 코어(G)나 콘솔(C) 등 진입 불가 타일 내부인 경우 주변 통행 가능한 바닥으로 목표 자동 보정
@@ -526,9 +610,11 @@ export class MonsterAI {
     }
 
     if (start.col === goal.col && start.row === goal.row) {
-      this.path = [{ x: targetX, z: targetZ, col: goal.col, row: goal.row }];
-      this.pathIndex = 0;
-      return;
+      if (!isCh2 || this.isCrawlerWaterTile(goal.col, goal.row)) {
+        this.path = [{ x: targetX, z: targetZ, col: goal.col, row: goal.row }];
+        this.pathIndex = 0;
+        return;
+      }
     }
 
     const visited = Array.from({ length: MAP_ROWS }, () => Array(MAP_COLS).fill(false));
@@ -570,6 +656,11 @@ export class MonsterAI {
         // 발전기 코어(G) 및 CCTV 콘솔(C)을 통과 불가능한 고체 장애물로 엄격히 제외
         if (ch === ' ' || ch === '#' || ch === 'G' || ch === 'C') continue;
 
+        // 챕터 2의 악어 크롤러는 오직 저지대 침수 수로('W') 내부에서만 이동 가능!
+        if (isCh2 && !this.isCrawlerWaterTile(nc, nr)) {
+          continue;
+        }
+
         // 챕터 2에서는 경사로('M')나 사다리('H') 없이 LOW <-> HIGH 절벽 단차를 직접 넘지 못하도록 제한
         if (this.map && this.map.canStepBetweenTiles && !this.map.canStepBetweenTiles(cur.col, cur.row, nc, nr)) {
           continue;
@@ -596,7 +687,7 @@ export class MonsterAI {
     }
 
     revPath.reverse();
-    if (found) {
+    if (found && (!isCh2 || this.isCrawlerWaterTile(goal.col, goal.row))) {
       // 최종 타깃이 프랍 콜라이더(발전기 등) 내부이거나 너무 가까울 경우 프랍 중심 좌표를 경로에 넣지 않음
       let insideProp = false;
       if (this.map && this.map.propColliders) {
@@ -616,9 +707,18 @@ export class MonsterAI {
   }
 
   /**
-   * 가장 가까운 환기구(Vent)로 돌아가는 경로 설정
+   * 가장 가까운 환기구(Vent) 또는 챕터 2 원거리 수로로 도주하는 경로 설정
    */
   retreatToNearestVent() {
+    if (this.chapterId === 'chapter2') {
+      this.state = 'PATROL';
+      this.patrolDuration = 9999;
+      this.setHeartCoreColor(0xdbe8ff);
+      this.pickRandomPatrolPoint(true);
+      this.updateBioSignHUD();
+      return;
+    }
+
     let bestIdx = 0;
     let bestDist = Infinity;
     for (let i = 0; i < this.activeVentNodes.length; i++) {
@@ -640,17 +740,35 @@ export class MonsterAI {
 
   /**
    * 무작위 순찰 목적지 선택
-   * - 식당(중앙 벙커) 내부에 있을 때는 외부 복도나 타 격실로 이동하도록 유도
-   * - 챕터 2의 크롤러는 원통형 침수 하수관('W')을 주 무대로 빠르게 배회하며 간헐적으로 고지대를 수색
+   * - 챕터 1: 식당(중앙 벙커) 내부에 있을 때는 외부 복도나 타 격실로 이동하도록 유도
+   * - 챕터 2: 수로 전용 악어 크롤러는 오직 원통형 침수 하수관('W') 타일 중에서만 순찰지를 선택하여 수로를 유영
    */
-  pickRandomPatrolPoint() {
+  pickRandomPatrolPoint(preferFar = false) {
     const candidates = [];
     const curTile = worldToTile(this.pos.x, this.pos.z);
     const isCh2 = this.chapterId === 'chapter2';
     const readTile = (c, r) => (this.map && this.map.getTileChar ? this.map.getTileChar(c, r) : getTile(c, r));
-    const inCafeteria = isCh2
-      ? (curTile.col >= 20 && curTile.col <= 28 && curTile.row >= 11 && curTile.row <= 17)
-      : (curTile.col >= 19 && curTile.col <= 29 && curTile.row >= 2 && curTile.row <= 10);
+
+    if (isCh2) {
+      const minD = preferFar ? 12 : 6;
+      for (let r = 2; r < MAP_ROWS - 2; r++) {
+        for (let c = 2; c < MAP_COLS - 2; c++) {
+          if (!this.isCrawlerWaterTile(c, r)) continue;
+          const distTiles = Math.hypot(c - curTile.col, r - curTile.row);
+          if (distTiles >= minD && distTiles <= 28) {
+            candidates.push({ col: c, row: r });
+          }
+        }
+      }
+      if (candidates.length > 0) {
+        const pick = candidates[Math.floor(Math.random() * candidates.length)];
+        const w = tileToWorld(pick.col, pick.row);
+        this.computePathToWorld(w.x, w.z, false);
+      }
+      return;
+    }
+
+    const inCafeteria = (curTile.col >= 19 && curTile.col <= 29 && curTile.row >= 2 && curTile.row <= 10);
 
     for (let r = 2; r < MAP_ROWS - 2; r++) {
       for (let c = 2; c < MAP_COLS - 2; c++) {
@@ -659,10 +777,6 @@ export class MonsterAI {
 
         if (ch === '.' || ch === 'R' || ch === 'B' || ch === 'W') {
           if (inCafeteria && ch === 'B' && Math.random() < 0.88) {
-            continue;
-          }
-          // 챕터 2 크롤러는 물속('W') 순찰 선호도 부여
-          if (isCh2 && ch !== 'W' && Math.random() < 0.55) {
             continue;
           }
 
@@ -736,8 +850,8 @@ export class MonsterAI {
     const nextZ = this.pos.z + dirZ * step;
 
     let moved = false;
-    // 1. 직접 이동 시도
-    if (!this.map.checkCollision(nextX, nextZ, this.radius)) {
+    // 1. 직접 이동 시도 (챕터 2에서는 침수 수로 타일 내부로만 이동 제한)
+    if (this.canMonsterOccupy(nextX, nextZ)) {
       this.pos.x = nextX;
       this.pos.z = nextZ;
       moved = true;
@@ -761,7 +875,7 @@ export class MonsterAI {
 
             const tryX = this.pos.x + tanX * step;
             const tryZ = this.pos.z + tanZ * step;
-            if (!this.map.checkCollision(tryX, tryZ, this.radius)) {
+            if (this.canMonsterOccupy(tryX, tryZ)) {
               this.pos.x = tryX;
               this.pos.z = tryZ;
               moved = true;
@@ -774,10 +888,10 @@ export class MonsterAI {
 
       // 3. 직선 벽면 축 분리 슬라이딩 (X축 또는 Z축)
       if (!slidOnProp) {
-        if (!this.map.checkCollision(nextX, this.pos.z, this.radius)) {
+        if (this.canMonsterOccupy(nextX, this.pos.z)) {
           this.pos.x = nextX;
           moved = true;
-        } else if (!this.map.checkCollision(this.pos.x, nextZ, this.radius)) {
+        } else if (this.canMonsterOccupy(this.pos.x, nextZ)) {
           this.pos.z = nextZ;
           moved = true;
         }
@@ -855,8 +969,9 @@ export class MonsterAI {
 
       // Euler 회전 왜곡 방지를 위해 카메라 위치에 미세 충격 지터를 적용하고 헤드를 직시
       const jitter = (1.0 - progress * 0.35) * 0.024;
+      const killCamHeight = this.chapterId === 'chapter2' ? 1.24 : 1.62;
       playerCamera.position.x = playerPos.x + (Math.random() - 0.5) * jitter;
-      playerCamera.position.y = (this.pos.y + 1.62) + (Math.random() - 0.5) * jitter;
+      playerCamera.position.y = (this.pos.y + killCamHeight) + (Math.random() - 0.5) * jitter;
       playerCamera.position.z = playerPos.z + (Math.random() - 0.5) * jitter;
       playerCamera.lookAt(headWorld);
 
@@ -1054,9 +1169,8 @@ export class MonsterAI {
       case 'PATROL': {
         animMode = 'stalk';
         const isCh2 = this.chapterId === 'chapter2';
-        const inWater = isCh2 && this.map && this.map.isWaterAt ? this.map.isWaterAt(this.pos.x, this.pos.z) : false;
-        const speedMult = isCh2 ? (inWater ? 1.28 : 0.56) : 1.0;
-        this.pos.y = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0;
+        const speedMult = isCh2 ? 0.92 : 1.0;
+        this.pos.y = isCh2 ? 0.0 : (this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0);
         this.patrolDuration -= dt;
 
         // 시야 내 플레이어 발각 검사
@@ -1067,8 +1181,11 @@ export class MonsterAI {
 
         const arrived = this.moveAlongPath(dt, (this.patrolSpeed || 3.15) * speedMult, false);
         if (arrived) {
-          this.pos.y = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0;
-          if (this.patrolDuration <= 0) {
+          this.pos.y = isCh2 ? 0.0 : (this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0);
+          if (isCh2) {
+            // 챕터 2 악어 크롤러는 환기구에 들어가지 않고 침수 수로 네트워크를 계속 유영하며 순찰
+            this.pickRandomPatrolPoint();
+          } else if (this.patrolDuration <= 0) {
             // 순찰 시간이 끝나면 가장 가까운 환기구로 들어가 다른 구역으로 이동
             let nearIdx = 0;
             let nearDist = Infinity;
@@ -1102,27 +1219,26 @@ export class MonsterAI {
       case 'INVESTIGATE': {
         animMode = 'stalk';
         const isCh2 = this.chapterId === 'chapter2';
-        const inWater = isCh2 && this.map && this.map.isWaterAt ? this.map.isWaterAt(this.pos.x, this.pos.z) : false;
-        const speedMult = isCh2 ? (inWater ? 1.28 : 0.58) : 1.0;
-        this.pos.y = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0;
+        const speedMult = isCh2 ? 0.98 : 1.0;
+        this.pos.y = isCh2 ? 0.0 : (this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0);
 
         if (this.canSeePlayer(playerPos, flashlightOn, isBlackout)) {
           this.startChase(playerPos);
           break;
         }
 
-        const arrived = this.moveAlongPath(dt, (this.investigateSpeed || 4.35) * speedMult, true);
-        this.pos.y = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0;
+        const arrived = this.moveAlongPath(dt, (this.investigateSpeed || 4.35) * speedMult, !isCh2);
+        this.pos.y = isCh2 ? 0.0 : (this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0);
         if (arrived) {
-          // 소음 지점 도착 후 4초 동안 주변을 두리번거리며 수색
+          // 소음 지점 도착 후 주변을 두리번거리며 수색
           animMode = 'idle';
           this.stateTimer += dt;
           this.targetYaw += Math.sin(this.stateTimer * 2.6) * dt * 1.8;
 
-          if (this.stateTimer >= 4.2) {
+          if (this.stateTimer >= (isCh2 ? 3.4 : 4.2)) {
             this.investigateTarget = null;
             this.state = 'PATROL';
-            this.patrolDuration = 12 + Math.random() * 8;
+            this.patrolDuration = isCh2 ? 9999 : (12 + Math.random() * 8);
             this.setHeartCoreColor(0xdbe8ff);
             this.pickRandomPatrolPoint();
             this.updateBioSignHUD();
@@ -1134,22 +1250,47 @@ export class MonsterAI {
       case 'CHASE': {
         animMode = 'chase';
         const isCh2 = this.chapterId === 'chapter2';
-        const inWater = isCh2 && this.map && this.map.isWaterAt ? this.map.isWaterAt(this.pos.x, this.pos.z) : false;
-        // 챕터 2 크롤러는 물속에서 맹렬히 빨라지고, 물 밖(고지대 회랑)으로 올라오면 현저히 느려짐!
-        const speedMult = isCh2 ? (inWater ? 1.26 : 0.58) : 1.0;
-        this.pos.y = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0;
+        const speedMult = isCh2 ? 0.80 : 1.0;
+        this.pos.y = isCh2 ? 0.0 : (this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0);
 
-        // 플레이어 포획 판정 (거리 1.15m 이내 & 고저차 0.85m 이내 & 벽 없음)
         const playerFootY = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(playerPos.x, playerPos.z) : 0;
+
+        // 플레이어 포획 판정: 챕터 2에서는 플레이어가 물속/경사로 하단(playerFootY < 0.58)에 있을 때만 포획 가능!
+        const canCatchElevation = isCh2 ? (playerFootY < 0.58) : (Math.abs(this.pos.y - playerFootY) < 0.85);
+        const catchRadius = isCh2 ? 1.32 : 1.15;
         if (
-          distToPlayer < 1.15 &&
-          Math.abs(this.pos.y - playerFootY) < 0.85 &&
+          distToPlayer < catchRadius &&
+          canCatchElevation &&
           this.hasGridLineOfSight(this.pos.x, this.pos.z, playerPos.x, playerPos.z)
         ) {
           this.triggerPlayerKill(playerPos, playerCamera);
           return;
         }
 
+        // 챕터 2 전용: 플레이어가 경사로('M')나 사다리('H')를 통해 고지대(안전지대)로 올라갔을 때의 연출 및 추격 포기
+        if (isCh2 && playerFootY >= 0.58) {
+          const arrivedEdge = this.moveAlongPath(dt, (this.chaseSpeed || 7.6) * speedMult, false);
+          this.pos.y = 0.0;
+          if (arrivedEdge || distToPlayer < 4.2) {
+            animMode = 'attack'; // 물가 경계에서 고지대를 향해 악어 턱을 딱딱거리며 위협
+            this.targetYaw = Math.atan2(playerPos.x - this.pos.x, playerPos.z - this.pos.z);
+            this.waterEdgeFrustrationTimer = (this.waterEdgeFrustrationTimer || 0) + dt;
+            if (this.waterEdgeFrustrationTimer >= 2.2) {
+              this.waterEdgeFrustrationTimer = 0;
+              this.state = 'PATROL';
+              this.patrolDuration = 9999;
+              this.setHeartCoreColor(0xdbe8ff);
+              this.pickRandomPatrolPoint(true);
+              if (this.callbacks.onToast) {
+                this.callbacks.onToast('[SAFE ZONE] 고지대 통로로 대피하여 수로 크롤러의 추격을 따돌렸습니다!', 'info');
+              }
+              this.updateBioSignHUD();
+            }
+          }
+          break;
+        }
+
+        this.waterEdgeFrustrationTimer = 0;
         const seesPlayer = this.canSeePlayer(playerPos, flashlightOn, isBlackout);
         if (seesPlayer) {
           this.lastSeenPlayerPos.copy(playerPos);
@@ -1163,7 +1304,7 @@ export class MonsterAI {
         this.repathTimer -= dt;
         if (this.repathTimer <= 0) {
           this.repathTimer = 0.35;
-          this.computePathToWorld(this.lastSeenPlayerPos.x, this.lastSeenPlayerPos.z, true);
+          this.computePathToWorld(this.lastSeenPlayerPos.x, this.lastSeenPlayerPos.z, !isCh2);
         }
 
         // 플레이어 시야를 6.2초 이상 놓치면 추격 종료 -> 마지막 위치 수색으로 전환
@@ -1179,8 +1320,8 @@ export class MonsterAI {
           break;
         }
 
-        this.moveAlongPath(dt, (this.chaseSpeed || 7.6) * speedMult, true);
-        this.pos.y = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0;
+        this.moveAlongPath(dt, (this.chaseSpeed || 7.6) * speedMult, !isCh2);
+        this.pos.y = isCh2 ? 0.0 : (this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0);
         break;
       }
 
@@ -1266,12 +1407,19 @@ export class MonsterAI {
     this.state = 'CHASE';
     this.loseSightTimer = 0;
     this.repathTimer = 0;
+    this.waterEdgeFrustrationTimer = 0;
     this.lastSeenPlayerPos.copy(playerPos);
     this.setHeartCoreColor(0xff2222);
     sound.playMonsterScreech(0.45);
-    this.computePathToWorld(playerPos.x, playerPos.z, true);
+    const isCh2 = this.chapterId === 'chapter2';
+    this.computePathToWorld(playerPos.x, playerPos.z, !isCh2);
     if (this.callbacks.onToast) {
-      this.callbacks.onToast('[ALERT] 괴물에게 발각되었습니다! 방호문을 닫거나 조명탄[Q]을 던지십시오!', 'danger');
+      this.callbacks.onToast(
+        isCh2
+          ? '[WATER ALERT] 수로 크롤러에게 발각되었습니다! 경사로·사다리로 올라가거나 조명탄[Q]을 던지십시오!'
+          : '[ALERT] 괴물에게 발각되었습니다! 방호문을 닫거나 조명탄[Q]을 던지십시오!',
+        'danger'
+      );
     }
     this.updateBioSignHUD();
   }
