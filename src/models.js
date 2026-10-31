@@ -2344,7 +2344,14 @@ export class LurkerCrocodileEntity {
 
     const isErupting = mode === 'chase' || mode === 'attack' || mode === 'jumpscare';
 
-    if (isErupting) {
+    if (mode === 'jumpscare') {
+      // 점프스케어 시: 수면을 가르며 카메라 정면으로 몸통 전체가 솟구치며 곰덫 아가리가 쩍 갈라짐!
+      const snapWave = Math.abs(Math.sin(t * 12.0));
+      this.bodyGroup.position.y = THREE.MathUtils.lerp(this.bodyGroup.position.y, 0.95 + snapWave * 0.22, dt * 14);
+      this.bodyGroup.rotation.x = -0.38 + Math.sin(t * 12.0) * 0.15;
+      this.upperTrapJaw.rotation.x = -1.05 - snapWave * 0.25;
+      this.lowerTrapJaw.rotation.x = 0.95 + snapWave * 0.25;
+    } else if (isErupting) {
       // 기습 시: 수면 위로 몸통 전체가 솟구쳐 오르며 곰덫 아가리를 쩍 벌리고 물어뜯음!
       const snapWave = Math.abs(Math.sin(t * 7.5));
       this.bodyGroup.position.y = THREE.MathUtils.lerp(this.bodyGroup.position.y, 0.56 + snapWave * 0.14, dt * 10);

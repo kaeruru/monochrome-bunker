@@ -1211,21 +1211,35 @@ export class MonsterAI {
     // 1. 플레이어 처형(Jumpscare) 애니메이션 진행 중일 때
     if (this.isKillingPlayer) {
       this.killTimer -= dt;
-      const progress = 1.0 - Math.max(0, this.killTimer / 1.65);
+      const progress = 1.0 - Math.max(0, this.killTimer / 1.75);
 
-      // 플레이어 카메라가 괴물의 안면 두개골과 날카로운 내턱을 강제로 정면 응시
-      this.monster.headGroup.getWorldPosition(this._tmpHeadWorld);
-      this._tmpHeadWorld.y -= 0.08; // 안면과 턱, 이빨이 정중앙에 위치하도록 보정
+      if (this.killerType === 'lurker') {
+        // 매복자 악어의 솟구치는 곰덫 턱을 카메라가 정면 응시
+        this.lurkerEntity.root.getWorldPosition(this._tmpHeadWorld);
+        this._tmpHeadWorld.y += 0.48;
 
-      // Euler 회전 왜곡 방지를 위해 카메라 위치에 미세 충격 지터를 적용하고 헤드를 직시
-      const jitter = (1.0 - progress * 0.35) * 0.024;
-      const killCamHeight = this.chapterId === 'chapter2' ? 1.24 : 1.62;
-      playerCamera.position.x = playerPos.x + (Math.random() - 0.5) * jitter;
-      playerCamera.position.y = (this.pos.y + killCamHeight) + (Math.random() - 0.5) * jitter;
-      playerCamera.position.z = playerPos.z + (Math.random() - 0.5) * jitter;
-      playerCamera.lookAt(this._tmpHeadWorld);
+        const jitter = (1.0 - progress * 0.35) * 0.035;
+        playerCamera.position.x = playerPos.x + (Math.random() - 0.5) * jitter;
+        playerCamera.position.y = (this.lurkerPos.y + 0.95) + (Math.random() - 0.5) * jitter;
+        playerCamera.position.z = playerPos.z + (Math.random() - 0.5) * jitter;
+        playerCamera.lookAt(this._tmpHeadWorld);
 
-      this.monster.update(dt, 'jumpscare');
+        this.lurkerEntity.update(dt, 'jumpscare');
+      } else {
+        // 플레이어 카메라가 괴물의 안면 두개골과 날카로운 내턱을 강제로 정면 응시
+        this.monster.headGroup.getWorldPosition(this._tmpHeadWorld);
+        this._tmpHeadWorld.y -= 0.08; // 안면과 턱, 이빨이 정중앙에 위치하도록 보정
+
+        // Euler 회전 왜곡 방지를 위해 카메라 위치에 미세 충격 지터를 적용하고 헤드를 직시
+        const jitter = (1.0 - progress * 0.35) * 0.024;
+        const killCamHeight = this.chapterId === 'chapter2' ? 1.24 : 1.62;
+        playerCamera.position.x = playerPos.x + (Math.random() - 0.5) * jitter;
+        playerCamera.position.y = (this.pos.y + killCamHeight) + (Math.random() - 0.5) * jitter;
+        playerCamera.position.z = playerPos.z + (Math.random() - 0.5) * jitter;
+        playerCamera.lookAt(this._tmpHeadWorld);
+
+        this.monster.update(dt, 'jumpscare');
+      }
 
       if (this.killTimer <= 0) {
         this.isKillingPlayer = false;
@@ -1736,17 +1750,10 @@ export class MonsterAI {
         sound.playLurkerSubmerge();
         this.lurkerState = 'LURK_RELOCATE';
         this.lurkerTimer = 1.1;
-      } else if (dLurk < 1.85 && playerFootY < 0.62 && !this.isPlayerSnared) {
-        // 소나 펄스나 조명탄으로 쫓아내지 않고 경사로/사다리 입구를 밟으면 수면 아래에서 곰덫 아가리가 솟구치며 기습!
-        this.lurkerState = 'LURK_ATTACK';
-        this.lurkerTimer = 1.5;
-        this.lurkerYaw = Math.atan2(playerPos.x - this.lurkerPos.x, playerPos.z - this.lurkerPos.z);
-        sound.playLurkerBite();
-        if (this.callbacks.onPlayerBittenByLurker) {
-          this.callbacks.onPlayerBittenByLurker(this.lurkerPos);
-        }
-        // 기습 소음으로 #1 스토커 악어(The Ripper)를 즉시 호출!
-        this.startChase(playerPos);
+      } else if (dLurk < 2.25 && playerFootY < 1.45 && !this.isPlayerSnared && !this.isKillingPlayer) {
+        // 소나 펄스나 조명탄으로 쫓아내지 않고 경사로/사다리 입구를 밟으면 수면 아래에서 곰덫 아가리가 솟구치며 즉시 처형 점프스케어 발동!
+        this.triggerPlayerKill(playerPos, playerCamera, 'lurker');
+        return;
       } else if (this.lurkerTimer <= 0 && dLurk > 8.0) {
         this.relocateLurker(playerPos, true);
       }
@@ -1936,42 +1943,64 @@ export class MonsterAI {
 
   /**
    * 괴물에게 붙잡혔을 때 암전 및 1인칭 안면 고정 점프스케어 연출 시작
+   * @param {THREE.Vector3} playerPos
+   * @param {THREE.Camera} playerCamera
+   * @param {'main'|'lurker'} killerType 처형 주체 괴물 종류 ('main': 스토커/크롤러, 'lurker': 매복자 악어)
    */
-  triggerPlayerKill(playerPos, playerCamera) {
+  triggerPlayerKill(playerPos, playerCamera, killerType = 'main') {
     this.isKillingPlayer = true;
-    this.killTimer = 1.65;
+    this.killerType = killerType;
+    this.killTimer = 1.75;
     this.isPlayerSnared = false;
     if (this.snareState === 'SNARE_HOLD') {
       this.snareState = 'SNARE_COOLDOWN';
       this.snareTimer = 3.0;
     }
 
-    // 플레이어 시야 정면 1.38m 위치에 괴물을 즉각 배치하여 두개골, 발톱, 흉부가 모두 선명하게 프레이밍되도록 정렬
-    const isCh2 = this.chapterId === 'chapter2';
-    const offsetDist = isCh2 ? 1.62 : 1.35;
     this._tmpFwd.set(0, 0, -1).applyQuaternion(playerCamera.quaternion);
     this._tmpFwd.y = 0;
     if (this._tmpFwd.lengthSq() > 0.001) this._tmpFwd.normalize();
 
-    const groundY = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(playerPos.x, playerPos.z) : 0;
-    this.pos.x = playerPos.x + this._tmpFwd.x * offsetDist;
-    this.pos.z = playerPos.z + this._tmpFwd.z * offsetDist;
-    this.pos.y = isCh2 ? 0.0 : groundY;
-    this.yaw = Math.atan2(-this._tmpFwd.x, -this._tmpFwd.z);
+    if (killerType === 'lurker' && this.lurkerEntity) {
+      // #2 매복자 악어 점프스케어: 플레이어 바로 정면 1.18m 위치로 수면을 뚫고 솟구쳐 곰덫 아가리로 안면 가격
+      const offsetDist = 1.18;
+      this.lurkerPos.x = playerPos.x + this._tmpFwd.x * offsetDist;
+      this.lurkerPos.z = playerPos.z + this._tmpFwd.z * offsetDist;
+      this.lurkerPos.y = 0.0;
+      this.lurkerYaw = Math.atan2(-this._tmpFwd.x, -this._tmpFwd.z);
 
-    this.monster.root.position.copy(this.pos);
-    this.monster.root.rotation.y = this.yaw;
-    this.setHeartCoreColor(0xff0000);
+      this.lurkerEntity.root.position.copy(this.lurkerPos);
+      this.lurkerEntity.root.rotation.y = this.lurkerYaw;
+      this.lurkerEntity.root.visible = true;
+      this.lurkerState = 'LURK_ATTACK';
+      this.lurkerTimer = 2.0;
+
+      sound.playLurkerBite();
+      sound.playCrawlerJumpscare();
+    } else {
+      // 일반 스토커 / 크롤러 괴물 점프스케어
+      const isCh2 = this.chapterId === 'chapter2';
+      const offsetDist = isCh2 ? 1.62 : 1.35;
+      const groundY = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(playerPos.x, playerPos.z) : 0;
+      this.pos.x = playerPos.x + this._tmpFwd.x * offsetDist;
+      this.pos.z = playerPos.z + this._tmpFwd.z * offsetDist;
+      this.pos.y = isCh2 ? 0.0 : groundY;
+      this.yaw = Math.atan2(-this._tmpFwd.x, -this._tmpFwd.z);
+
+      this.monster.root.position.copy(this.pos);
+      this.monster.root.rotation.y = this.yaw;
+      this.setHeartCoreColor(0xff0000);
+
+      if (this.chapterId === 'chapter2') {
+        sound.playCrawlerJumpscare();
+      } else {
+        sound.playJumpscare();
+      }
+    }
 
     // 주변 조명 완전 암전 콜백 트리거
     if (this.callbacks.onKillStart) {
       this.callbacks.onKillStart();
-    }
-
-    if (this.chapterId === 'chapter2') {
-      sound.playCrawlerJumpscare();
-    } else {
-      sound.playJumpscare();
     }
   }
 
