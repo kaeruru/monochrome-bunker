@@ -269,47 +269,60 @@ html, body {
   font-weight: 600;
 }
 
-/* 인게임 알림 토스트 */
+/* 인게임 알림 토스트 - 상단 군용 전술 HUD 텔레메트리 바 */
 #game-toast {
   position: absolute;
-  top: 135px;
+  top: 24px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(10, 14, 18, 0.95);
-  border: 1px solid #55ccee;
-  color: #ffffff;
-  padding: 8px 18px;
+  background: rgba(10, 15, 20, 0.88);
+  border: 1px solid rgba(85, 204, 238, 0.32);
+  border-left: 3px solid #38bdf8;
+  color: #e2f4ff;
+  padding: 6px 18px;
   border-radius: 2px;
-  font-size: 12px;
+  font-family: 'Share Tech Mono', monospace, -apple-system, sans-serif;
+  font-size: 11.5px;
   font-weight: 600;
+  line-height: 1.4;
   letter-spacing: 0.6px;
-  z-index: 30;
+  z-index: 35;
   pointer-events: none;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.85);
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.75), inset 0 0 12px rgba(56, 189, 248, 0.08);
+  transition: opacity 0.22s ease, transform 0.22s ease;
   text-align: center;
-  max-width: 86vw;
+  max-width: 82vw;
 }
 
 #game-toast.hidden {
   opacity: 0;
-  transform: translate(-50%, -6px);
+  transform: translate(-50%, -10px);
 }
 
 #game-toast.toast-danger {
-  border-color: #ff4444;
-  background: rgba(36, 10, 10, 0.95);
-  color: #ffcccc;
+  border-color: rgba(239, 68, 68, 0.4);
+  border-left: 3px solid #ef4444;
+  background: rgba(28, 10, 12, 0.9);
+  color: #fee2e2;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.75), inset 0 0 12px rgba(239, 68, 68, 0.12);
 }
 
 #game-toast.toast-warn {
-  border-color: #ffaa33;
-  color: #fff0d4;
+  border-color: rgba(245, 158, 11, 0.4);
+  border-left: 3px solid #f59e0b;
+  background: rgba(28, 18, 8, 0.9);
+  color: #fef3c7;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.75), inset 0 0 12px rgba(245, 158, 11, 0.12);
 }
 
 #game-toast.toast-success {
-  border-color: #44dd88;
-  color: #ddffea;
+  border-color: rgba(16, 185, 129, 0.4);
+  border-left: 3px solid #10b981;
+  background: rgba(8, 26, 16, 0.9);
+  color: #d1fae5;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.75), inset 0 0 12px rgba(16, 185, 129, 0.12);
 }
 
 /* 하단 중앙 3슬롯 인벤토리 & 스태미나 통합 HUD */

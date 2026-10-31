@@ -82,6 +82,9 @@ class MonochromeBunker3D {
     this.flashlight.target = this.flashlightTarget;
     this.scene.add(this.flashlight);
 
+    // 챕터 2 전용 음파 감지기 전방 소나 펄스(Sonar Pulse) 쿨타임 (초)
+    this.sonarPulseCooldown = 0;
+
     // 모바일 60FPS를 위해 불필요한 실시간 PointLight 제거
     this.playerFillLight = null;
 
@@ -474,6 +477,7 @@ class MonochromeBunker3D {
     this.playerCamera.rotation.z = 0;
     this.stamina = this.maxStamina;
     this.staminaExhausted = false;
+    this.sonarPulseCooldown = 0;
 
     if (this.interactionSystem) {
       this.interactionSystem.setupNewMatch();
@@ -534,6 +538,7 @@ class MonochromeBunker3D {
     this.playerCamera.rotation.z = 0;
     this.stamina = this.maxStamina;
     this.staminaExhausted = false;
+    this.sonarPulseCooldown = 0;
 
     if (this.interactionSystem) {
       this.interactionSystem.setupNewMatch();
@@ -1412,9 +1417,13 @@ class MonochromeBunker3D {
       this.flashlight.intensity = isBlackout ? 10.5 : 14.5;
       if (this.playerFillLight) this.playerFillLight.intensity = 0;
       if (this.btnTouchFlashlight) {
-        this.btnTouchFlashlight.classList.remove('active');
-        this.btnTouchFlashlight.style.opacity = '0.35';
-        this.btnTouchFlashlight.title = '수로 구역: 직육면체 음파 감지기 작동 중';
+        const lbl = this.btnTouchFlashlight.querySelector('.btn-label');
+        if (lbl) lbl.textContent = 'PULSE';
+        const sub = this.btnTouchFlashlight.querySelector('.btn-sub');
+        if (sub) sub.textContent = '[ F ]';
+        this.btnTouchFlashlight.classList.toggle('active', this.sonarPulseCooldown <= 0);
+        this.btnTouchFlashlight.style.opacity = this.sonarPulseCooldown <= 0 ? '1.0' : '0.45';
+        this.btnTouchFlashlight.title = '음파 감지기 전방 소나 펄스 발사 (매복자 격퇴 / 쿨타임 7초)';
       }
       this.scene.background.setHex(isBlackout ? 0x050202 : 0x090503);
       if (this.scene.fog) {
@@ -1434,9 +1443,13 @@ class MonochromeBunker3D {
       this.flashlight.intensity = isBlackout ? 0 : this.flashlightMaxIntensity;
       if (this.playerFillLight) this.playerFillLight.intensity = isBlackout ? 0.22 : 1.45;
       if (this.btnTouchFlashlight) {
+        const lbl = this.btnTouchFlashlight.querySelector('.btn-label');
+        if (lbl) lbl.textContent = 'LIGHT';
+        const sub = this.btnTouchFlashlight.querySelector('.btn-sub');
+        if (sub) sub.textContent = '[ F ]';
         this.btnTouchFlashlight.classList.toggle('active', this.flashlightOn);
         this.btnTouchFlashlight.style.opacity = '1.0';
-        this.btnTouchFlashlight.title = '';
+        this.btnTouchFlashlight.title = '전술 손전등 온/오프';
       }
       this.scene.background.setHex(0x040405);
       if (this.scene.fog) {
@@ -1455,6 +1468,7 @@ class MonochromeBunker3D {
     this.activeChapterId = cfg.id;
     this.currentChapterConfig = cfg;
     this.sonarBeepTimer = 0.5;
+    this.sonarPulseCooldown = 0;
 
     // 1. 3D 맵 재구성 (지오메트리, 벽, 문, 수면, 전등)
     if (this.map) {
@@ -1613,11 +1627,48 @@ class MonochromeBunker3D {
       this.interactionSystem.dropOrUseHeldItem(this.playerPos, forward);
     }
 
-    // 3. 손전등 토글 (F키 또는 우측 하단 손전등 버튼) - 소등 시 괴물 시야 감지 반경이 대폭 축소됨
+    // 2-3. 챕터 2 소나 펄스 쿨타임 감소 및 HUD 동기화
+    if (this.sonarPulseCooldown > 0) {
+      this.sonarPulseCooldown = Math.max(0, this.sonarPulseCooldown - dt);
+      if (this.activeChapterId === 'chapter2' && this.btnTouchFlashlight) {
+        const lbl = this.btnTouchFlashlight.querySelector('.btn-label');
+        if (lbl) {
+          if (this.sonarPulseCooldown > 0) {
+            lbl.textContent = `${this.sonarPulseCooldown.toFixed(1)}s`;
+            this.btnTouchFlashlight.classList.remove('active');
+            this.btnTouchFlashlight.style.opacity = '0.45';
+          } else {
+            lbl.textContent = 'PULSE';
+            this.btnTouchFlashlight.classList.add('active');
+            this.btnTouchFlashlight.style.opacity = '1.0';
+          }
+        }
+      }
+    }
+
+    // 3. 손전등 토글 / 챕터 2 소나 펄스 발사 (F키 또는 우측 하단 버튼)
     if (this.controls.consumeFlashlight()) {
       if (this.activeChapterId === 'chapter2') {
-        sound.playFlashlightClick(false);
-        this.showGameToast('[통신] 침수 수로 구역에서는 방수 손전등이 지급되지 않습니다. 기둥의 주황 유도등을 확인하십시오.', 'warning');
+        if (this.sonarPulseCooldown > 0) {
+          sound.playFlashlightClick(false);
+        } else {
+          this.sonarPulseCooldown = 7.0;
+          sound.playSonarPulse();
+          if (this.viewModel) {
+            this.viewModel.triggerSonarPulseAnim();
+          }
+          const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.playerCamera.quaternion);
+          forward.y = 0;
+          if (forward.lengthSq() > 0.001) forward.normalize();
+
+          const repelled = this.monsterAI && this.monsterAI.repelLurkerBySonarPulse
+            ? this.monsterAI.repelLurkerBySonarPulse(this.playerPos, forward)
+            : false;
+
+          if (repelled) {
+            this.showGameToast('[PULSE] 전방 매복자를 소나 충격파로 격퇴했습니다. 스토커 악어가 반응합니다!', 'warn');
+          }
+        }
       } else {
         this.flashlightOn = !this.flashlightOn;
         this.flashlight.intensity = this.flashlightOn ? this.flashlightMaxIntensity : 0;
@@ -2047,7 +2098,7 @@ class MonochromeBunker3D {
     if (this.toastTimer) clearTimeout(this.toastTimer);
     this.toastTimer = setTimeout(() => {
       if (this.gameToastEl) this.gameToastEl.classList.add('hidden');
-    }, 4200);
+    }, 2900);
   }
 
   handleEscapeSuccess() {

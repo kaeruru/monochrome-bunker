@@ -618,10 +618,12 @@ export class FirstPersonViewModel {
     ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
     ctx.fill();
 
-    // 5. 크롤러 삼두 괴수 음파 타겟 블립 표시 (28m 이내 감지)
-    const blips = Array.isArray(extraBlips) && extraBlips.length > 0
+    // 5. 수중 괴수 음파 타겟 블립 표시 (28m 이내 감지)
+    // 맹글 악어(#3)는 수중이 아니라 배수관 천장에 매달려 있으므로 수중 음파 레이더에 절대 감지되지 않습니다!
+    const blips = (Array.isArray(extraBlips) && extraBlips.length > 0
       ? extraBlips
-      : (monsterActive ? [{ dist: distToMonster, relAngle, role: 'ripper' }] : []);
+      : (monsterActive ? [{ dist: distToMonster, relAngle, role: 'ripper' }] : [])
+    ).filter(b => b.role !== 'snare');
 
     let closestDist = distToMonster;
     for (const b of blips) {
@@ -633,18 +635,17 @@ export class FirstPersonViewModel {
 
       const pulse = 0.5 + 0.5 * Math.sin(this.time * (b.dist < 10 ? 16 : 9));
       const isRipper = b.role === 'ripper' || b.role === 'stalker';
-      const isSnare = b.role === 'snare';
 
       ctx.fillStyle = isRipper
         ? (b.dist < 10 ? '#ff3b1f' : '#ff9a2e')
-        : (isSnare ? '#ff4488' : '#ffcc33');
+        : '#ffcc33';
       ctx.beginPath();
       ctx.arc(bx, by, (isRipper ? 3.8 : 3.0) + pulse * 1.8, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.strokeStyle = isRipper
         ? 'rgba(255, 68, 34, 0.85)'
-        : (isSnare ? 'rgba(255, 68, 136, 0.75)' : 'rgba(255, 204, 51, 0.75)');
+        : 'rgba(255, 204, 51, 0.75)';
       ctx.lineWidth = 1.3;
       ctx.beginPath();
       ctx.arc(bx, by, (isRipper ? 6.5 : 5.2) + pulse * 3.8, 0, Math.PI * 2);
@@ -670,6 +671,19 @@ export class FirstPersonViewModel {
     }
 
     this.radarTex.needsUpdate = true;
+  }
+
+  /**
+   * 소나 펄스(Sonar Pulse Blast) 발사 시 1인칭 감지기 반동 및 발광 애니메이션
+   */
+  triggerSonarPulseAnim() {
+    this.sonarPulseRecoil = 0.28;
+    if (this.sonarTopLightMat) {
+      this.sonarTopLightMat.color.setHex(0xffffff);
+      setTimeout(() => {
+        if (this.sonarTopLightMat) this.sonarTopLightMat.color.setHex(0xffe4b0);
+      }, 250);
+    }
   }
 
   /**
@@ -747,6 +761,10 @@ export class FirstPersonViewModel {
     if (this.flashlightClickTimer > 0) {
       this.flashlightClickTimer = Math.max(0, this.flashlightClickTimer - dt);
       torchClickOffset = Math.sin((this.flashlightClickTimer / 0.22) * Math.PI) * 0.028;
+    }
+    if (this.sonarPulseRecoil > 0) {
+      this.sonarPulseRecoil = Math.max(0, this.sonarPulseRecoil - dt * 1.8);
+      torchClickOffset += Math.sin((this.sonarPulseRecoil / 0.28) * Math.PI) * 0.045;
     }
 
     const isCh2 = this.chapterId === 'chapter2';

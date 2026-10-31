@@ -278,15 +278,14 @@ export class CCTVSystem3D {
     const container = document.querySelector('.cctv-door-controls');
     if (!container) return;
 
-    container.innerHTML = '<span class="door-title">방호문 원격 개폐:</span>';
-
     if (!doors || doors.length === 0) {
-      const span = document.createElement('span');
-      span.className = 'door-title';
-      span.textContent = '설치된 방호문 없음';
-      container.appendChild(span);
+      container.style.display = 'none';
+      container.innerHTML = '';
       return;
     }
+
+    container.style.display = '';
+    container.innerHTML = '<span class="door-title">방호문 원격 개폐:</span>';
 
     doors.forEach(d => {
       const btn = document.createElement('button');

@@ -207,8 +207,10 @@ export class InteractionAndEscapeSystem {
     // 3. 북동쪽 부품 위치 스캔 단말기 생성
     this.buildScannerTerminal(27, isCh2 ? 11 : 3);
 
-    // 4. 주 배전반(차단기 레버 3개) 생성 (챕터 2는 북서 수문 제어실 (10,5), 챕터 1은 전기실 (16,20))
-    this.buildElectricalBreakerPanel(isCh2 ? 10 : 16, isCh2 ? 5 : 20);
+    // 4. 주 배전반(차단기 레버 3개) 생성 (챕터 1 전용: 전기실 (16,20), 챕터 2는 전기실 없음)
+    if (!isCh2) {
+      this.buildElectricalBreakerPanel(16, 20);
+    }
 
     // 5. 14개 후보 스팟 중 무작위 셔플하여 필수 코어 부품 4개 + 조명탄 배치
     this.spawnRandomizedItemsAndLockers();
@@ -650,7 +652,7 @@ export class InteractionAndEscapeSystem {
    * - 전기실 배전반 차단기 레버가 0/3으로 내려감
    */
   triggerBlackout(reasonText = '괴물이 주 전력망을 습격하여 시설 전체가 정전되었습니다!') {
-    if (this.isBlackout || this.isGameCleared) return;
+    if (this.map.chapterId === 'chapter2' || this.isBlackout || this.isGameCleared) return;
     this.isBlackout = true;
     this.blackoutTransitionTimer = 0.85;
     this.blackoutCount++;
@@ -1137,8 +1139,8 @@ export class InteractionAndEscapeSystem {
   update(dt) {
     this.time += dt;
 
-    // 1. 자동 정전 타이머 (긴장감을 유지하는 주기적 정전 이벤트)
-    if (!this.isBlackout && !this.isGameCleared) {
+    // 1. 자동 정전 타이머 (챕터 1 전용 긴장감 주기적 정전 이벤트; 챕터 2는 전기실 미존재로 비활성화)
+    if (this.map.chapterId !== 'chapter2' && !this.isBlackout && !this.isGameCleared) {
       this.autoBlackoutTimer -= dt;
       if (this.autoBlackoutTimer <= 0) {
         this.autoBlackoutTimer = 75 + Math.random() * 25;

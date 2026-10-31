@@ -1363,7 +1363,7 @@ export class Map3D {
     const defaultNamesCh2 = {
       1: 'CAM 01 - 북측 대구경 원통 하수관',
       2: 'CAM 02 - 남측 침수 배수관',
-      3: 'CAM 03 - 동측 고대 벽돌 아치 회랑',
+      3: 'CAM 03 - 동측 침수 저류 수로',
       4: 'CAM 04 - 서측 원형 수로 합류부'
     };
     const defaultNames = isCh2 ? defaultNamesCh2 : defaultNamesCh1;

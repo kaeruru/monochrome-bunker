@@ -1368,6 +1368,61 @@ class AudioManager {
   }
 
   /**
+   * 챕터 2 음파 감지기 전방 강력 소나 펄스(Sonar Pulse Blast) 방출음
+   */
+  playSonarPulse() {
+    this.init();
+    if (!this.ctx || this.isMuted) return;
+
+    const t = this.ctx.currentTime;
+    const dur = 0.85;
+
+    // 1. 묵직한 수중 충격파 저음 (Low-end Thud Blast)
+    const subOsc = this.ctx.createOscillator();
+    const subGain = this.ctx.createGain();
+    subOsc.type = 'triangle';
+    subOsc.frequency.setValueAtTime(180, t);
+    subOsc.frequency.exponentialRampToValueAtTime(32, t + 0.38);
+    subGain.gain.setValueAtTime(0.55, t);
+    subGain.gain.exponentialRampToValueAtTime(0.001, t + 0.42);
+    subOsc.connect(subGain);
+    subGain.connect(this.masterGain || this.ctx.destination);
+    subOsc.start(t);
+    subOsc.stop(t + 0.45);
+
+    // 2. 공명하는 고출력 소나 핑 에코 (High-Power Sonar Ping Echo)
+    const pingOsc = this.ctx.createOscillator();
+    const pingGain = this.ctx.createGain();
+    pingOsc.type = 'sine';
+    pingOsc.frequency.setValueAtTime(1420, t + 0.02);
+    pingOsc.frequency.exponentialRampToValueAtTime(920, t + dur);
+    pingGain.gain.setValueAtTime(0.48, t + 0.02);
+    pingGain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    pingOsc.connect(pingGain);
+    pingGain.connect(this.masterGain || this.ctx.destination);
+    pingOsc.start(t + 0.02);
+    pingOsc.stop(t + dur);
+
+    // 3. 물살 가르는 확산 노이즈
+    if (this.noiseBuffer) {
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = this.noiseBuffer;
+      const bp = this.ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.setValueAtTime(650, t);
+      bp.Q.setValueAtTime(1.8, t);
+      const nGain = this.ctx.createGain();
+      nGain.gain.setValueAtTime(0.38, t);
+      nGain.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+      noise.connect(bp);
+      bp.connect(nGain);
+      nGain.connect(this.masterGain || this.ctx.destination);
+      noise.start(t);
+      noise.stop(t + 0.56);
+    }
+  }
+
+  /**
    * 챕터 2 허벅지 깊이 침수 수로 보행/질주 시 철썩이는 물장구 발소리
    */
   playWaterFootstep(isSprint = false) {

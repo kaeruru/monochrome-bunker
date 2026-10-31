@@ -425,7 +425,35 @@ export class MonsterAI {
   }
 
   /**
-   * 소나 레이더 표시용: 현재 활성화된 괴물 위치 목록 반환 (제2장은 삼두 괴수 3마리 모두 반환)
+   * 플레이어가 음파 감지기로 강력 소나 펄스(Sonar Pulse Blast)를 발사했을 때 매복자 악어 퇴치 판정
+   */
+  repelLurkerBySonarPulse(playerPos, forwardVec) {
+    if (this.chapterId !== 'chapter2') return false;
+    if (this.lurkerState !== 'LURK_WAIT') return false;
+
+    const dx = this.lurkerPos.x - playerPos.x;
+    const dz = this.lurkerPos.z - playerPos.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist > 9.5) return false;
+
+    const dirX = dx / Math.max(0.01, dist);
+    const dirZ = dz / Math.max(0.01, dist);
+    const dot = forwardVec.x * dirX + forwardVec.z * dirZ;
+    if (dot < 0.35) return false; // 플레이어 전방 시야각 이내여야 함
+
+    // 강력 소나 펄스 충격파 피격: 매복자 급잠수 퇴각
+    sound.playLurkerSubmerge();
+    this.lurkerState = 'LURK_RELOCATE';
+    this.lurkerTimer = 1.1;
+
+    // 소나 펄스는 엄청난 수중 진동을 일으켜 스토커 악어(#1)를 즉시 유인!
+    this.notifyPlayerSound(playerPos.x, playerPos.z, 36.0, '소나 펄스 충격파');
+    return true;
+  }
+
+  /**
+   * 소나 레이더 표시용: 수중에서 유영하는 괴물 위치 목록 반환 (스토커 악어 & 매복자 악어)
+   * - 맹글 악어(#3)는 수중이 아니라 배수관 천장에 매달려 있으므로 수중 음파 레이더에 절대 감지되지 않습니다!
    */
   getTrioPositions() {
     if (this.chapterId !== 'chapter2') {
@@ -433,8 +461,7 @@ export class MonsterAI {
     }
     return [
       { pos: this.pos, role: 'ripper', state: this.state },
-      { pos: this.lurkerPos, role: 'lurker', state: this.lurkerState },
-      { pos: this.snarePos, role: 'snare', state: this.snareState }
+      { pos: this.lurkerPos, role: 'lurker', state: this.lurkerState }
     ];
   }
 
@@ -1604,14 +1631,14 @@ export class MonsterAI {
       : 0;
 
     // -------------------------------------------------------------------------
-    // [A] #2 매복자 악어 (LurkerCrocodileEntity - 경사로/사다리 입구 잠복 & 손전등 퇴치)
+    // [A] #2 매복자 악어 (LurkerCrocodileEntity - 경사로/사다리 입구 잠복 & 소나 펄스 / 조명탄 퇴치)
     // -------------------------------------------------------------------------
     const dLurk = Math.hypot(playerPos.x - this.lurkerPos.x, playerPos.z - this.lurkerPos.z);
 
     if (this.lurkerState === 'LURK_WAIT') {
       this.lurkerTimer -= dt;
 
-      // 1) 조명탄(Flare)이 매복자 6.5m 이내에 있으면 즉시 눈이 부셔 잠수 퇴각
+      // 1) 조명탄(Flare)이 매복자 6.5m 이내에 있으면 강렬한 열/화염으로 인해 잠수 퇴각
       let repelledByFlare = false;
       if (this.interactionSystem && this.interactionSystem.activeFlares) {
         for (const flare of this.interactionSystem.activeFlares) {
@@ -1622,38 +1649,12 @@ export class MonsterAI {
         }
       }
 
-      // 2) 플레이어가 매복자 쪽(9.2m 이내)을 바라보며 손전등/시선을 집중하면(FNAF 4 침대 프레들 카운터)
-      let isShiningAtLurker = false;
-      if (dLurk < 9.2 && playerCamera) {
-        const camFwd = new THREE.Vector3(0, 0, -1).applyQuaternion(playerCamera.quaternion);
-        const toLurkerX = (this.lurkerPos.x - playerPos.x) / Math.max(0.1, dLurk);
-        const toLurkerZ = (this.lurkerPos.z - playerPos.z) / Math.max(0.1, dLurk);
-        const dot2D = camFwd.x * toLurkerX + camFwd.z * toLurkerZ;
-        if (dot2D > 0.76 && this.hasGridLineOfSight(playerPos.x, playerPos.z, this.lurkerPos.x, this.lurkerPos.z)) {
-          isShiningAtLurker = true;
-        }
-      }
-
       if (repelledByFlare) {
-        this.lurkerLightExposure = 1.1;
-      } else if (isShiningAtLurker) {
-        this.lurkerLightExposure += dt * (flashlightOn ? 1.45 : 0.72);
-      } else {
-        this.lurkerLightExposure = Math.max(0, this.lurkerLightExposure - dt * 0.85);
-      }
-
-      if (this.lurkerLightExposure >= 0.95) {
         sound.playLurkerSubmerge();
         this.lurkerState = 'LURK_RELOCATE';
         this.lurkerTimer = 1.1;
-        if (this.callbacks.onToast) {
-          this.callbacks.onToast(
-            '[LURKER REPELLED] 불빛을 비춰 경사로/사다리 밑에 숨어있던 매복자 악어를 쫓아냈습니다!',
-            'success'
-          );
-        }
       } else if (dLurk < 1.85 && playerFootY < 0.62 && !this.isPlayerSnared) {
-        // 불빛으로 확인하지 않고 경사로/사다리 입구를 밟으면 수면 아래에서 곰덫 아가리가 솟구치며 기습!
+        // 소나 펄스로 확인 및 격퇴하지 않고 경사로/사다리 입구를 밟으면 수면 아래에서 곰덫 아가리가 솟구치며 기습!
         this.lurkerState = 'LURK_ATTACK';
         this.lurkerTimer = 1.5;
         this.lurkerYaw = Math.atan2(playerPos.x - this.lurkerPos.x, playerPos.z - this.lurkerPos.z);
@@ -1667,11 +1668,7 @@ export class MonsterAI {
         this.relocateLurker(playerPos, true);
       }
 
-      this.lurkerEntity.root.position.set(
-        this.lurkerPos.x,
-        this.lurkerPos.y - this.lurkerLightExposure * 0.25,
-        this.lurkerPos.z
-      );
+      this.lurkerEntity.root.position.copy(this.lurkerPos);
       this.lurkerEntity.root.rotation.y = this.lurkerYaw;
       this.lurkerEntity.update(dt, 'stalk');
     } else if (this.lurkerState === 'LURK_ATTACK') {
