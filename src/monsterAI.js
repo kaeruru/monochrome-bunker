@@ -133,6 +133,13 @@ export class MonsterAI {
     this.lastSeenPlayerPos = new THREE.Vector3();
     this.loseSightTimer = 0;
 
+    // 지상 타일 경로 탐색(BFS) 전용 제로-가비지 고정 버퍼
+    const totalBfsTiles = MAP_ROWS * MAP_COLS;
+    this._bfsVisited = new Uint8Array(totalBfsTiles);
+    this._bfsParent = new Int16Array(totalBfsTiles);
+    this._bfsQueue = new Int16Array(totalBfsTiles);
+    this._bfsToken = 1;
+
     // 카운터플레이 (방호문 강타 & 조명탄 스턴)
     this.bashingDoor = null;
     this.bashHitTimer = 0;
@@ -421,6 +428,7 @@ export class MonsterAI {
   addSnareStruggle(amount = 22) {
     if (!this.isPlayerSnared || this.snareState !== 'SNARE_HOLD') return false;
     this.snareEscapeProgress = Math.min(100, this.snareEscapeProgress + amount);
+    if (sound.playMangleStruggle) sound.playMangleStruggle();
     return true;
   }
 
@@ -727,18 +735,28 @@ export class MonsterAI {
       }
     }
 
-    // 2. 타일 그리드 차폐 검사
+    // 2. 타일 그리드 차폐 검사 (무할당 스칼라 인라인 최적화)
     const steps = Math.ceil(dist / 0.45);
+    const halfMapW = (MAP_COLS * TILE_SIZE) / 2;
+    const halfMapH = (MAP_ROWS * TILE_SIZE) / 2;
+    let prevCol = -999;
+    let prevRow = -999;
+
     for (let i = 1; i < steps; i++) {
       const t = i / steps;
       const sx = x0 + dx * t;
       const sz = z0 + dz * t;
-      const tile = worldToTile(sx, sz);
-      const ch = this.map && this.map.getTileChar ? this.map.getTileChar(tile.col, tile.row) : getTile(tile.col, tile.row);
+      const col = Math.floor((sx + halfMapW) / TILE_SIZE);
+      const row = Math.floor((sz + halfMapH) / TILE_SIZE);
+      if (col === prevCol && row === prevRow) continue;
+      prevCol = col;
+      prevRow = row;
+
+      const ch = this.map && this.map.getTileChar ? this.map.getTileChar(col, row) : getTile(col, row);
 
       if (ch === '#' || ch === ' ' || ch === 'G' || ch === 'C') return false;
       if (ch === 'D') {
-        const door = this.findDoorAtTile(tile.col, tile.row);
+        const door = this.findDoorAtTile(col, row);
         if (door && !door.isOpen) return false;
       }
     }
@@ -784,6 +802,7 @@ export class MonsterAI {
   }
 
   findDoorAtTile(col, row) {
+    if (this.map && this.map.getDoorAt) return this.map.getDoorAt(col, row);
     if (!this.map || !this.map.doors) return null;
     for (const d of this.map.doors) {
       if (d.col === col && d.row === row) return d;
@@ -792,7 +811,7 @@ export class MonsterAI {
   }
 
   /**
-   * 타일맵 BFS 최단 경로 탐색
+   * 타일맵 BFS 최단 경로 탐색 (사전 할당 고정 TypedArray 제로-가비지 최적화)
    * - 챕터 2의 악어 크롤러는 오직 저지대 침수 수로('W') 타일로만 경로를 탐색하며,
    *   목표가 고지대에 있을 경우 목표와 가장 가까운 수로 경계(경사로/사다리 입구)까지만 접근합니다.
    * @param {number} targetX
@@ -800,113 +819,118 @@ export class MonsterAI {
    * @param {boolean} allowClosedDoors 추격(CHASE) 시 닫힌 문 앞까지 가서 부술 수 있도록 허용할지 여부
    */
   computePathToWorld(targetX, targetZ, allowClosedDoors = false) {
-    const start = worldToTile(this.pos.x, this.pos.z);
-    let goal = worldToTile(targetX, targetZ);
+    const half = TILE_SIZE / 2;
+    const halfMapW = (MAP_COLS * TILE_SIZE) / 2;
+    const halfMapH = (MAP_ROWS * TILE_SIZE) / 2;
+    const startCol = Math.floor((this.pos.x + halfMapW) / TILE_SIZE);
+    const startRow = Math.floor((this.pos.z + halfMapH) / TILE_SIZE);
+    let goalCol = Math.floor((targetX + halfMapW) / TILE_SIZE);
+    let goalRow = Math.floor((targetZ + halfMapH) / TILE_SIZE);
     const isCh2 = this.chapterId === 'chapter2';
     const readTile = (c, r) => (this.map && this.map.getTileChar ? this.map.getTileChar(c, r) : getTile(c, r));
 
     // 목표 지점이 발전기 코어(G)나 콘솔(C) 등 진입 불가 타일 내부인 경우 주변 통행 가능한 바닥으로 목표 자동 보정
-    const goalCh = readTile(goal.col, goal.row);
+    const goalCh = readTile(goalCol, goalRow);
     if (goalCh === ' ' || goalCh === '#' || goalCh === 'G' || goalCh === 'C') {
-      const adjTiles = [
-        { col: goal.col, row: goal.row + 1 },
-        { col: goal.col, row: goal.row - 1 },
-        { col: goal.col + 1, row: goal.row },
-        { col: goal.col - 1, row: goal.row },
-        { col: goal.col + 1, row: goal.row + 1 },
-        { col: goal.col - 1, row: goal.row + 1 },
-        { col: goal.col + 1, row: goal.row - 1 },
-        { col: goal.col - 1, row: goal.row - 1 }
-      ];
-      for (const adj of adjTiles) {
-        const ach = readTile(adj.col, adj.row);
+      const adjCols = [goalCol, goalCol, goalCol + 1, goalCol - 1, goalCol + 1, goalCol - 1, goalCol + 1, goalCol - 1];
+      const adjRows = [goalRow + 1, goalRow - 1, goalRow, goalRow, goalRow + 1, goalRow + 1, goalRow - 1, goalRow - 1];
+      for (let i = 0; i < 8; i++) {
+        const ach = readTile(adjCols[i], adjRows[i]);
         if (ach !== ' ' && ach !== '#' && ach !== 'G' && ach !== 'C') {
-          goal = adj;
+          goalCol = adjCols[i];
+          goalRow = adjRows[i];
           break;
         }
       }
     }
 
-    if (start.col === goal.col && start.row === goal.row) {
-      if (!isCh2 || this.isCrawlerWaterTile(goal.col, goal.row)) {
-        this.path = [{ x: targetX, z: targetZ, col: goal.col, row: goal.row }];
+    if (startCol === goalCol && startRow === goalRow) {
+      if (!isCh2 || this.isCrawlerWaterTile(goalCol, goalRow)) {
+        this.path = [{ x: targetX, z: targetZ, col: goalCol, row: goalRow }];
         this.pathIndex = 0;
         return;
       }
     }
 
-    const visited = Array.from({ length: MAP_ROWS }, () => Array(MAP_COLS).fill(false));
-    const parent = Array.from({ length: MAP_ROWS }, () => Array(MAP_COLS).fill(null));
-    const queue = [{ col: start.col, row: start.row }];
-    if (start.row >= 0 && start.row < MAP_ROWS && start.col >= 0 && start.col < MAP_COLS) {
-      visited[start.row][start.col] = true;
+    const startIdx = startRow * MAP_COLS + startCol;
+    const goalIdx = goalRow * MAP_COLS + goalCol;
+
+    this._bfsToken++;
+    if (this._bfsToken >= 250) {
+      this._bfsVisited.fill(0);
+      this._bfsToken = 1;
     }
 
-    const dirs = [
-      { dc: 0, dr: -1 },
-      { dc: 0, dr: 1 },
-      { dc: -1, dr: 0 },
-      { dc: 1, dr: 0 }
-    ];
+    let head = 0;
+    let tail = 0;
+    if (startRow >= 0 && startRow < MAP_ROWS && startCol >= 0 && startCol < MAP_COLS) {
+      this._bfsVisited[startIdx] = this._bfsToken;
+      this._bfsParent[startIdx] = -1;
+      this._bfsQueue[tail++] = startIdx;
+    }
 
     let found = false;
-    let closestNode = { col: start.col, row: start.row, dist: Infinity };
+    let closestIdx = startIdx;
+    let closestDist = Infinity;
 
-    while (queue.length > 0) {
-      const cur = queue.shift();
-      if (cur.col === goal.col && cur.row === goal.row) {
+    while (head < tail) {
+      const curIdx = this._bfsQueue[head++];
+      if (curIdx === goalIdx) {
         found = true;
+        closestIdx = curIdx;
         break;
       }
 
-      const dToGoal = Math.hypot(cur.col - goal.col, cur.row - goal.row);
-      if (dToGoal < closestNode.dist) {
-        closestNode = { col: cur.col, row: cur.row, dist: dToGoal };
+      const curCol = curIdx % MAP_COLS;
+      const curRow = Math.floor(curIdx / MAP_COLS);
+      const dToGoal = Math.hypot(curCol - goalCol, curRow - goalRow);
+      if (dToGoal < closestDist) {
+        closestDist = dToGoal;
+        closestIdx = curIdx;
       }
 
-      for (const { dc, dr } of dirs) {
-        const nc = cur.col + dc;
-        const nr = cur.row + dr;
+      const nCols = [curCol, curCol, curCol - 1, curCol + 1];
+      const nRows = [curRow - 1, curRow + 1, curRow, curRow];
+
+      for (let i = 0; i < 4; i++) {
+        const nc = nCols[i];
+        const nr = nRows[i];
         if (nr < 0 || nr >= MAP_ROWS || nc < 0 || nc >= MAP_COLS) continue;
-        if (visited[nr][nc]) continue;
+        const nIdx = nr * MAP_COLS + nc;
+        if (this._bfsVisited[nIdx] === this._bfsToken) continue;
 
         const ch = readTile(nc, nr);
-        // 발전기 코어(G) 및 CCTV 콘솔(C)을 통과 불가능한 고체 장애물로 엄격히 제외
         if (ch === ' ' || ch === '#' || ch === 'G' || ch === 'C') continue;
-
-        // 챕터 2의 악어 크롤러는 오직 저지대 침수 수로('W') 내부에서만 이동 가능!
-        if (isCh2 && !this.isCrawlerWaterTile(nc, nr)) {
-          continue;
-        }
-
-        // 챕터 2에서는 경사로('M')나 사다리('H') 없이 LOW <-> HIGH 절벽 단차를 직접 넘지 못하도록 제한
-        if (this.map && this.map.canStepBetweenTiles && !this.map.canStepBetweenTiles(cur.col, cur.row, nc, nr)) {
-          continue;
-        }
+        if (isCh2 && !this.isCrawlerWaterTile(nc, nr)) continue;
+        if (this.map && this.map.canStepBetweenTiles && !this.map.canStepBetweenTiles(curCol, curRow, nc, nr)) continue;
 
         if (ch === 'D' && !allowClosedDoors) {
           const door = this.findDoorAtTile(nc, nr);
           if (door && !door.isOpen) continue;
         }
 
-        visited[nr][nc] = true;
-        parent[nr][nc] = cur;
-        queue.push({ col: nc, row: nr });
+        this._bfsVisited[nIdx] = this._bfsToken;
+        this._bfsParent[nIdx] = curIdx;
+        this._bfsQueue[tail++] = nIdx;
       }
     }
 
-    const endNode = found ? goal : closestNode;
     const revPath = [];
-    let curr = { col: endNode.col, row: endNode.row };
-    while (curr && !(curr.col === start.col && curr.row === start.row)) {
-      const w = tileToWorld(curr.col, curr.row);
-      revPath.push({ x: w.x, z: w.z, col: curr.col, row: curr.row });
-      curr = parent[curr.row]?.[curr.col];
+    let currIdx = closestIdx;
+    while (currIdx >= 0 && currIdx !== startIdx) {
+      const c = currIdx % MAP_COLS;
+      const r = Math.floor(currIdx / MAP_COLS);
+      revPath.push({
+        x: c * TILE_SIZE - halfMapW + half,
+        z: r * TILE_SIZE - halfMapH + half,
+        col: c,
+        row: r
+      });
+      currIdx = this._bfsParent[currIdx];
     }
 
     revPath.reverse();
-    if (found && (!isCh2 || this.isCrawlerWaterTile(goal.col, goal.row))) {
-      // 최종 타깃이 프랍 콜라이더(발전기 등) 내부이거나 너무 가까울 경우 프랍 중심 좌표를 경로에 넣지 않음
+    if (found && (!isCh2 || this.isCrawlerWaterTile(goalCol, goalRow))) {
       let insideProp = false;
       if (this.map && this.map.propColliders) {
         for (const prop of this.map.propColliders) {
@@ -917,7 +941,7 @@ export class MonsterAI {
         }
       }
       if (!insideProp) {
-        revPath.push({ x: targetX, z: targetZ, col: goal.col, row: goal.row });
+        revPath.push({ x: targetX, z: targetZ, col: goalCol, row: goalRow });
       }
     }
     this.path = revPath;
@@ -1809,8 +1833,12 @@ export class MonsterAI {
     this.waterEdgeFrustrationTimer = 0;
     this.lastSeenPlayerPos.copy(playerPos);
     this.setHeartCoreColor(0xff2222);
-    sound.playMonsterScreech(0.45);
     const isCh2 = this.chapterId === 'chapter2';
+    if (isCh2) {
+      sound.playCrawlerScreech(0.55);
+    } else {
+      sound.playMonsterScreech(0.45);
+    }
     this.computePathToWorld(playerPos.x, playerPos.z, !isCh2);
     if (this.callbacks.onToast) {
       this.callbacks.onToast(
@@ -1855,7 +1883,11 @@ export class MonsterAI {
       this.callbacks.onKillStart();
     }
 
-    sound.playJumpscare();
+    if (this.chapterId === 'chapter2') {
+      sound.playCrawlerJumpscare();
+    } else {
+      sound.playJumpscare();
+    }
   }
 
   /**

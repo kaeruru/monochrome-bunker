@@ -1910,7 +1910,7 @@ export class CrawlerCrocodileEntity {
   update(dt, mode = this.animMode, moveDist = null) {
     if (mode !== this.lastMode) {
       if (this.enableSound && (mode === 'chase' || mode === 'attack')) {
-        sound.playMonsterScreech(this.soundVolume * 1.15);
+        sound.playCrawlerScreech(this.soundVolume * 1.15);
       }
       if (mode === 'jumpscare') {
         this.jumpscareProgress = 0;
@@ -1934,7 +1934,7 @@ export class CrawlerCrocodileEntity {
     if (this.enableSound && curBeatIdx !== this.lastBeatIndex) {
       this.lastBeatIndex = curBeatIdx;
       if (mode === 'idle' || mode === 'stalk') {
-        sound.playMonsterHeartbeat(this.soundVolume * 0.65);
+        sound.playCrawlerGrowl(this.soundVolume * 0.7);
       }
     }
 
@@ -2031,7 +2031,7 @@ export class CrawlerCrocodileEntity {
     const stepIdx = Math.floor((phase + Math.PI / 2) / Math.PI);
     if (this.enableSound && stepIdx !== this.lastStepIndex && isMoving) {
       this.lastStepIndex = stepIdx;
-      sound.playMonsterFootstep(this.soundVolume, isChase);
+      sound.playCrawlerFootstep(this.soundVolume, isChase);
     }
 
     // 몸통 S자 좌우 유영 파동

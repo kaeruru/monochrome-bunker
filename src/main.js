@@ -84,6 +84,8 @@ class MonochromeBunker3D {
 
     // 챕터 2 전용 음파 감지기 전방 소나 펄스(Sonar Pulse) 쿨타임 (초)
     this.sonarPulseCooldown = 0;
+    this._cachedForward = new THREE.Vector3(0, 0, -1);
+    this._extraBlipsPool = [];
 
     // 모바일 60FPS를 위해 불필요한 실시간 PointLight 제거
     this.playerFillLight = null;
@@ -1814,7 +1816,7 @@ class MonochromeBunker3D {
     if (this.playerFillLight) {
       this.playerFillLight.position.copy(this.playerCamera.position);
     }
-    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.playerCamera.quaternion);
+    const forward = this._cachedForward.set(0, 0, -1).applyQuaternion(this.playerCamera.quaternion);
     this.flashlightTarget.position.copy(this.playerCamera.position).addScaledVector(forward, 15);
 
     if (isCh2) {
@@ -1827,16 +1829,24 @@ class MonochromeBunker3D {
       const mActive = Boolean(this.monsterAI && this.monsterAI.state !== 'VENT_LURK');
       let mDist = 99;
       let relAngle = 0;
-      const extraBlips = [];
+      const extraBlips = this._extraBlipsPool;
+      extraBlips.length = 0;
       if (mActive && this.monsterAI) {
         const camYaw = Math.atan2(forward.x, forward.z);
         const trioList = this.monsterAI.getTrioPositions ? this.monsterAI.getTrioPositions() : [{ pos: this.monsterAI.pos, role: 'ripper' }];
-        for (const tEntry of trioList) {
+        for (let i = 0; i < trioList.length; i++) {
+          const tEntry = trioList[i];
           const dx = tEntry.pos.x - this.playerPos.x;
           const dz = tEntry.pos.z - this.playerPos.z;
           const d = Math.hypot(dx, dz);
           const ang = camYaw - Math.atan2(dx, dz);
-          extraBlips.push({ dist: d, relAngle: ang, role: tEntry.role });
+          if (extraBlips[i]) {
+            extraBlips[i].dist = d;
+            extraBlips[i].relAngle = ang;
+            extraBlips[i].role = tEntry.role;
+          } else {
+            extraBlips.push({ dist: d, relAngle: ang, role: tEntry.role });
+          }
           if (d < mDist) {
             mDist = d;
             relAngle = ang;

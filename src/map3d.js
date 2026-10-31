@@ -18,21 +18,34 @@ import { sound } from './audio.js';
 export const CH2_HIGH_Y = 1.40;
 export const CH2_WATER_Y = 0.56;
 
+const TRANSITION_DIRS = {
+  S: { dx: 0, dz: 1, yaw: 0 },
+  N: { dx: 0, dz: -1, yaw: Math.PI },
+  E: { dx: 1, dz: 0, yaw: Math.PI / 2 },
+  W: { dx: -1, dz: 0, yaw: -Math.PI / 2 },
+  DEFAULT: { dx: 0, dz: 1, yaw: 0 }
+};
+
 export class Map3D {
   constructor(scene, customMapStrings = null, chapterId = 'chapter1') {
     this.scene = scene;
     this.chapterId = chapterId;
     this.materials = createIndustrialMaterials();
 
+    this.halfMapW = (MAP_COLS * TILE_SIZE) / 2;
+    this.halfMapH = (MAP_ROWS * TILE_SIZE) / 2;
+
     this.mapGroup = new THREE.Group();
     this.scene.add(this.mapGroup);
 
     this.doors = [];
+    this.doorGrid = new Map();
     this.ladders = [];
     this.cctvConfigs = [];
     this.propColliders = [];
     this.monsters = [];
     this.ceilingLamps = [];
+    this.lampLightPool = [];
     this.companion = null;
     this.consolePos = { x: 0, y: 0, z: -8 };
     this.spawnPos = { x: 0, y: 0, z: -2 };
@@ -64,11 +77,13 @@ export class Map3D {
       this.mapGroup.remove(obj);
     }
     this.doors = [];
+    this.doorGrid = new Map();
     this.ladders = [];
     this.cctvConfigs = [];
     this.propColliders = [];
     this.monsters = [];
     this.ceilingLamps = [];
+    this.lampLightPool = [];
     this.companion = null;
     this.generatorCore = null;
     this.bunkerAmbient = null;
@@ -127,18 +142,18 @@ export class Map3D {
 
     // 1. 고지대(HIGH)가 인접한 방향을 우선 탐색 (Three.js 로컬 +Z를 (dx, dz) 방향으로 정렬)
     // Three.js 좌표계: +Z = 남(dz=1, yaw=0), -Z = 북(dz=-1, yaw=PI), +X = 동(dx=1, yaw=PI/2), -X = 서(dx=-1, yaw=-PI/2)
-    if (sLvl === 'HIGH') return { dx: 0, dz: 1, yaw: 0 };
-    if (nLvl === 'HIGH') return { dx: 0, dz: -1, yaw: Math.PI };
-    if (eLvl === 'HIGH') return { dx: 1, dz: 0, yaw: Math.PI / 2 };
-    if (wLvl === 'HIGH') return { dx: -1, dz: 0, yaw: -Math.PI / 2 };
+    if (sLvl === 'HIGH') return TRANSITION_DIRS.S;
+    if (nLvl === 'HIGH') return TRANSITION_DIRS.N;
+    if (eLvl === 'HIGH') return TRANSITION_DIRS.E;
+    if (wLvl === 'HIGH') return TRANSITION_DIRS.W;
 
     // 2. 인접한 저지대(LOW)의 반대편 방향으로 상승
-    if (nLvl === 'LOW') return { dx: 0, dz: 1, yaw: 0 };
-    if (sLvl === 'LOW') return { dx: 0, dz: -1, yaw: Math.PI };
-    if (wLvl === 'LOW') return { dx: 1, dz: 0, yaw: Math.PI / 2 };
-    if (eLvl === 'LOW') return { dx: -1, dz: 0, yaw: -Math.PI / 2 };
+    if (nLvl === 'LOW') return TRANSITION_DIRS.S;
+    if (sLvl === 'LOW') return TRANSITION_DIRS.N;
+    if (wLvl === 'LOW') return TRANSITION_DIRS.E;
+    if (eLvl === 'LOW') return TRANSITION_DIRS.W;
 
-    return { dx: 0, dz: 1, yaw: 0 };
+    return TRANSITION_DIRS.DEFAULT;
   }
 
   /**
@@ -157,20 +172,22 @@ export class Map3D {
   }
 
   /**
-   * 월드 (x, z) 좌표에서의 실제 바닥 높이(Y) 계산
+   * 월드 (x, z) 좌표에서의 실제 바닥 높이(Y) 계산 (무할당 인라인 스칼라 최적화)
    */
   getFloorHeightAt(x, z) {
     if (this.chapterId !== 'chapter2') return 0.0;
-    const t = worldToTile(x, z);
-    const lvl = this.getTileLevel(t.col, t.row);
+    const col = Math.floor((x + this.halfMapW) / TILE_SIZE);
+    const row = Math.floor((z + this.halfMapH) / TILE_SIZE);
+    const lvl = this.getTileLevel(col, row);
     if (lvl === 'LOW') return 0.0;
     if (lvl === 'HIGH') return CH2_HIGH_Y;
 
-    const tilePos = tileToWorld(t.col, t.row);
-    const { dx, dz } = this.getTransitionDir(t.col, t.row);
-    const lx = (x - tilePos.x) / TILE_SIZE;
-    const lz = (z - tilePos.z) / TILE_SIZE;
-    const proj = lx * dx + lz * dz; // -0.5 (저지대 끝) ~ +0.5 (고지대 끝)
+    const tileCenterX = col * TILE_SIZE - this.halfMapW + TILE_SIZE / 2;
+    const tileCenterZ = row * TILE_SIZE - this.halfMapH + TILE_SIZE / 2;
+    const tDir = this.getTransitionDir(col, row);
+    const lx = (x - tileCenterX) / TILE_SIZE;
+    const lz = (z - tileCenterZ) / TILE_SIZE;
+    const proj = lx * tDir.dx + lz * tDir.dz; // -0.5 (저지대 끝) ~ +0.5 (고지대 끝)
 
     if (lvl === 'RAMP') {
       const prog = Math.max(0, Math.min(1, proj + 0.5));
@@ -608,6 +625,16 @@ export class Map3D {
 
     // 카메라 번호순 정렬 (1 -> 2 -> 3 -> 4)
     this.cctvConfigs.sort((a, b) => a.id - b.id);
+
+    // 챕터 2: 동적 전등 조명 풀(Light Pool) 구성 (개별 28개 PointLight 대신 플레이어 인근 3개만 동적 활성화하여 GPU 부하 90% 절감)
+    this.lampLightPool = [];
+    if (isCh2) {
+      for (let i = 0; i < 3; i++) {
+        const pLight = new THREE.PointLight(0xff8c28, 0, 16.0, 1.6);
+        this.mapGroup.add(pLight);
+        this.lampLightPool.push(pLight);
+      }
+    }
 
     // 4. 인게임 동료 캐릭터(벙커 내부) 및 메인 벙커 상시 전술 지도판 배치
     this.spawnEntities();
@@ -1069,7 +1096,7 @@ export class Map3D {
       else if (id === 3) label = '남쪽 방호문';
     }
 
-    this.doors.push({
+    const doorObj = {
       id,
       name: label,
       col,
@@ -1086,7 +1113,13 @@ export class Map3D {
       ledFront,
       ledBack,
       doorLight: null
-    });
+    };
+    this.doors.push(doorObj);
+    this.doorGrid.set(`${col}_${row}`, doorObj);
+  }
+
+  getDoorAt(col, row) {
+    return this.doorGrid.get(`${col}_${row}`) || null;
   }
 
   toggleDoor(id) {
@@ -1269,22 +1302,15 @@ export class Map3D {
     tube.position.y = -0.055;
     group.add(tube);
 
-    // 챕터 2에서는 원통 하수관과 벽돌 아치 천장 곳곳에 설치된 방수 주황 벌크헤드 등이 주변 윤곽을 비춤
-    let lampLight = null;
-    if (isCh2) {
-      lampLight = new THREE.PointLight(0xff8c28, 3.2, 15, 1.6);
-      lampLight.position.set(0, -0.35, 0);
-      group.add(lampLight);
-    }
-
     this.mapGroup.add(group);
 
     this.ceilingLamps.push({
       x,
+      y: lampY - 0.35,
       z,
-      light: lampLight,
       tubeMat,
-      baseIntensity: isCh2 ? 3.2 : 2.2,
+      baseIntensity: isCh2 ? 3.4 : 2.2,
+      currentIntensity: isCh2 ? 3.4 : 2.2,
       nextFlickerIn: 2.5 + Math.random() * 9.0,
       flickerRemain: 0,
       soundCooldown: 0
@@ -1469,7 +1495,7 @@ export class Map3D {
       if (lamp.flickerRemain > 0) {
         lamp.flickerRemain = Math.max(0, lamp.flickerRemain - dt);
         const onNow = Math.random() > 0.55;
-        if (lamp.light) lamp.light.intensity = onNow ? lamp.baseIntensity * (0.3 + Math.random() * 0.7) : 0.05;
+        lamp.currentIntensity = onNow ? lamp.baseIntensity * (0.3 + Math.random() * 0.7) : 0.05;
         lamp.tubeMat.color.setHex(onNow ? onColor : offColor);
 
         // 플레이어가 이 전등 근처(14m 이내)에 있을 때 전등이 지직거리면 3D 거리 비례 스파크/안정기 사운드 재생
@@ -1482,43 +1508,87 @@ export class Map3D {
           }
         }
       } else if (this.isBlackout) {
-        if (lamp.light) lamp.light.intensity = 0;
+        lamp.currentIntensity = 0;
         lamp.tubeMat.color.setHex(deadColor);
       } else {
-        if (lamp.light) lamp.light.intensity = lamp.baseIntensity;
+        lamp.currentIntensity = lamp.baseIntensity;
         lamp.tubeMat.color.setHex(onColor);
+      }
+    }
+
+    // 챕터 2: 플레이어 반경 20m 내 가장 가까운 전등 최대 3개에 동적 PointLight 할당 (셰이더 계산량 90% 절감)
+    if (this.chapterId === 'chapter2' && playerPos && this.lampLightPool && this.lampLightPool.length > 0) {
+      let b0 = null, d0 = 400; // 20m^2
+      let b1 = null, d1 = 400;
+      let b2 = null, d2 = 400;
+      const px = playerPos.x;
+      const pz = playerPos.z;
+      const nLamps = this.ceilingLamps.length;
+
+      for (let i = 0; i < nLamps; i++) {
+        const l = this.ceilingLamps[i];
+        const dx = l.x - px;
+        const dz = l.z - pz;
+        const dSq = dx * dx + dz * dz;
+        if (dSq < d0) {
+          b2 = b1; d2 = d1;
+          b1 = b0; d1 = d0;
+          b0 = l; d0 = dSq;
+        } else if (dSq < d1) {
+          b2 = b1; d2 = d1;
+          b1 = l; d1 = dSq;
+        } else if (dSq < d2) {
+          b2 = l; d2 = dSq;
+        }
+      }
+
+      const closest = [b0, b1, b2];
+      for (let i = 0; i < 3; i++) {
+        const pLight = this.lampLightPool[i];
+        if (!pLight) continue;
+        const l = closest[i];
+        if (l && !this.isBlackout) {
+          pLight.position.set(l.x, l.y, l.z);
+          pLight.intensity = l.currentIntensity;
+        } else {
+          pLight.intensity = 0;
+        }
       }
     }
   }
 
   /**
-   * 플레이어 및 크롤러 이동 충돌 판정 (원-타일 AABB + 챕터 2 고저차 절벽 차단 + 오브젝트 원형 충돌)
+   * 플레이어 및 크롤러 이동 충돌 판정 (원-타일 AABB + 챕터 2 고저차 절벽 차단 + 오브젝트 원형 충돌, 무할당 최적화)
    */
   checkCollision(x, z, radius = 0.42) {
-    const center = worldToTile(x, z);
     const half = TILE_SIZE / 2;
+    const centerCol = Math.floor((x + this.halfMapW) / TILE_SIZE);
+    const centerRow = Math.floor((z + this.halfMapH) / TILE_SIZE);
     const isCh2 = this.chapterId === 'chapter2';
 
     for (let dr = -1; dr <= 1; dr++) {
       for (let dc = -1; dc <= 1; dc++) {
-        const c = center.col + dc;
-        const r = center.row + dr;
+        const c = centerCol + dc;
+        const r = centerRow + dr;
         const ch = this.getTileChar(c, r);
 
         // 챕터 2에서는 경사로('M')나 사다리('H')를 거치지 않고 LOW(0.0m) <-> HIGH(1.40m) 단차를 직접 넘는 것을 차단
-        const isElevationCliff = isCh2 && (dr !== 0 || dc !== 0) && !this.canStepBetweenTiles(center.col, center.row, c, r);
+        const isElevationCliff = isCh2 && (dr !== 0 || dc !== 0) && !this.canStepBetweenTiles(centerCol, centerRow, c, r);
 
         if (ch === '#' || ch === ' ' || isElevationCliff) {
-          const tilePos = tileToWorld(c, r);
-          const closestX = Math.max(tilePos.x - half, Math.min(x, tilePos.x + half));
-          const closestZ = Math.max(tilePos.z - half, Math.min(z, tilePos.z + half));
+          const tileMinX = c * TILE_SIZE - this.halfMapW;
+          const tileMaxX = tileMinX + TILE_SIZE;
+          const tileMinZ = r * TILE_SIZE - this.halfMapH;
+          const tileMaxZ = tileMinZ + TILE_SIZE;
+          const closestX = Math.max(tileMinX, Math.min(x, tileMaxX));
+          const closestZ = Math.max(tileMinZ, Math.min(z, tileMaxZ));
           const dx = x - closestX;
           const dz = z - closestZ;
           if (dx * dx + dz * dz < radius * radius) {
             return true;
           }
         } else if (ch === 'D') {
-          const door = this.doors.find(d => d.col === c && d.row === r);
+          const door = this.getDoorAt(c, r);
           if (door) {
             // 1. 닫힌 셔터 판(두께 0.22m, 너비 2.1m) 정밀 AABB 충돌 체크
             if (door.openRatio < 0.65) {

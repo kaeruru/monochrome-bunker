@@ -49,7 +49,30 @@ export const SOUND_ASSET_MANIFEST = {
   door_bash_impact:     { url: null, desc: '괴물이 닫힌 방호문을 쾅쾅 내리찍는 강철 충격음' },
   monster_stun_shriek:  { url: null, desc: '조명탄 섬광에 괴물이 눈이 멀어 고통스러워하는 비명음' },
   monster_attack_kill:  { url: null, desc: '괴물에게 붙잡혔을 때의 처형 사운드' },
-  monster_jumpscare:    { url: null, desc: '괴물 처형 점프스케어 - 고주파 메탈릭 비명 + 디스토션 서브 베이스 충격음' }
+  monster_jumpscare:    { url: null, desc: '괴물 처형 점프스케어 - 고주파 메탈릭 비명 + 디스토션 서브 베이스 충격음' },
+
+  // 7. 제2장 수로 삼두 괴수(The Water Trio) 전용 사운드
+  // [A] #1 스토커 악어 (The Ripper)
+  ch2_crawler_footstep:   { url: './sounds/ch2/ch2_crawler_footstep.mp3', desc: '크롤러 악어 수로 보행/유영 물살 첨벙거림' },
+  ch2_crawler_growl:      { url: './sounds/ch2/ch2_crawler_growl.mp3', desc: '크롤러 악어 잠복/배회 시 초저주파 그르렁거림' },
+  ch2_crawler_chase:      { url: './sounds/ch2/ch2_crawler_chase.mp3', desc: '크롤러 악어 폭주 추격 시 수중 돌진 포효' },
+  ch2_crawler_screech:    { url: './sounds/ch2/ch2_crawler_screech.mp3', desc: '크롤러 악어 공격/발각 시 파충류 악어 괴성' },
+  ch2_crawler_jumpscare:  { url: './sounds/ch2/ch2_crawler_jumpscare.mp3', desc: '크롤러 악어 안면 덮침 점프스케어 턱 파쇄음' },
+  ch2_crawler_submerge:   { url: './sounds/ch2/ch2_crawler_submerge.mp3', desc: '크롤러 악어 수면 아래 급잠수 입수음' },
+
+  // [B] #2 매복자 악어 (The Lurker)
+  ch2_lurker_idle:        { url: './sounds/ch2/ch2_lurker_idle.mp3', desc: '매복자 악어 경사로/사다리 수면 밑 잠복 숨소리' },
+  ch2_lurker_bite:        { url: './sounds/ch2/ch2_lurker_bite.mp3', desc: '매복자 악어 곰덫 아가리 기습 덥석 깨무는 소리' },
+  ch2_lurker_submerge:    { url: './sounds/ch2/ch2_lurker_submerge.mp3', desc: '매복자 악어 소나펄스/불빛 피격 시 물속 도주 입수음' },
+
+  // [C] #3 맹글 악어 (The Snare Mangle)
+  ch2_mangle_static:      { url: './sounds/ch2/ch2_mangle_static.mp3', desc: '맹글 악어 천장 매달림 시 FNaF 라디오 정전기 잡음' },
+  ch2_mangle_grab:        { url: './sounds/ch2/ch2_mangle_grab.mp3', desc: '맹글 악어 천장 급강하 사슬 결박 + 호출 사이렌' },
+  ch2_mangle_struggle:    { url: './sounds/ch2/ch2_mangle_struggle.mp3', desc: '맹글 악어 와이어 결박 탈출/발버둥 금속음' },
+
+  // 8. 제2장 음파 탐지기(Sonar Radar) & 소나 펄스 사운드
+  ch2_sonar_ping:         { url: './sounds/ch2/ch2_sonar_ping.mp3', desc: '음파 감지기 근접 타깃 레이더 비프 핑' },
+  ch2_sonar_pulse:        { url: './sounds/ch2/ch2_sonar_pulse.mp3', desc: 'F키/터치버튼 전방 강력 소나 펄스 충격파 방출음' }
 };
 
 class AudioManager {
@@ -114,14 +137,35 @@ class AudioManager {
   }
 
   /**
-   * 추후 외부 오디오 에셋 경로를 코드에서 동적으로 등록할 때도 사용할 수 있는 헬퍼
+   * 커스텀 사운드 등록 및 즉시 로드 (웹 URL 또는 로컬 파일 상대 경로)
+   * 사용자가 제공한 사운드 링크나 파일 경로를 즉시 프로젝트 오디오 시스템에 바인딩합니다.
    */
   registerSoundAsset(key, url) {
-    if (SOUND_ASSET_MANIFEST[key]) {
+    if (!SOUND_ASSET_MANIFEST[key]) {
+      SOUND_ASSET_MANIFEST[key] = { url, desc: `사용자 커스텀 사운드 (${key})` };
+    } else {
       SOUND_ASSET_MANIFEST[key].url = url;
-      if (this.ctx) {
-        this.loadExternalBuffer(key, url);
-      }
+    }
+    this.loadingPromises.delete(key);
+    this.externalBuffers.delete(key);
+    if (this.ctx && url) {
+      this.loadExternalBuffer(key, url);
+    }
+  }
+
+  registerCustomSound(key, url) {
+    this.registerSoundAsset(key, url);
+  }
+
+  async loadCustomSoundBuffer(key, arrayBuffer) {
+    if (!this.ctx) this.init();
+    try {
+      const decoded = await this.ctx.decodeAudioData(arrayBuffer);
+      this.externalBuffers.set(key, decoded);
+      return true;
+    } catch (err) {
+      console.warn(`[Audio] 커스텀 오디오 버퍼 디코딩 실패 (${key}):`, err);
+      return false;
     }
   }
 
@@ -154,7 +198,12 @@ class AudioManager {
         }
       })
       .catch(err => {
-        console.warn(`[Audio] 외부 사운드 에셋 로드 실패 (${key}: ${url}), 프로시저럴 사운드로 대체합니다.`, err);
+        // 커스텀 에셋 파일 부재 시 1회만 정보 로그를 출력하고 완벽한 프로시저럴 사운드로 자동 폴백
+        if (!this._missingLogged) this._missingLogged = new Set();
+        if (!this._missingLogged.has(key)) {
+          this._missingLogged.add(key);
+          console.info(`[Audio Slot] '${key}' 커스텀 파일(${url})이 아직 준비되지 않아 실시간 프로시저럴 사운드로 실행됩니다.`);
+        }
       });
     this.loadingPromises.set(key, p);
   }
@@ -1340,10 +1389,11 @@ class AudioManager {
    */
   playSonarPing(closeness = 0) {
     this.init();
+    const c = Math.max(0, Math.min(1, closeness));
+    if (this.tryPlayExternal('ch2_sonar_ping', 0.12 + c * 0.28, 0.95 + c * 0.35)) return;
     if (!this.ctx || this.isMuted) return;
 
     const t = this.ctx.currentTime;
-    const c = Math.max(0, Math.min(1, closeness));
     const baseFreq = 760 + c * 620;
     const vol = 0.06 + c * 0.14;
 
@@ -1372,6 +1422,7 @@ class AudioManager {
    */
   playSonarPulse() {
     this.init();
+    if (this.tryPlayExternal('ch2_sonar_pulse', 0.7)) return;
     if (!this.ctx || this.isMuted) return;
 
     const t = this.ctx.currentTime;
@@ -1468,10 +1519,193 @@ class AudioManager {
   }
 
   /**
+   * 챕터 2 스토커 악어(#1 The Ripper) 전용 수로 보행/유영 물살 첨벙거림 사운드
+   */
+  playCrawlerFootstep(volume = 0.32, isChase = false) {
+    this.init();
+    if (this.tryPlayExternal('ch2_crawler_footstep', volume * (isChase ? 1.25 : 1.0))) return;
+    if (!this.ctx || this.isMuted) return;
+
+    const t = this.ctx.currentTime;
+    const dur = isChase ? 0.24 : 0.32;
+    const vol = Math.max(0.04, Math.min(0.65, volume));
+
+    const osc = this.ctx.createOscillator();
+    const oscGain = this.ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(isChase ? 110 : 85, t);
+    osc.frequency.exponentialRampToValueAtTime(36, t + dur);
+    oscGain.gain.setValueAtTime(vol * 0.48, t);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    osc.connect(oscGain);
+    oscGain.connect(this.masterGain || this.ctx.destination);
+    osc.start(t);
+    osc.stop(t + dur + 0.02);
+
+    if (this.noiseBuffer) {
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = this.noiseBuffer;
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(isChase ? 780 : 540, t);
+      filter.frequency.exponentialRampToValueAtTime(260, t + dur);
+      filter.Q.setValueAtTime(1.9, t);
+
+      const nGain = this.ctx.createGain();
+      nGain.gain.setValueAtTime(vol * 0.42, t);
+      nGain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+
+      noise.connect(filter);
+      filter.connect(nGain);
+      nGain.connect(this.masterGain || this.ctx.destination);
+      noise.start(t);
+      noise.stop(t + dur + 0.02);
+    }
+  }
+
+  /**
+   * 챕터 2 스토커 악어(#1 The Ripper) 전용 잠복/배회 시 초저주파 그르렁거림
+   */
+  playCrawlerGrowl(volume = 0.28) {
+    this.init();
+    if (this.tryPlayExternal('ch2_crawler_growl', volume)) return;
+    if (!this.ctx || this.isMuted) return;
+
+    const t = this.ctx.currentTime;
+    const dur = 0.75;
+    const vol = Math.max(0.04, Math.min(0.6, volume));
+
+    const osc = this.ctx.createOscillator();
+    const lfo = this.ctx.createOscillator();
+    const lfoGain = this.ctx.createGain();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(46, t);
+    osc.frequency.linearRampToValueAtTime(40, t + dur);
+
+    lfo.type = 'sine';
+    lfo.frequency.setValueAtTime(14, t);
+    lfoGain.gain.setValueAtTime(18, t);
+
+    lfo.connect(osc.frequency);
+
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(120, t);
+
+    gain.gain.setValueAtTime(vol * 0.5, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+
+    osc.connect(lp);
+    lp.connect(gain);
+    gain.connect(this.masterGain || this.ctx.destination);
+
+    lfo.start(t);
+    osc.start(t);
+    lfo.stop(t + dur);
+    osc.stop(t + dur);
+  }
+
+  /**
+   * 챕터 2 스토커 악어(#1 The Ripper) 폭주 추격 및 공격 괴성
+   */
+  playCrawlerScreech(volume = 0.45) {
+    this.init();
+    if (this.tryPlayExternal('ch2_crawler_screech', volume) || this.tryPlayExternal('ch2_crawler_chase', volume)) return;
+    if (!this.ctx || this.isMuted) return;
+
+    const t = this.ctx.currentTime;
+    const dur = 0.82;
+    const vol = Math.max(0.05, Math.min(0.8, volume));
+
+    const osc1 = this.ctx.createOscillator();
+    const osc2 = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+
+    osc1.type = 'sawtooth';
+    osc1.frequency.setValueAtTime(195, t);
+    osc1.frequency.exponentialRampToValueAtTime(440, t + 0.28);
+    osc1.frequency.exponentialRampToValueAtTime(160, t + dur);
+
+    osc2.type = 'triangle';
+    osc2.frequency.setValueAtTime(130, t);
+    osc2.frequency.exponentialRampToValueAtTime(320, t + 0.32);
+    osc2.frequency.exponentialRampToValueAtTime(95, t + dur);
+
+    gain.gain.setValueAtTime(vol * 0.6, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+
+    osc1.connect(gain);
+    osc2.connect(gain);
+    gain.connect(this.masterGain || this.ctx.destination);
+
+    osc1.start(t);
+    osc2.start(t);
+    osc1.stop(t + dur);
+    osc2.stop(t + dur);
+
+    if (this.noiseBuffer) {
+      const splash = this.ctx.createBufferSource();
+      splash.buffer = this.noiseBuffer;
+      const bp = this.ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.setValueAtTime(740, t);
+      bp.Q.setValueAtTime(1.4, t);
+      const sGain = this.ctx.createGain();
+      sGain.gain.setValueAtTime(vol * 0.4, t);
+      sGain.gain.exponentialRampToValueAtTime(0.001, t + dur * 0.7);
+      splash.connect(bp);
+      bp.connect(sGain);
+      sGain.connect(this.masterGain || this.ctx.destination);
+      splash.start(t);
+      splash.stop(t + dur);
+    }
+  }
+
+  /**
+   * 챕터 2 스토커 악어 처형 점프스케어 - 강철 턱 맞물림 파쇄음 및 서브베이스 충격음
+   */
+  playCrawlerJumpscare() {
+    this.init();
+    if (this.tryPlayExternal('ch2_crawler_jumpscare', 0.85)) return;
+    if (!this.ctx || this.isMuted) return;
+
+    const t = this.ctx.currentTime;
+
+    const slam = this.ctx.createOscillator();
+    const slamGain = this.ctx.createGain();
+    slam.type = 'square';
+    slam.frequency.setValueAtTime(260, t);
+    slam.frequency.exponentialRampToValueAtTime(38, t + 0.3);
+    slamGain.gain.setValueAtTime(0.72, t);
+    slamGain.gain.exponentialRampToValueAtTime(0.001, t + 0.34);
+    slam.connect(slamGain);
+    slamGain.connect(this.masterGain || this.ctx.destination);
+    slam.start(t);
+    slam.stop(t + 0.35);
+
+    const sub = this.ctx.createOscillator();
+    const subGain = this.ctx.createGain();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(75, t);
+    sub.frequency.exponentialRampToValueAtTime(28, t + 0.65);
+    subGain.gain.setValueAtTime(0.8, t);
+    subGain.gain.exponentialRampToValueAtTime(0.001, t + 0.7);
+    sub.connect(subGain);
+    subGain.connect(this.masterGain || this.ctx.destination);
+    sub.start(t);
+    sub.stop(t + 0.75);
+
+    this.playCrawlerScreech(0.8);
+  }
+
+  /**
    * 챕터 2 맹글 크롤러(#3) 천장 잠복 시 FNAF Mangle 풍 기괴한 라디오 전파 혼선 + 금속 갈리는 소리
    */
   playMangleStatic(volume = 0.22) {
     this.init();
+    if (this.tryPlayExternal('ch2_mangle_static', volume)) return;
     if (!this.ctx || this.isMuted) return;
 
     const t = this.ctx.currentTime;
@@ -1533,6 +1767,7 @@ class AudioManager {
    */
   playSnareGrab() {
     this.init();
+    if (this.tryPlayExternal('ch2_mangle_grab', 0.6)) return;
     if (!this.ctx || this.isMuted) return;
 
     const t = this.ctx.currentTime;
@@ -1591,6 +1826,7 @@ class AudioManager {
    */
   playLurkerSubmerge() {
     this.init();
+    if (this.tryPlayExternal('ch2_lurker_submerge', 0.45) || this.tryPlayExternal('ch2_crawler_submerge', 0.45)) return;
     if (!this.ctx || this.isMuted) return;
 
     const t = this.ctx.currentTime;
@@ -1632,6 +1868,7 @@ class AudioManager {
    */
   playLurkerBite() {
     this.init();
+    if (this.tryPlayExternal('ch2_lurker_bite', 0.65)) return;
     if (!this.ctx || this.isMuted) return;
 
     const t = this.ctx.currentTime;
@@ -1679,6 +1916,62 @@ class AudioManager {
       burst.stop(t + 0.46);
     }
   }
+
+  /**
+   * 챕터 2 맹글 크롤러 와이어 결박 탈출/발버둥 사운드
+   */
+  playMangleStruggle() {
+    this.init();
+    if (this.tryPlayExternal('ch2_mangle_struggle', 0.45)) return;
+    if (!this.ctx || this.isMuted) return;
+
+    const t = this.ctx.currentTime;
+    const snap = this.ctx.createOscillator();
+    const gain = this.ctx.createGain();
+    snap.type = 'triangle';
+    snap.frequency.setValueAtTime(360, t);
+    snap.frequency.exponentialRampToValueAtTime(110, t + 0.12);
+    gain.gain.setValueAtTime(0.3, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+    snap.connect(gain);
+    gain.connect(this.masterGain || this.ctx.destination);
+    snap.start(t);
+    snap.stop(t + 0.15);
+  }
+
+  /**
+   * 챕터 2 매복자 악어(#2) 수면 아래 잠복 숨소리
+   */
+  playLurkerIdle(volume = 0.2) {
+    this.init();
+    if (this.tryPlayExternal('ch2_lurker_idle', volume)) return;
+    if (!this.ctx || this.isMuted) return;
+
+    const t = this.ctx.currentTime;
+    const dur = 0.6;
+    if (this.noiseBuffer) {
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = this.noiseBuffer;
+      const lp = this.ctx.createBiquadFilter();
+      lp.type = 'bandpass';
+      lp.frequency.setValueAtTime(320, t);
+      lp.Q.setValueAtTime(2.2, t);
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(volume * 0.3, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      noise.connect(lp);
+      lp.connect(gain);
+      gain.connect(this.masterGain || this.ctx.destination);
+      noise.start(t);
+      noise.stop(t + dur);
+    }
+  }
 }
 
 export const sound = new AudioManager();
+
+if (typeof window !== 'undefined') {
+  window.sound = sound;
+  window.registerCustomSound = (key, url) => sound.registerCustomSound(key, url);
+  window.getSoundManifest = () => SOUND_ASSET_MANIFEST;
+}
