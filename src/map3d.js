@@ -15,6 +15,9 @@ import { createIndustrialMaterials } from './textures.js';
 import { MonsterEntity, PlayerCharacterEntity } from './models.js';
 import { sound } from './audio.js';
 
+export const CH2_HIGH_Y = 1.40;
+export const CH2_WATER_Y = 0.56;
+
 export class Map3D {
   constructor(scene, customMapStrings = null, chapterId = 'chapter1') {
     this.scene = scene;
@@ -25,13 +28,14 @@ export class Map3D {
     this.scene.add(this.mapGroup);
 
     this.doors = [];
+    this.ladders = [];
     this.cctvConfigs = [];
     this.propColliders = [];
     this.monsters = [];
     this.ceilingLamps = [];
     this.companion = null;
-    this.consolePos = { x: 0, z: -8 };
-    this.spawnPos = { x: 0, z: -2 };
+    this.consolePos = { x: 0, y: 0, z: -8 };
+    this.spawnPos = { x: 0, y: 0, z: -2 };
     this.generatorCore = null;
     this.bunkerAmbient = null;
     this.genLight = null;
@@ -60,6 +64,7 @@ export class Map3D {
       this.mapGroup.remove(obj);
     }
     this.doors = [];
+    this.ladders = [];
     this.cctvConfigs = [];
     this.propColliders = [];
     this.monsters = [];
@@ -77,11 +82,112 @@ export class Map3D {
     return this.activeMap[row]?.[col] || ' ';
   }
 
+  /**
+   * 해당 타일이 저지대 침수 하수관(Level 0)에 속하는지 판별
+   * - 'W' 타일이거나, 챕터 2에서 'W' 한가운데에 배치된 조명('L') 및 카메라('1'~'4') 포함
+   */
+  isWaterTile(col, row) {
+    const ch = this.getTileChar(col, row);
+    if (ch === 'W') return true;
+    if (this.chapterId === 'chapter2' && ['L', '1', '2', '3', '4'].includes(ch)) {
+      const dirs = [[0, -1], [0, 1], [-1, 0], [1, 0]];
+      for (const [dc, dr] of dirs) {
+        if (this.getTileChar(col + dc, row + dr) === 'W') return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * 챕터 2 수직 레벨 구분:
+   * - 'WALL'   : 벽/기둥 ('#', ' ')
+   * - 'LOW'    : 저지대 침수 원통 하수관 (Y = 0.0m, 수면 0.56m)
+   * - 'HIGH'   : 고지대 아치형 건조 회랑/광장 (Y = 1.40m)
+   * - 'RAMP'   : 오르막 경사로 ('M', 0.0m <-> 1.40m)
+   * - 'LADDER' : 벽면 철제 사다리 ('H', 0.0m <-> 1.40m)
+   */
+  getTileLevel(col, row) {
+    const ch = this.getTileChar(col, row);
+    if (ch === '#' || ch === ' ') return 'WALL';
+    if (this.chapterId !== 'chapter2') return 'FLAT';
+    if (ch === 'M') return 'RAMP';
+    if (ch === 'H') return 'LADDER';
+    if (this.isWaterTile(col, row)) return 'LOW';
+    return 'HIGH';
+  }
+
+  /**
+   * 경사로('M') 또는 사다리('H') 타일에서 저지대(LOW) -> 고지대(HIGH)로 올라가는 방향 벡터 반환
+   */
+  getTransitionDir(col, row) {
+    const nLvl = this.getTileLevel(col, row - 1);
+    const sLvl = this.getTileLevel(col, row + 1);
+    const wLvl = this.getTileLevel(col - 1, row);
+    const eLvl = this.getTileLevel(col + 1, row);
+
+    if (sLvl === 'HIGH' || nLvl === 'LOW') {
+      if (sLvl === 'HIGH') return { dx: 0, dz: 1, yaw: 0 };
+    }
+    if (nLvl === 'HIGH' || sLvl === 'LOW') {
+      if (nLvl === 'HIGH') return { dx: 0, dz: -1, yaw: Math.PI };
+    }
+    if (eLvl === 'HIGH' || wLvl === 'LOW') {
+      if (eLvl === 'HIGH') return { dx: 1, dz: 0, yaw: -Math.PI / 2 };
+    }
+    if (wLvl === 'HIGH' || eLvl === 'LOW') {
+      if (wLvl === 'HIGH') return { dx: -1, dz: 0, yaw: Math.PI / 2 };
+    }
+    return { dx: 0, dz: -1, yaw: Math.PI };
+  }
+
+  /**
+   * 두 인접 타일 사이를 걸어서(또는 경사로/사다리로) 이동 가능한지 판별 (AI 경로 탐색 및 충돌용)
+   */
+  canStepBetweenTiles(c0, r0, c1, r1) {
+    if (this.chapterId !== 'chapter2') return true;
+    const l0 = this.getTileLevel(c0, r0);
+    const l1 = this.getTileLevel(c1, r1);
+    if (l0 === 'WALL' || l1 === 'WALL') return false;
+    // 저지대(LOW)와 고지대(HIGH) 사이는 1.40m 수직 콘크리트 턱이 가로막고 있으므로 직접 이동 불가!
+    if ((l0 === 'LOW' && l1 === 'HIGH') || (l0 === 'HIGH' && l1 === 'LOW')) {
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * 월드 (x, z) 좌표에서의 실제 바닥 높이(Y) 계산
+   */
+  getFloorHeightAt(x, z) {
+    if (this.chapterId !== 'chapter2') return 0.0;
+    const t = worldToTile(x, z);
+    const lvl = this.getTileLevel(t.col, t.row);
+    if (lvl === 'LOW') return 0.0;
+    if (lvl === 'HIGH') return CH2_HIGH_Y;
+
+    const tilePos = tileToWorld(t.col, t.row);
+    const { dx, dz } = this.getTransitionDir(t.col, t.row);
+    const lx = (x - tilePos.x) / TILE_SIZE;
+    const lz = (z - tilePos.z) / TILE_SIZE;
+    const proj = lx * dx + lz * dz; // -0.5 (저지대 끝) ~ +0.5 (고지대 끝)
+
+    if (lvl === 'RAMP') {
+      const prog = Math.max(0, Math.min(1, proj + 0.5));
+      return prog * CH2_HIGH_Y;
+    }
+    if (lvl === 'LADDER') {
+      // 사다리 타일 진입 후 고지대 벽면 쪽(-0.28 -> +0.38)으로 전진하면 사다리를 타고 부드럽게 상승!
+      const prog = Math.max(0, Math.min(1, (proj + 0.28) / 0.66));
+      return prog * CH2_HIGH_Y;
+    }
+    return 0.0;
+  }
+
   buildFromTileMap(mapArray) {
     let doorIndex = 1;
     const isCh2 = this.chapterId === 'chapter2';
 
-    // 대규모 지오메트리 병합 수집 버퍼 (드로우콜 2,000+개 -> 5개 내외로 압축)
+    // 대규모 지오메트리 병합 수집 버퍼 (드로우콜 2,000+개 -> 6개 내외로 압축)
     const wallGeos = [];
     const wallBrickGeos = [];
     const wallFlumeGeos = [];
@@ -96,6 +202,157 @@ export class Map3D {
     const baseWallGeo = new THREE.BoxGeometry(TILE_SIZE, WALL_HEIGHT, TILE_SIZE);
     const baseFloorGeo = new THREE.PlaneGeometry(TILE_SIZE, TILE_SIZE);
 
+    // 챕터 2 전용 3D 아키텍처 지오메트리 헬퍼 (BoxGeometry 변환 후 병합하여 속성 100% 호환 보장)
+    const addBoxTo = (targetArr, w, h, d, tx, ty, tz, rx = 0, ry = 0, rz = 0) => {
+      const g = new THREE.BoxGeometry(w, h, d);
+      const m = new THREE.Matrix4();
+      m.makeTranslation(tx, ty, tz);
+      if (ry !== 0) m.multiply(new THREE.Matrix4().makeRotationY(ry));
+      if (rx !== 0) m.multiply(new THREE.Matrix4().makeRotationX(rx));
+      if (rz !== 0) m.multiply(new THREE.Matrix4().makeRotationZ(rz));
+      g.applyMatrix4(m);
+      targetArr.push(g);
+    };
+
+    const addPlaneTo = (targetArr, w, h, tx, ty, tz, rx = -Math.PI / 2, ry = 0, rz = 0) => {
+      const g = new THREE.PlaneGeometry(w, h);
+      const m = new THREE.Matrix4();
+      m.makeTranslation(tx, ty, tz);
+      if (ry !== 0) m.multiply(new THREE.Matrix4().makeRotationY(ry));
+      if (rx !== 0) m.multiply(new THREE.Matrix4().makeRotationX(rx));
+      if (rz !== 0) m.multiply(new THREE.Matrix4().makeRotationZ(rz));
+      g.applyMatrix4(m);
+      targetArr.push(g);
+    };
+
+    // 타일의 주 진행 축('NS' 또는 'EW') 판별
+    const getDominantAxis = (col, row, targetLevel = null) => {
+      const checkOpen = (c, r) => {
+        const l = this.getTileLevel(c, r);
+        if (targetLevel === 'LOW') return l === 'LOW' || l === 'RAMP' || l === 'LADDER';
+        return l !== 'WALL';
+      };
+      const openNS = (checkOpen(col, row - 1) ? 1 : 0) + (checkOpen(col, row + 1) ? 1 : 0);
+      const openEW = (checkOpen(col - 1, row) ? 1 : 0) + (checkOpen(col + 1, row) ? 1 : 0);
+      return openEW > openNS ? 'EW' : 'NS';
+    };
+
+    // 고대 붉은 벽돌 배럴 볼트(위로만 둥근 아치형 천장) 생성 (레퍼런스 이미지 2번 구현)
+    const buildBarrelVaultCeiling = (tx, tz, axis, springY = 3.25, crownY = 4.42) => {
+      const rotY = axis === 'EW' ? Math.PI / 2 : 0;
+      const archAngles = [-1.08, -0.65, -0.22, 0.22, 0.65, 1.08];
+      const radiusX = TILE_SIZE * 0.56;
+      const riseY = crownY - springY;
+      for (const ang of archAngles) {
+        const lx = Math.sin(ang) * radiusX;
+        const ly = springY + Math.cos(ang) * riseY;
+        const facetW = 0.68;
+        const g = new THREE.BoxGeometry(facetW, 0.14, TILE_SIZE + 0.04);
+        const m = new THREE.Matrix4();
+        m.makeTranslation(tx, ly, tz);
+        if (rotY !== 0) m.multiply(new THREE.Matrix4().makeRotationY(rotY));
+        m.multiply(new THREE.Matrix4().makeTranslation(lx, 0, 0));
+        m.multiply(new THREE.Matrix4().makeRotationZ(-ang * 0.85));
+        g.applyMatrix4(m);
+        ceilingGeos.push(g);
+      }
+      // 아치 천장을 가로지르는 붉은 벽돌 보강 아치 리브(Transverse Arch Rib)
+      for (const ang of [-0.95, -0.32, 0.32, 0.95]) {
+        const lx = Math.sin(ang) * (radiusX - 0.05);
+        const ly = springY + Math.cos(ang) * (riseY - 0.04);
+        const g = new THREE.BoxGeometry(0.72, 0.18, 0.24);
+        const m = new THREE.Matrix4();
+        m.makeTranslation(tx, ly, tz);
+        if (rotY !== 0) m.multiply(new THREE.Matrix4().makeRotationY(rotY));
+        m.multiply(new THREE.Matrix4().makeTranslation(lx, 0, 0));
+        m.multiply(new THREE.Matrix4().makeRotationZ(-ang * 0.85));
+        g.applyMatrix4(m);
+        wallBrickGeos.push(g);
+      }
+    };
+
+    // 로우폴리 10각 원통형 하수관 터널 쉘 생성 (레퍼런스 이미지 1번 구현)
+    const buildCylindricalSewerPipe = (col, row, tx, tz) => {
+      const axis = getDominantAxis(col, row, 'LOW');
+      const rotY = axis === 'EW' ? Math.PI / 2 : 0;
+
+      // 1) 상부 원통형 콘크리트 아치 천장 (6분할 다각형 링)
+      const topAngles = [-1.15, -0.70, -0.24, 0.24, 0.70, 1.15];
+      const pipeR = TILE_SIZE * 0.56;
+      const centerH = 1.82;
+      const archRise = 1.62;
+      for (const ang of topAngles) {
+        const lx = Math.sin(ang) * pipeR;
+        const ly = centerH + Math.cos(ang) * archRise;
+        const g = new THREE.BoxGeometry(0.70, 0.16, TILE_SIZE + 0.04);
+        const m = new THREE.Matrix4();
+        m.makeTranslation(tx, ly, tz);
+        if (rotY !== 0) m.multiply(new THREE.Matrix4().makeRotationY(rotY));
+        m.multiply(new THREE.Matrix4().makeTranslation(lx, 0, 0));
+        m.multiply(new THREE.Matrix4().makeRotationZ(-ang));
+        g.applyMatrix4(m);
+        wallFlumeGeos.push(g);
+      }
+
+      // 2) 타일당 2개씩 돌출된 원형 콘크리트 세그먼트 링 리브 (하수관 특유의 둥근 마디 실루엣)
+      for (const zOff of [-0.58, 0.58]) {
+        for (const ang of [-1.22, -0.74, -0.25, 0.25, 0.74, 1.22]) {
+          const lx = Math.sin(ang) * (pipeR - 0.07);
+          const ly = centerH + Math.cos(ang) * (archRise - 0.06);
+          const g = new THREE.BoxGeometry(0.68, 0.18, 0.18);
+          const m = new THREE.Matrix4();
+          m.makeTranslation(tx, ly, tz);
+          if (rotY !== 0) m.multiply(new THREE.Matrix4().makeRotationY(rotY));
+          m.multiply(new THREE.Matrix4().makeTranslation(lx, 0, zOff));
+          m.multiply(new THREE.Matrix4().makeRotationZ(-ang));
+          g.applyMatrix4(m);
+          wallFlumeGeos.push(g);
+        }
+      }
+
+      // 3) 막혀있는 방향(벽 또는 고지대 절벽과 접한 면)에 원통형 곡면 하부/중부 내벽 생성
+      const sides = [
+        { dc: -1, dr: 0, sideRotY: 0 },           // 서쪽 벽
+        { dc: 1, dr: 0, sideRotY: Math.PI },      // 동쪽 벽
+        { dc: 0, dr: -1, sideRotY: -Math.PI / 2 },// 북쪽 벽
+        { dc: 0, dr: 1, sideRotY: Math.PI / 2 }   // 남쪽 벽
+      ];
+      for (const s of sides) {
+        const nLvl = this.getTileLevel(col + s.dc, row + s.dr);
+        if (nLvl !== 'LOW' && nLvl !== 'RAMP' && nLvl !== 'LADDER') {
+          // 수면 아래에서 벽면으로 둥글게 말려 올라가는 하단 곡면 (y: 0.05 -> 0.85)
+          const gBot = new THREE.BoxGeometry(0.22, 0.92, TILE_SIZE + 0.02);
+          const mBot = new THREE.Matrix4();
+          mBot.makeTranslation(tx, 0.42, tz);
+          mBot.multiply(new THREE.Matrix4().makeRotationY(s.sideRotY));
+          mBot.multiply(new THREE.Matrix4().makeTranslation(-TILE_SIZE * 0.43, 0, 0));
+          mBot.multiply(new THREE.Matrix4().makeRotationZ(-0.36));
+          gBot.applyMatrix4(mBot);
+          wallFlumeGeos.push(gBot);
+
+          // 중간 원통 측벽 (y: 0.80 -> 1.88)
+          const gMid = new THREE.BoxGeometry(0.20, 1.15, TILE_SIZE + 0.02);
+          const mMid = new THREE.Matrix4();
+          mMid.makeTranslation(tx, 1.34, tz);
+          mMid.multiply(new THREE.Matrix4().makeRotationY(s.sideRotY));
+          mMid.multiply(new THREE.Matrix4().makeTranslation(-TILE_SIZE * 0.48, 0, 0));
+          mMid.multiply(new THREE.Matrix4().makeRotationZ(-0.08));
+          gMid.applyMatrix4(mMid);
+          wallFlumeGeos.push(gMid);
+
+          // 상부 아치와 이어지는 곡면 내벽 (y: 1.82 -> 2.65)
+          const gTop = new THREE.BoxGeometry(0.20, 0.95, TILE_SIZE + 0.02);
+          const mTop = new THREE.Matrix4();
+          mTop.makeTranslation(tx, 2.22, tz);
+          mTop.multiply(new THREE.Matrix4().makeRotationY(s.sideRotY));
+          mTop.multiply(new THREE.Matrix4().makeTranslation(-TILE_SIZE * 0.44, 0, 0));
+          mTop.multiply(new THREE.Matrix4().makeRotationZ(0.28));
+          gTop.applyMatrix4(mTop);
+          wallFlumeGeos.push(gTop);
+        }
+      }
+    };
+
     for (let row = 0; row < MAP_ROWS; row++) {
       const line = mapArray[row] || '';
       for (let col = 0; col < MAP_COLS; col++) {
@@ -106,81 +363,164 @@ export class Map3D {
 
         // 1. 방호벽 및 구조 지지 기둥 ('#')
         if (ch === '#') {
-          const g = baseWallGeo.clone();
-          g.applyMatrix4(new THREE.Matrix4().makeTranslation(pos.x, WALL_HEIGHT / 2, pos.z));
           if (isCh2) {
-            // 수로 타일('W')과 접한 벽면은 레퍼런스 2번 원형 콘크리트 리브 벽(wallFlume),
-            // 그 외 아치 회랑 및 기둥 등은 레퍼런스 1번 고대 붉은 벽돌(wallBrick) 적용
-            let touchesWater = false;
-            for (let dr = -1; dr <= 1; dr++) {
-              for (let dc = -1; dc <= 1; dc++) {
-                if (dr === 0 && dc === 0) continue;
-                if (this.getTileChar(col + dc, row + dr) === 'W') {
-                  touchesWater = true;
-                  break;
-                }
-              }
-              if (touchesWater) break;
-            }
-            if (touchesWater) {
-              wallFlumeGeos.push(g);
-            } else {
-              wallBrickGeos.push(g);
-            }
+            // 레퍼런스 2번 구현: 하부는 묵직한 석조 기단(0~2.75m), 상부는 돌출 코벨 장식과 붉은 벽돌 아치 기둥(2.75~4.55m)
+            addBoxTo(wallFlumeGeos, TILE_SIZE, 2.75, TILE_SIZE, pos.x, 1.375, pos.z);
+            addBoxTo(wallBrickGeos, TILE_SIZE + 0.18, 0.46, TILE_SIZE + 0.18, pos.x, 2.98, pos.z);
+            addBoxTo(wallBrickGeos, TILE_SIZE, 1.35, TILE_SIZE, pos.x, 3.88, pos.z);
           } else {
+            const g = baseWallGeo.clone();
+            g.applyMatrix4(new THREE.Matrix4().makeTranslation(pos.x, WALL_HEIGHT / 2, pos.z));
             wallGeos.push(g);
           }
           continue;
         }
 
-        // 2. 보행 가능 구역의 바닥 & 천장 지오메트리 수집
-        const f = baseFloorGeo.clone();
-        const fMat = new THREE.Matrix4();
-        fMat.multiply(new THREE.Matrix4().makeTranslation(pos.x, 0, pos.z));
-        fMat.multiply(new THREE.Matrix4().makeRotationX(-Math.PI / 2));
-        f.applyMatrix4(fMat);
+        // 2. 챕터 2 전용 입체 다층 지오메트리 (원통형 수로 LOW vs 고지대 벽돌 회랑 HIGH vs 경사로 RAMP vs 사다리 LADDER)
+        if (isCh2) {
+          const lvl = this.getTileLevel(col, row);
+          const domAxis = getDominantAxis(col, row, lvl);
 
-        if (ch === 'W') {
-          floorWaterGeos.push(f);
-          if (isCh2) {
-            // 허벅지 깊이 수면 아래 침전 바닥면 생성
-            const bed = baseFloorGeo.clone();
-            const bMat = new THREE.Matrix4();
-            bMat.multiply(new THREE.Matrix4().makeTranslation(pos.x, 0.01, pos.z));
-            bMat.multiply(new THREE.Matrix4().makeRotationX(-Math.PI / 2));
-            bed.applyMatrix4(bMat);
-            floorWaterBedGeos.push(bed);
+          if (lvl === 'LOW') {
+            // 저지대 원통형 침수 하수관 (바닥 Y=0.0m, 수면 Y=0.56m)
+            addPlaneTo(floorWaterBedGeos, TILE_SIZE, TILE_SIZE, pos.x, 0.015, pos.z);
+            addPlaneTo(floorWaterGeos, TILE_SIZE, TILE_SIZE, pos.x, 0, pos.z);
+            buildCylindricalSewerPipe(col, row, pos.x, pos.z);
+          } else if (lvl === 'HIGH') {
+            // 고지대 건조 석판 회랑 및 기둥 홀 (바닥 Y=1.40m, 아치 천장 Y=3.25~4.42m)
+            addBoxTo(floorStoneWalkwayGeos, TILE_SIZE, 0.08, TILE_SIZE, pos.x, CH2_HIGH_Y - 0.04, pos.z);
+            buildBarrelVaultCeiling(pos.x, pos.z, domAxis, 3.25, 4.42);
+
+            // 저지대(LOW/RAMP/LADDER)와 맞닿는 가장자리에 1.40m 수직 석조 절벽 옹벽 + 추락 방지 턱 생성
+            const edges = [
+              { dc: 0, dr: -1, ox: 0, oz: -TILE_SIZE / 2 + 0.11, w: TILE_SIZE, d: 0.22 },
+              { dc: 0, dr: 1, ox: 0, oz: TILE_SIZE / 2 - 0.11, w: TILE_SIZE, d: 0.22 },
+              { dc: -1, dr: 0, ox: -TILE_SIZE / 2 + 0.11, oz: 0, w: 0.22, d: TILE_SIZE },
+              { dc: 1, dr: 0, ox: TILE_SIZE / 2 - 0.11, oz: 0, w: 0.22, d: TILE_SIZE }
+            ];
+            for (const e of edges) {
+              const nLvl = this.getTileLevel(col + e.dc, row + e.dr);
+              if (nLvl === 'LOW' || nLvl === 'RAMP' || nLvl === 'LADDER') {
+                // 0.0m ~ 1.40m 수직 콘크리트/석조 절벽 옹벽
+                addBoxTo(wallFlumeGeos, e.w, CH2_HIGH_Y, e.d, pos.x + e.ox, CH2_HIGH_Y / 2, pos.z + e.oz);
+                // 경사로/사다리 통로가 아닌 일반 절벽 경계에는 0.24m 높이의 벽돌 경계석(Curb) 추가
+                if (nLvl === 'LOW') {
+                  addBoxTo(wallBrickGeos, e.w, 0.24, e.d, pos.x + e.ox, CH2_HIGH_Y + 0.12, pos.z + e.oz);
+                }
+              }
+            }
+          } else if (lvl === 'RAMP') {
+            // 저지대 수로(0.0m)와 고지대 회랑(1.40m)을 잇는 돌출 슬로프 경사로 ('M')
+            const tDir = this.getTransitionDir(col, row);
+            const slopeLen = Math.hypot(TILE_SIZE, CH2_HIGH_Y);
+            const pitch = Math.atan2(CH2_HIGH_Y, TILE_SIZE);
+
+            // 경사로 하단 물바닥 및 수면
+            addPlaneTo(floorWaterBedGeos, TILE_SIZE, TILE_SIZE, pos.x, 0.015, pos.z);
+            addPlaneTo(floorWaterGeos, TILE_SIZE, TILE_SIZE, pos.x, 0, pos.z);
+
+            // 경사 슬래브 본체 (0.0m -> 1.40m)
+            const rampGeo = new THREE.BoxGeometry(TILE_SIZE - 0.08, 0.24, slopeLen);
+            const rMat = new THREE.Matrix4();
+            rMat.makeTranslation(pos.x, CH2_HIGH_Y / 2 - 0.08, pos.z);
+            rMat.multiply(new THREE.Matrix4().makeRotationY(tDir.yaw));
+            rMat.multiply(new THREE.Matrix4().makeRotationX(pitch));
+            rampGeo.applyMatrix4(rMat);
+            floorStoneWalkwayGeos.push(rampGeo);
+
+            // 미끄럼 방지 석조 단차(Tread Bars) 5단 배치
+            for (let s = -2; s <= 2; s++) {
+              const frac = s / 5.2;
+              const barGeo = new THREE.BoxGeometry(TILE_SIZE - 0.24, 0.08, 0.14);
+              const bMat = new THREE.Matrix4();
+              bMat.makeTranslation(pos.x, CH2_HIGH_Y / 2, pos.z);
+              bMat.multiply(new THREE.Matrix4().makeRotationY(tDir.yaw));
+              bMat.multiply(new THREE.Matrix4().makeRotationX(pitch));
+              bMat.multiply(new THREE.Matrix4().makeTranslation(0, 0.06, -frac * slopeLen));
+              barGeo.applyMatrix4(bMat);
+              wallBrickGeos.push(barGeo);
+            }
+
+            buildBarrelVaultCeiling(pos.x, pos.z, domAxis, 3.25, 4.42);
+          } else if (lvl === 'LADDER') {
+            // 벽면 철제 수직 사다리 ('H') — 다가가서 앞으로 전진하면 자동으로 등반
+            const tDir = this.getTransitionDir(col, row);
+            addPlaneTo(floorWaterBedGeos, TILE_SIZE, TILE_SIZE, pos.x, 0.015, pos.z);
+            addPlaneTo(floorWaterGeos, TILE_SIZE, TILE_SIZE, pos.x, 0, pos.z);
+            buildBarrelVaultCeiling(pos.x, pos.z, domAxis, 3.25, 4.42);
+
+            // 고지대 벽면 쪽에 부착된 철제 사다리 프레임(좌우 레일 + 8단 가로 발판)
+            const ladderOffset = TILE_SIZE * 0.36;
+            const lxBase = pos.x + tDir.dx * ladderOffset;
+            const lzBase = pos.z + tDir.dz * ladderOffset;
+
+            for (const railSide of [-0.32, 0.32]) {
+              const railGeo = new THREE.BoxGeometry(0.07, CH2_HIGH_Y + 0.65, 0.07);
+              const mRail = new THREE.Matrix4();
+              mRail.makeTranslation(lxBase, (CH2_HIGH_Y + 0.65) / 2, lzBase);
+              mRail.multiply(new THREE.Matrix4().makeRotationY(tDir.yaw));
+              mRail.multiply(new THREE.Matrix4().makeTranslation(railSide, 0, 0));
+              railGeo.applyMatrix4(mRail);
+              wallBrickGeos.push(railGeo);
+            }
+            for (let rungIdx = 0; rungIdx < 8; rungIdx++) {
+              const ry = 0.16 + rungIdx * 0.18;
+              const rungGeo = new THREE.BoxGeometry(0.66, 0.045, 0.045);
+              const mRung = new THREE.Matrix4();
+              mRung.makeTranslation(lxBase, ry, lzBase);
+              mRung.multiply(new THREE.Matrix4().makeRotationY(tDir.yaw));
+              rungGeo.applyMatrix4(mRung);
+              wallBrickGeos.push(rungGeo);
+            }
+
+            this.ladders.push({
+              col,
+              row,
+              x: pos.x,
+              z: pos.z,
+              dx: tDir.dx,
+              dz: tDir.dz
+            });
           }
-        } else if (isCh2) {
-          // 챕터 2에서는 건조 구역 전체에 고대 저류조 석판(Flagstone Walkway) 적용
-          floorStoneWalkwayGeos.push(f);
-        } else if (['B', 'S', 'G', 'C'].includes(ch)) {
-          floorBunkerGeos.push(f);
-        } else if (ch === 'R') {
-          floorRoomGeos.push(f);
         } else {
-          floorCorridorGeos.push(f);
+          // 챕터 1 / 챕터 3 기존 평면 타일 지오메트리
+          const f = baseFloorGeo.clone();
+          const fMat = new THREE.Matrix4();
+          fMat.multiply(new THREE.Matrix4().makeTranslation(pos.x, 0, pos.z));
+          fMat.multiply(new THREE.Matrix4().makeRotationX(-Math.PI / 2));
+          f.applyMatrix4(fMat);
+
+          if (ch === 'W') {
+            floorWaterGeos.push(f);
+          } else if (['B', 'S', 'G', 'C'].includes(ch)) {
+            floorBunkerGeos.push(f);
+          } else if (ch === 'R') {
+            floorRoomGeos.push(f);
+          } else {
+            floorCorridorGeos.push(f);
+          }
+
+          const c = baseFloorGeo.clone();
+          const cMat = new THREE.Matrix4();
+          cMat.multiply(new THREE.Matrix4().makeTranslation(pos.x, WALL_HEIGHT, pos.z));
+          cMat.multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2));
+          c.applyMatrix4(cMat);
+          ceilingGeos.push(c);
         }
 
-        const c = baseFloorGeo.clone();
-        const cMat = new THREE.Matrix4();
-        cMat.multiply(new THREE.Matrix4().makeTranslation(pos.x, WALL_HEIGHT, pos.z));
-        cMat.multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2));
-        c.applyMatrix4(cMat);
-        ceilingGeos.push(c);
-
-        // 3. 타일별 특수 오브젝트 배치
+        // 3. 타일별 특수 오브젝트 배치 (챕터 2의 다층 바닥 높이 baseY 자동 반영)
+        const baseY = this.getFloorHeightAt(pos.x, pos.z);
         if (ch === 'S') {
-          this.spawnPos = { x: pos.x, z: pos.z };
+          this.spawnPos = { x: pos.x, y: baseY, z: pos.z };
         } else if (ch === 'G') {
-          this.buildGenerator(pos.x, pos.z);
+          this.buildGenerator(pos.x, pos.z, baseY);
         } else if (ch === 'C') {
-          this.consolePos = { x: pos.x, z: pos.z };
-          this.buildCCTVConsole(pos.x, pos.z);
+          this.consolePos = { x: pos.x, y: baseY, z: pos.z };
+          this.buildCCTVConsole(pos.x, pos.z, baseY);
         } else if (ch === 'L') {
-          this.buildCeilingLamp(pos.x, pos.z);
+          this.buildCeilingLamp(pos.x, pos.z, col, row);
         } else if (ch === 'D') {
-          this.buildVerticalDoor(doorIndex++, col, row, pos.x, pos.z);
+          this.buildVerticalDoor(doorIndex++, col, row, pos.x, pos.z, baseY);
         } else if (['1', '2', '3', '4'].includes(ch)) {
           this.buildCCTVCamera(parseInt(ch, 10), col, row, pos.x, pos.z);
         }
@@ -248,8 +588,8 @@ export class Map3D {
       const mergedWater = BufferGeometryUtils.mergeGeometries(floorWaterGeos, false);
       const waterMat = isCh2 ? this.materials.floorWaterDeep : this.materials.floorWater;
       const waterMesh = new THREE.Mesh(mergedWater, waterMat);
-      // 챕터 2에서는 허벅지 깊이(0.50m)로 수면이 차오름
-      waterMesh.position.y = isCh2 ? 0.50 : 0.04;
+      // 챕터 2에서는 허벅지 깊이(CH2_WATER_Y = 0.56m)로 수면이 차오름
+      waterMesh.position.y = isCh2 ? CH2_WATER_Y : 0.04;
       this.mapGroup.add(waterMesh);
       floorWaterGeos.forEach(g => g.dispose());
     }
@@ -268,14 +608,17 @@ export class Map3D {
     // 카메라 번호순 정렬 (1 -> 2 -> 3 -> 4)
     this.cctvConfigs.sort((a, b) => a.id - b.id);
 
-    // 4. 인게임 동료 캐릭터(벙커 내부) 및 심연 괴물(복도 순찰) 배치
+    // 4. 인게임 동료 캐릭터(벙커 내부) 배치
     this.spawnEntities();
   }
 
   spawnEntities() {
     // 벙커 내부 동료 대원 (플레이어 스폰 좌측에서 주변 경계 - 협동 생존 컨셉)
+    const cx = this.spawnPos.x - 2.3;
+    const cz = this.spawnPos.z - 1.2;
+    const cy = this.getFloorHeightAt(cx, cz);
     this.companion = new PlayerCharacterEntity('동료 대원 #02', true);
-    this.companion.root.position.set(this.spawnPos.x - 2.3, 0, this.spawnPos.z - 1.2);
+    this.companion.root.position.set(cx, cy, cz);
     this.companion.root.rotation.y = 0.45;
     this.mapGroup.add(this.companion.root);
     this.propColliders.push({
@@ -290,10 +633,10 @@ export class Map3D {
    * - 주변 벽/복도 배치를 분석해 가로(NS 통행) 또는 세로(EW 통행)로 자동 회전합니다.
    * - 문짝이 옆 타일을 침범하지 않고, 상단 헤더 박스 안으로 깔끔하게 수직 상승/하강합니다.
    */
-  buildVerticalDoor(id, col, row, x, z) {
+  buildVerticalDoor(id, col, row, x, z, baseY = 0) {
     const orientation = getDoorOrientation(this.activeMap, col, row);
     const group = new THREE.Group();
-    group.position.set(x, 0, z);
+    group.position.set(x, baseY, z);
     // NS 통행이면 동-서 방향(회전 0), EW 통행이면 남-북 방향(90도 회전)
     group.rotation.y = orientation === 'EW' ? Math.PI / 2 : 0;
 
@@ -355,10 +698,10 @@ export class Map3D {
 
     let label = `방호문 ${id}`;
     if (this.chapterId === 'chapter2') {
-      if (id === 1) label = '서쪽 수문 (아치 회랑 차단 격벽)';
-      else if (id === 2) label = '동쪽 수문 (제2 침수 저류조 격벽)';
-      else if (id === 3) label = '북쪽 수문 (제1 대형 방류 암거)';
-      else if (id === 4) label = '남쪽 수문 (남측 방류 터널)';
+      if (id === 1) label = '북쪽 수문 (중앙 펌프실 북측 격벽)';
+      else if (id === 2) label = '서쪽 수문 (중앙 펌프실 서측 격벽)';
+      else if (id === 3) label = '동쪽 수문 (중앙 펌프실 동측 격벽)';
+      else if (id === 4) label = '남쪽 수문 (중앙 펌프실 남측 격벽)';
     } else {
       if (id === 1) label = '서쪽 방호문';
       else if (id === 2) label = '동쪽 방호문';
@@ -372,6 +715,7 @@ export class Map3D {
       row,
       x,
       z,
+      baseY,
       orientation,
       isOpen: true,
       isMalfunctioning: false,
@@ -448,10 +792,10 @@ export class Map3D {
     }
   }
 
-  buildGenerator(x, z) {
+  buildGenerator(x, z, baseY = 0) {
     const isCh2 = this.chapterId === 'chapter2';
     const group = new THREE.Group();
-    group.position.set(x, 0, z);
+    group.position.set(x, baseY, z);
 
     // 팔각 기단 베이스
     const base = new THREE.Mesh(
@@ -497,7 +841,7 @@ export class Map3D {
 
     // 발전기 / 터빈 주 조명
     const lightColor = isCh2 ? 0xffaa44 : 0xeef4ff;
-    this.genLight = new THREE.PointLight(lightColor, isCh2 ? 5.2 : 4.8, 14, 1.7);
+    this.genLight = new THREE.PointLight(lightColor, isCh2 ? 5.2 : 4.8, 15, 1.6);
     this.genLight.position.set(0, 2.2, 0);
     group.add(this.genLight);
 
@@ -505,9 +849,9 @@ export class Map3D {
     this.propColliders.push({ x, z, r: 1.05 });
   }
 
-  buildCCTVConsole(x, z) {
+  buildCCTVConsole(x, z, baseY = 0) {
     const group = new THREE.Group();
-    group.position.set(x, 0, z);
+    group.position.set(x, baseY, z);
 
     // 콘솔 데스크 본체
     const desk = new THREE.Mesh(
@@ -541,33 +885,34 @@ export class Map3D {
     this.propColliders.push({ x, z, r: 0.78 });
   }
 
-  buildCeilingLamp(x, z) {
+  buildCeilingLamp(x, z, col = 0, row = 0) {
     const isCh2 = this.chapterId === 'chapter2';
     const group = new THREE.Group();
-    group.position.set(x, WALL_HEIGHT - 0.06, z);
+    const inLowPipe = isCh2 && this.isWaterTile(col, row);
+    const lampY = isCh2 ? (inLowPipe ? 3.12 : 4.18) : (WALL_HEIGHT - 0.06);
+    group.position.set(x, lampY, z);
 
     const fixtureMat = isCh2 ? this.materials.lampOrangeFixture : this.materials.doorFrame;
     const fixture = new THREE.Mesh(
-      new THREE.BoxGeometry(1.1, 0.08, 0.36),
+      new THREE.BoxGeometry(1.1, 0.10, 0.38),
       fixtureMat
     );
     group.add(fixture);
 
-    const tubeColor = isCh2 ? 0xff8a22 : 0xbfc6cc;
+    const tubeColor = isCh2 ? 0xff9228 : 0xbfc6cc;
     const tubeMat = new THREE.MeshBasicMaterial({ color: tubeColor });
     const tube = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.95, 0.24),
+      new THREE.BoxGeometry(0.96, 0.06, 0.26),
       tubeMat
     );
-    tube.rotation.x = Math.PI / 2;
-    tube.position.y = -0.045;
+    tube.position.y = -0.055;
     group.add(tube);
 
-    // 챕터 2에서는 플레이어 손전등이 없는 대신 기둥과 통로의 주황색 나트륨 형광등이 온기를 비춤
+    // 챕터 2에서는 원통 하수관과 벽돌 아치 천장 곳곳에 설치된 방수 주황 벌크헤드 등이 주변 윤곽을 비춤
     let lampLight = null;
     if (isCh2) {
-      lampLight = new THREE.PointLight(0xff8420, 2.4, 11, 1.8);
-      lampLight.position.set(0, -0.3, 0);
+      lampLight = new THREE.PointLight(0xff8c28, 3.2, 15, 1.6);
+      lampLight.position.set(0, -0.35, 0);
       group.add(lampLight);
     }
 
@@ -578,7 +923,7 @@ export class Map3D {
       z,
       light: lampLight,
       tubeMat,
-      baseIntensity: isCh2 ? 2.4 : 2.2,
+      baseIntensity: isCh2 ? 3.2 : 2.2,
       nextFlickerIn: 2.5 + Math.random() * 9.0,
       flickerRemain: 0,
       soundCooldown: 0
@@ -612,8 +957,12 @@ export class Map3D {
       }
     }
 
+    const isCh2 = this.chapterId === 'chapter2';
+    const inLowPipe = isCh2 && this.isWaterTile(col, row);
+    const camMountY = isCh2 ? (inLowPipe ? 2.95 : 3.95) : (WALL_HEIGHT - 0.28);
+
     const camGroup = new THREE.Group();
-    camGroup.position.set(x, WALL_HEIGHT - 0.28, z);
+    camGroup.position.set(x, camMountY, z);
     camGroup.rotation.y = bestDir.yaw;
 
     const mount = new THREE.Mesh(
@@ -645,17 +994,17 @@ export class Map3D {
       4: 'CAM 04 - 서쪽 보안실/원자로 복도'
     };
     const defaultNamesCh2 = {
-      1: 'CAM 01 - 제2 침수 저류 수로',
-      2: 'CAM 02 - 남측 방류 터널',
-      3: 'CAM 03 - 고대 벽돌 아치 회랑',
-      4: 'CAM 04 - 서측 원형 배수관'
+      1: 'CAM 01 - 북측 대구경 원통 하수관',
+      2: 'CAM 02 - 남측 침수 배수관',
+      3: 'CAM 03 - 동측 고대 벽돌 아치 회랑',
+      4: 'CAM 04 - 서측 원형 수로 합류부'
     };
-    const defaultNames = this.chapterId === 'chapter2' ? defaultNamesCh2 : defaultNamesCh1;
+    const defaultNames = isCh2 ? defaultNamesCh2 : defaultNamesCh1;
 
     this.cctvConfigs.push({
       id: num,
       name: defaultNames[num] || `CAM 0${num} - 구역 감시`,
-      pos: { x, y: WALL_HEIGHT - 0.38, z },
+      pos: { x, y: camMountY - 0.10, z },
       baseYaw: bestDir.yaw,
       basePitch: -0.22
     });
@@ -706,9 +1055,9 @@ export class Map3D {
         lamp.soundCooldown = Math.max(0, lamp.soundCooldown - dt);
       }
 
-      // 괴물이 지상(y < 2.0)에서 전등 근처(6.5m 이내)를 지나가면 자기장 간섭으로 전등이 심하게 지직거림!
+      // 괴물이 지상(y < 2.2)에서 전등 근처(6.5m 이내)를 지나가면 자기장 간섭으로 전등이 심하게 지직거림!
       let monsterNearLamp = false;
-      if (monsterPos && monsterPos.y < 2.0) {
+      if (monsterPos && monsterPos.y < 2.2) {
         const dM = Math.hypot(monsterPos.x - lamp.x, monsterPos.z - lamp.z);
         if (dM < 6.5) {
           monsterNearLamp = true;
@@ -728,7 +1077,7 @@ export class Map3D {
       }
 
       const isCh2 = this.chapterId === 'chapter2';
-      const onColor = isCh2 ? 0xff8a22 : 0xbfc6cc;
+      const onColor = isCh2 ? 0xff9228 : 0xbfc6cc;
       const offColor = isCh2 ? 0x241208 : 0x22262a;
       const deadColor = isCh2 ? 0x180c05 : 0x141618;
 
@@ -758,11 +1107,12 @@ export class Map3D {
   }
 
   /**
-   * 플레이어 이동 충돌 판정 (원-타일 AABB + 오브젝트 원형 충돌)
+   * 플레이어 및 크롤러 이동 충돌 판정 (원-타일 AABB + 챕터 2 고저차 절벽 차단 + 오브젝트 원형 충돌)
    */
   checkCollision(x, z, radius = 0.42) {
     const center = worldToTile(x, z);
     const half = TILE_SIZE / 2;
+    const isCh2 = this.chapterId === 'chapter2';
 
     for (let dr = -1; dr <= 1; dr++) {
       for (let dc = -1; dc <= 1; dc++) {
@@ -770,7 +1120,10 @@ export class Map3D {
         const r = center.row + dr;
         const ch = this.getTileChar(c, r);
 
-        if (ch === '#' || ch === ' ') {
+        // 챕터 2에서는 경사로('M')나 사다리('H')를 거치지 않고 LOW(0.0m) <-> HIGH(1.40m) 단차를 직접 넘는 것을 차단
+        const isElevationCliff = isCh2 && (dr !== 0 || dc !== 0) && !this.canStepBetweenTiles(center.col, center.row, c, r);
+
+        if (ch === '#' || ch === ' ' || isElevationCliff) {
           const tilePos = tileToWorld(c, r);
           const closestX = Math.max(tilePos.x - half, Math.min(x, tilePos.x + half));
           const closestZ = Math.max(tilePos.z - half, Math.min(z, tilePos.z + half));
@@ -856,6 +1209,10 @@ export class Map3D {
   }
 
   isWaterAt(x, z) {
+    const t = worldToTile(x, z);
+    if (this.chapterId === 'chapter2') {
+      return this.isWaterTile(t.col, t.row) && this.getFloorHeightAt(x, z) < 0.35;
+    }
     return this.getTileAt(x, z) === 'W';
   }
 }

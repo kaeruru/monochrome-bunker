@@ -38,7 +38,7 @@ export const ITEM_METADATA = {
   }
 };
 
-// 매 판 무작위로 아이템이 배치될 14개 구역 후보 스폰 지점 풀
+// 챕터 1 / 3 후보 스폰 지점 풀 (14개 구역)
 const CANDIDATE_SPAWN_SPOTS = [
   { col: 21, row: 19, zone: '중앙 창고 (북서 선반)', isLocker: false },
   { col: 26, row: 25, zone: '중앙 창고 (남동 캐비닛)', isLocker: true },
@@ -54,6 +54,24 @@ const CANDIDATE_SPAWN_SPOTS = [
   { col: 45, row: 14, zone: '항해실 (주 조종석 선반)', isLocker: false },
   { col: 39, row: 23, zone: '보호막 제어실 (배전 캐비닛)', isLocker: true },
   { col: 32, row: 26, zone: '통신실 (무전 장비 선반)', isLocker: false }
+];
+
+// 챕터 2 (침수 수로 터널) 전용 후보 스폰 지점 풀 (고지대 벽돌 홀 + 저지대 원통 하수관 14개 지점)
+const CANDIDATE_SPAWN_SPOTS_CH2 = [
+  { col: 11, row: 6,  zone: '북서 수문 제어실 (배전 캐비닛)', isLocker: true },
+  { col: 8,  row: 7,  zone: '북서 수문 제어실 (정비 선반)', isLocker: false },
+  { col: 9,  row: 21, zone: '남서 수질 정화실 (시약 보관함)', isLocker: true },
+  { col: 13, row: 22, zone: '남서 수질 정화실 (필터 작업대)', isLocker: false },
+  { col: 39, row: 9,  zone: '동측 벽돌 기둥 홀 (북측 석조 선반)', isLocker: false },
+  { col: 43, row: 14, zone: '동측 벽돌 기둥 홀 (비상 캐비닛)', isLocker: true },
+  { col: 39, row: 19, zone: '동측 벽돌 기둥 홀 (남측 보급함)', isLocker: true },
+  { col: 44, row: 21, zone: '동측 벽돌 기둥 홀 (남동 선반)', isLocker: false },
+  { col: 18, row: 3,  zone: '북측 대구경 하수관 (북서 침수 선반)', isLocker: false },
+  { col: 30, row: 3,  zone: '북측 대구경 하수관 (북동 방수 캐비닛)', isLocker: true },
+  { col: 18, row: 25, zone: '남측 침수 배수관 (남서 침수 선반)', isLocker: false },
+  { col: 30, row: 25, zone: '남측 침수 배수관 (남동 방수 캐비닛)', isLocker: true },
+  { col: 3,  row: 10, zone: '서측 원통 배수관 (서북 수로 선반)', isLocker: false },
+  { col: 3,  row: 18, zone: '서측 원통 배수관 (서남 방수 보관함)', isLocker: true }
 ];
 
 export class InteractionAndEscapeSystem {
@@ -173,25 +191,27 @@ export class InteractionAndEscapeSystem {
     this.isBlackout = false;
     this.autoBlackoutTimer = 65 + Math.random() * 20;
 
-    // 1. 중앙 코어 부품 장착 슬롯 4개 생성 (벙커 중앙 발전기 주변)
-    this.buildCentralCoreReceptors();
+    const isCh2 = this.map.chapterId === 'chapter2';
 
-    // 2. 벙커 북쪽 벽 비상 탈출 엘리베이터 게이트 생성 (col 21, row 3)
-    this.buildEscapeGate(21, 3);
+    // 1. 중앙 코어 부품 장착 슬롯 4개 생성 (챕터 2는 중앙 배수 펌프실 (24,14), 챕터 1은 (24,6))
+    this.buildCentralCoreReceptors(isCh2 ? 24 : 24, isCh2 ? 14 : 6);
 
-    // 3. 벙커 북동쪽 부품 위치 스캔 단말기 생성 (col 27, row 3)
-    this.buildScannerTerminal(27, 3);
+    // 2. 북쪽 벽 비상 탈출 엘리베이터 게이트 생성
+    this.buildEscapeGate(21, isCh2 ? 11 : 3);
 
-    // 4. 전기실 주 배전반(차단기 레버 3개) 생성 (col 16, row 20)
-    this.buildElectricalBreakerPanel(16, 20);
+    // 3. 북동쪽 부품 위치 스캔 단말기 생성
+    this.buildScannerTerminal(27, isCh2 ? 11 : 3);
+
+    // 4. 주 배전반(차단기 레버 3개) 생성 (챕터 2는 북서 수문 제어실 (10,5), 챕터 1은 전기실 (16,20))
+    this.buildElectricalBreakerPanel(isCh2 ? 10 : 16, isCh2 ? 5 : 20);
 
     // 5. 14개 후보 스팟 중 무작위 셔플하여 필수 코어 부품 4개 + 조명탄 배치
     this.spawnRandomizedItemsAndLockers();
 
-    // 6. 벙커 스폰 지점 바로 옆 보급 상자에 기본 조명탄 1개 배치 (시작하자마자 1인칭 파지 테스트 가능!)
-    const starterPos = tileToWorld(22, 8);
-    this.buildSupplyCrateProp(starterPos.x, starterPos.z);
-    this.spawnWorldItem('flare', starterPos.x, 0.62, starterPos.z, '벙커 내부 보급 상자');
+    // 6. 스폰 지점 바로 옆 보급 상자에 기본 조명탄 1개 배치 (시작하자마자 1인칭 파지 테스트 가능!)
+    const starterPos = tileToWorld(22, isCh2 ? 16 : 8);
+    const starterTopY = this.buildSupplyCrateProp(starterPos.x, starterPos.z);
+    this.spawnWorldItem('flare', starterPos.x, starterTopY + 0.06, starterPos.z, '내부 보급 상자');
 
     this.syncViewModelAndHUD();
   }
@@ -199,9 +219,10 @@ export class InteractionAndEscapeSystem {
   /**
    * 중앙 발전기 코어(G) 둘레에 4개의 부품 장착 홀더를 생성합니다.
    */
-  buildCentralCoreReceptors() {
-    const genTile = tileToWorld(24, 6);
-    this.corePos = { x: genTile.x, z: genTile.z };
+  buildCentralCoreReceptors(col = 24, row = 6) {
+    const genTile = tileToWorld(col, row);
+    const baseY = this.map.getFloorHeightAt(genTile.x, genTile.z);
+    this.corePos = { x: genTile.x, y: baseY, z: genTile.z };
 
     const slotAngles = [
       { angle: 0, label: '배터리 슬롯 #1', reqType: 'energy_cell' },
@@ -219,7 +240,7 @@ export class InteractionAndEscapeSystem {
       const sz = genTile.z + Math.cos(s.angle) * radius;
 
       const pedestal = new THREE.Group();
-      pedestal.position.set(sx, 0, sz);
+      pedestal.position.set(sx, baseY, sz);
       pedestal.rotation.y = s.angle;
       this.group.add(pedestal);
 
@@ -255,8 +276,9 @@ export class InteractionAndEscapeSystem {
    */
   buildEscapeGate(col, row) {
     const pos = tileToWorld(col, row);
+    const baseY = this.map.getFloorHeightAt(pos.x, pos.z);
     const gateGroup = new THREE.Group();
-    gateGroup.position.set(pos.x, 0, pos.z - 0.95);
+    gateGroup.position.set(pos.x, baseY, pos.z - 0.95);
     this.group.add(gateGroup);
 
     // 게이트 외곽 프레임
@@ -297,6 +319,7 @@ export class InteractionAndEscapeSystem {
 
     this.escapeGate = {
       x: pos.x,
+      y: baseY,
       z: pos.z - 0.65,
       shutter,
       interiorGlow,
@@ -311,8 +334,9 @@ export class InteractionAndEscapeSystem {
    */
   buildScannerTerminal(col, row) {
     const pos = tileToWorld(col, row);
+    const baseY = this.map.getFloorHeightAt(pos.x, pos.z);
     const termGroup = new THREE.Group();
-    termGroup.position.set(pos.x, 0, pos.z - 0.8);
+    termGroup.position.set(pos.x, baseY, pos.z - 0.8);
     this.group.add(termGroup);
 
     const stand = new THREE.Mesh(
@@ -337,6 +361,7 @@ export class InteractionAndEscapeSystem {
 
     this.scannerTerminal = {
       x: pos.x,
+      y: baseY,
       z: pos.z - 0.65,
       screenMat
     };
@@ -347,8 +372,9 @@ export class InteractionAndEscapeSystem {
    */
   buildElectricalBreakerPanel(col, row) {
     const pos = tileToWorld(col, row);
+    const baseY = this.map.getFloorHeightAt(pos.x, pos.z);
     const panelGroup = new THREE.Group();
-    panelGroup.position.set(pos.x, 0, pos.z - 0.88);
+    panelGroup.position.set(pos.x, baseY, pos.z - 0.88);
     this.group.add(panelGroup);
 
     // 배전반 본체 캐비닛
@@ -408,6 +434,7 @@ export class InteractionAndEscapeSystem {
 
     this.breakerState = {
       x: pos.x,
+      y: baseY,
       z: pos.z - 0.55,
       leversPulled: 3,
       leverMeshes,
@@ -417,21 +444,26 @@ export class InteractionAndEscapeSystem {
   }
 
   buildSupplyCrateProp(x, z) {
+    const floorY = this.map.getFloorHeightAt(x, z);
+    const inCh2Water = this.map.chapterId === 'chapter2' && this.map.isWaterAt(x, z);
+    const crateH = inCh2Water ? 0.88 : 0.56;
     const crate = new THREE.Mesh(
-      new THREE.BoxGeometry(0.82, 0.56, 0.62),
+      new THREE.BoxGeometry(0.82, crateH, 0.62),
       this.crateMat
     );
-    crate.position.set(x, 0.28, z);
+    crate.position.set(x, floorY + crateH / 2, z);
     crate.castShadow = true;
     crate.receiveShadow = true;
     this.group.add(crate);
+    return floorY + crateH;
   }
 
   /**
    * 14개 후보 스팟을 셔플하여 필수 코어 부품 4개 + 조명탄 2개 + 빈 캐비닛들을 배치합니다.
    */
   spawnRandomizedItemsAndLockers() {
-    const shuffled = [...CANDIDATE_SPAWN_SPOTS];
+    const spotPool = this.map.chapterId === 'chapter2' ? CANDIDATE_SPAWN_SPOTS_CH2 : CANDIDATE_SPAWN_SPOTS;
+    const shuffled = [...spotPool];
     for (let i = shuffled.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
@@ -455,9 +487,9 @@ export class InteractionAndEscapeSystem {
       if (spot.isLocker) {
         this.buildInteractiveLocker(pos.x, pos.z, spot.zone, itemType);
       } else {
-        this.buildSupplyCrateProp(pos.x, pos.z);
+        const crateTopY = this.buildSupplyCrateProp(pos.x, pos.z);
         if (itemType) {
-          this.spawnWorldItem(itemType, pos.x, 0.62, pos.z, spot.zone);
+          this.spawnWorldItem(itemType, pos.x, crateTopY + 0.06, pos.z, spot.zone);
         }
       }
     }
@@ -467,8 +499,9 @@ export class InteractionAndEscapeSystem {
    * 문을 열어 내부를 조사할 수 있는 철제 전술 보관함(Locker) 생성
    */
   buildInteractiveLocker(x, z, zoneName, hiddenItemType = null) {
+    const baseY = this.map.getFloorHeightAt(x, z);
     const lockerGroup = new THREE.Group();
-    lockerGroup.position.set(x, 0, z);
+    lockerGroup.position.set(x, baseY, z);
     this.group.add(lockerGroup);
 
     // 캐비닛 몸체
@@ -501,6 +534,7 @@ export class InteractionAndEscapeSystem {
 
     const lockerObj = {
       x,
+      baseY,
       z,
       zoneName,
       isOpen: false,
@@ -703,6 +737,8 @@ export class InteractionAndEscapeSystem {
 
     const dropX = playerPos.x + forwardVec.x * 0.85;
     const dropZ = playerPos.z + forwardVec.z * 0.85;
+    const floorY = this.map.getFloorHeightAt(dropX, dropZ);
+    const inCh2Water = this.map.chapterId === 'chapter2' && this.map.isWaterAt(dropX, dropZ);
 
     if (heldType === 'flare') {
       sound.playFlareIgnite();
@@ -710,7 +746,8 @@ export class InteractionAndEscapeSystem {
       this.notifyToast('[FLARE] 비상 조명탄을 점화하여 바닥에 투하했습니다. (45초간 유효)', 'info');
     } else {
       sound.playItemDrop();
-      this.spawnWorldItem(heldType, dropX, 0.22, dropZ, '바닥에 내려놓음');
+      const dropY = inCh2Water ? 0.62 : floorY + 0.22;
+      this.spawnWorldItem(heldType, dropX, dropY, dropZ, '바닥에 내려놓음');
       const meta = ITEM_METADATA[heldType];
       this.notifyToast(`[DROPPED] ${meta.name}을(를) 바닥에 내려놓았습니다.`, 'info');
     }
@@ -725,8 +762,11 @@ export class InteractionAndEscapeSystem {
   }
 
   spawnIgnitedFlare(x, z) {
+    const floorY = this.map.getFloorHeightAt(x, z);
+    const inCh2Water = this.map.chapterId === 'chapter2' && this.map.isWaterAt(x, z);
+    const flareY = inCh2Water ? 0.58 : floorY + 0.06;
     const { group } = buildItemMesh3D('flare');
-    group.position.set(x, 0.06, z);
+    group.position.set(x, flareY, z);
     group.rotation.x = Math.PI / 2;
     group.rotation.z = Math.random() * Math.PI;
 
@@ -990,7 +1030,7 @@ export class InteractionAndEscapeSystem {
       this.viewModel.triggerInteractAnim();
 
       if (lk.hiddenItemType) {
-        this.spawnWorldItem(lk.hiddenItemType, lk.x, 0.96, lk.z + 0.05, lk.zoneName);
+        this.spawnWorldItem(lk.hiddenItemType, lk.x, (lk.baseY || 0) + 0.96, lk.z + 0.05, lk.zoneName);
         const meta = ITEM_METADATA[lk.hiddenItemType];
         this.notifyToast(`[DISCOVERED] 보관함 내부에서 ${meta.name}을(를) 확인했습니다.`, 'success');
       } else {

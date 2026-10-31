@@ -233,8 +233,9 @@ export class MonsterAI {
     for (let i = 0; i < this.activeVentNodes.length; i++) {
       const node = this.activeVentNodes[i];
       const w = tileToWorld(node.col, node.row);
+      const floorY = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(w.x, w.z) : 0;
       const ventGroup = new THREE.Group();
-      ventGroup.position.set(w.x, 0.01, w.z);
+      ventGroup.position.set(w.x, floorY + 0.01, w.z);
       this.rootGroup.add(ventGroup);
 
       // 1. 바닥 심연 구멍
@@ -271,8 +272,10 @@ export class MonsterAI {
       ventGroup.add(ceilVent);
 
       this.ventMeshes.push({
+        group: ventGroup,
         node,
         x: w.x,
+        y: floorY,
         z: w.z,
         gratePivot
       });
@@ -438,7 +441,7 @@ export class MonsterAI {
       const sx = x0 + dx * t;
       const sz = z0 + dz * t;
       const tile = worldToTile(sx, sz);
-      const ch = getTile(tile.col, tile.row);
+      const ch = this.map && this.map.getTileChar ? this.map.getTileChar(tile.col, tile.row) : getTile(tile.col, tile.row);
 
       if (ch === '#' || ch === ' ' || ch === 'G' || ch === 'C') return false;
       if (ch === 'D') {
@@ -451,7 +454,7 @@ export class MonsterAI {
 
   /**
    * 괴물이 플레이어를 시각적으로 발견했는지 판정
-   * - 손전등 ON: 17.5m 거리까지 발각
+   * - 손전등 ON: 17.5m (챕터 2 약한 작업등은 10.5m) 거리까지 발각
    * - 손전등 OFF: 6.0m (정전 시 4.2m) 이내로 접근해야만 발각 -> 손전등을 끄고 숨는 전략 유효!
    */
   canSeePlayer(playerPos, flashlightOn, isBlackout) {
@@ -459,7 +462,10 @@ export class MonsterAI {
     const dz = playerPos.z - this.pos.z;
     const dist = Math.hypot(dx, dz);
 
-    const maxSightDist = flashlightOn ? 17.5 : (isBlackout ? 4.2 : 6.0);
+    const isCh2 = this.chapterId === 'chapter2';
+    const maxSightDist = isCh2
+      ? (flashlightOn ? 10.8 : (isBlackout ? 4.5 : 6.2))
+      : (flashlightOn ? 17.5 : (isBlackout ? 4.2 : 6.0));
     if (dist > maxSightDist) return false;
 
     // 초근접(2.1m 이내)이 아니면 괴물의 정면 시야각(약 104도, 반각 52도) 이내여야 함
@@ -495,9 +501,10 @@ export class MonsterAI {
   computePathToWorld(targetX, targetZ, allowClosedDoors = false) {
     const start = worldToTile(this.pos.x, this.pos.z);
     let goal = worldToTile(targetX, targetZ);
+    const readTile = (c, r) => (this.map && this.map.getTileChar ? this.map.getTileChar(c, r) : getTile(c, r));
 
     // 목표 지점이 발전기 코어(G)나 콘솔(C) 등 진입 불가 타일 내부인 경우 주변 통행 가능한 바닥으로 목표 자동 보정
-    const goalCh = getTile(goal.col, goal.row);
+    const goalCh = readTile(goal.col, goal.row);
     if (goalCh === ' ' || goalCh === '#' || goalCh === 'G' || goalCh === 'C') {
       const adjTiles = [
         { col: goal.col, row: goal.row + 1 },
@@ -510,7 +517,7 @@ export class MonsterAI {
         { col: goal.col - 1, row: goal.row - 1 }
       ];
       for (const adj of adjTiles) {
-        const ach = getTile(adj.col, adj.row);
+        const ach = readTile(adj.col, adj.row);
         if (ach !== ' ' && ach !== '#' && ach !== 'G' && ach !== 'C') {
           goal = adj;
           break;
@@ -559,9 +566,14 @@ export class MonsterAI {
         if (nr < 0 || nr >= MAP_ROWS || nc < 0 || nc >= MAP_COLS) continue;
         if (visited[nr][nc]) continue;
 
-        const ch = getTile(nc, nr);
+        const ch = readTile(nc, nr);
         // 발전기 코어(G) 및 CCTV 콘솔(C)을 통과 불가능한 고체 장애물로 엄격히 제외
         if (ch === ' ' || ch === '#' || ch === 'G' || ch === 'C') continue;
+
+        // 챕터 2에서는 경사로('M')나 사다리('H') 없이 LOW <-> HIGH 절벽 단차를 직접 넘지 못하도록 제한
+        if (this.map && this.map.canStepBetweenTiles && !this.map.canStepBetweenTiles(cur.col, cur.row, nc, nr)) {
+          continue;
+        }
 
         if (ch === 'D' && !allowClosedDoors) {
           const door = this.findDoorAtTile(nc, nr);
@@ -629,27 +641,33 @@ export class MonsterAI {
   /**
    * 무작위 순찰 목적지 선택
    * - 식당(중앙 벙커) 내부에 있을 때는 외부 복도나 타 격실로 이동하도록 유도
-   * - 중앙 발전기 코어 및 CCTV 콘솔 바로 주변은 순찰 지점에서 원천 배제
+   * - 챕터 2의 크롤러는 원통형 침수 하수관('W')을 주 무대로 빠르게 배회하며 간헐적으로 고지대를 수색
    */
   pickRandomPatrolPoint() {
     const candidates = [];
     const curTile = worldToTile(this.pos.x, this.pos.z);
-    const inCafeteria = (curTile.col >= 19 && curTile.col <= 29 && curTile.row >= 2 && curTile.row <= 10);
+    const isCh2 = this.chapterId === 'chapter2';
+    const readTile = (c, r) => (this.map && this.map.getTileChar ? this.map.getTileChar(c, r) : getTile(c, r));
+    const inCafeteria = isCh2
+      ? (curTile.col >= 20 && curTile.col <= 28 && curTile.row >= 11 && curTile.row <= 17)
+      : (curTile.col >= 19 && curTile.col <= 29 && curTile.row >= 2 && curTile.row <= 10);
 
     for (let r = 2; r < MAP_ROWS - 2; r++) {
       for (let c = 2; c < MAP_COLS - 2; c++) {
-        // 중앙 코어(24, 6) 및 콘솔(24, 3) 바로 앞은 목적지 배제
-        if ((c === 24 && r === 6) || (c === 24 && r === 3)) continue;
+        const ch = readTile(c, r);
+        if (ch === 'G' || ch === 'C' || ch === 'S') continue;
 
-        const ch = getTile(c, r);
-        if (ch === '.' || ch === 'R' || ch === 'B') {
-          // 이미 식당(벙커) 내부에 있다면 88% 확률로 'B'를 건너뛰고 복도('.') 및 다른 방('R')으로 나가도록 유도
+        if (ch === '.' || ch === 'R' || ch === 'B' || ch === 'W') {
           if (inCafeteria && ch === 'B' && Math.random() < 0.88) {
+            continue;
+          }
+          // 챕터 2 크롤러는 물속('W') 순찰 선호도 부여
+          if (isCh2 && ch !== 'W' && Math.random() < 0.55) {
             continue;
           }
 
           const distTiles = Math.hypot(c - curTile.col, r - curTile.row);
-          if (distTiles >= 4 && distTiles <= 15) {
+          if (distTiles >= 4 && distTiles <= 16) {
             candidates.push({ col: c, row: r });
           }
         }
@@ -838,7 +856,7 @@ export class MonsterAI {
       // Euler 회전 왜곡 방지를 위해 카메라 위치에 미세 충격 지터를 적용하고 헤드를 직시
       const jitter = (1.0 - progress * 0.35) * 0.024;
       playerCamera.position.x = playerPos.x + (Math.random() - 0.5) * jitter;
-      playerCamera.position.y = 1.62 + (Math.random() - 0.5) * jitter;
+      playerCamera.position.y = (this.pos.y + 1.62) + (Math.random() - 0.5) * jitter;
       playerCamera.position.z = playerPos.z + (Math.random() - 0.5) * jitter;
       playerCamera.lookAt(headWorld);
 
@@ -967,18 +985,19 @@ export class MonsterAI {
         animMode = 'idle';
         this.stateTimer -= dt;
         const vm = this.ventMeshes[this.currentVentIdx];
+        const groundY = vm && vm.y !== undefined ? vm.y : (this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0);
         if (vm) {
           // 벤트 뚜껑이 젖혀지며 열림
           vm.gratePivot.rotation.x = THREE.MathUtils.lerp(vm.gratePivot.rotation.x, -1.25, dt * 8);
           this.pos.x = vm.x;
           this.pos.z = vm.z;
         }
-        // 천장/바닥 환기구에서 지면(y=0)으로 부드럽게 착지
+        // 천장/바닥 환기구에서 지면(groundY)으로 부드럽게 착지
         const ratio = 1.0 - Math.max(0, this.stateTimer / 1.25);
-        this.pos.y = THREE.MathUtils.lerp(2.4, 0.0, Math.min(1, ratio * 1.2));
+        this.pos.y = THREE.MathUtils.lerp(groundY + 2.4, groundY, Math.min(1, ratio * 1.2));
 
         if (this.stateTimer <= 0) {
-          this.pos.y = 0;
+          this.pos.y = groundY;
           if (vm) vm.gratePivot.rotation.x = 0;
 
           // 만약 전기실(vent_elec)에 출현했고 정전 쿨다운이 끝났다면 60% 확률로 전력망 습격
@@ -1012,11 +1031,12 @@ export class MonsterAI {
         animMode = 'idle';
         this.stateTimer -= dt;
         const vm = this.ventMeshes[this.currentVentIdx];
+        const groundY = vm && vm.y !== undefined ? vm.y : (this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0);
         if (vm) {
           vm.gratePivot.rotation.x = THREE.MathUtils.lerp(vm.gratePivot.rotation.x, -1.2, dt * 8);
         }
         const ratio = 1.0 - Math.max(0, this.stateTimer / 1.1);
-        this.pos.y = THREE.MathUtils.lerp(0.0, 3.2, Math.min(1, ratio));
+        this.pos.y = THREE.MathUtils.lerp(groundY, groundY + 3.2, Math.min(1, ratio));
 
         if (this.stateTimer <= 0) {
           if (vm) vm.gratePivot.rotation.x = 0;
@@ -1033,7 +1053,10 @@ export class MonsterAI {
 
       case 'PATROL': {
         animMode = 'stalk';
-        this.pos.y = 0;
+        const isCh2 = this.chapterId === 'chapter2';
+        const inWater = isCh2 && this.map && this.map.isWaterAt ? this.map.isWaterAt(this.pos.x, this.pos.z) : false;
+        const speedMult = isCh2 ? (inWater ? 1.28 : 0.56) : 1.0;
+        this.pos.y = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0;
         this.patrolDuration -= dt;
 
         // 시야 내 플레이어 발각 검사
@@ -1042,8 +1065,9 @@ export class MonsterAI {
           break;
         }
 
-        const arrived = this.moveAlongPath(dt, this.patrolSpeed || 3.15, false);
+        const arrived = this.moveAlongPath(dt, (this.patrolSpeed || 3.15) * speedMult, false);
         if (arrived) {
+          this.pos.y = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0;
           if (this.patrolDuration <= 0) {
             // 순찰 시간이 끝나면 가장 가까운 환기구로 들어가 다른 구역으로 이동
             let nearIdx = 0;
@@ -1077,14 +1101,18 @@ export class MonsterAI {
 
       case 'INVESTIGATE': {
         animMode = 'stalk';
-        this.pos.y = 0;
+        const isCh2 = this.chapterId === 'chapter2';
+        const inWater = isCh2 && this.map && this.map.isWaterAt ? this.map.isWaterAt(this.pos.x, this.pos.z) : false;
+        const speedMult = isCh2 ? (inWater ? 1.28 : 0.58) : 1.0;
+        this.pos.y = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0;
 
         if (this.canSeePlayer(playerPos, flashlightOn, isBlackout)) {
           this.startChase(playerPos);
           break;
         }
 
-        const arrived = this.moveAlongPath(dt, this.investigateSpeed || 4.35, true);
+        const arrived = this.moveAlongPath(dt, (this.investigateSpeed || 4.35) * speedMult, true);
+        this.pos.y = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0;
         if (arrived) {
           // 소음 지점 도착 후 4초 동안 주변을 두리번거리며 수색
           animMode = 'idle';
@@ -1105,10 +1133,19 @@ export class MonsterAI {
 
       case 'CHASE': {
         animMode = 'chase';
-        this.pos.y = 0;
+        const isCh2 = this.chapterId === 'chapter2';
+        const inWater = isCh2 && this.map && this.map.isWaterAt ? this.map.isWaterAt(this.pos.x, this.pos.z) : false;
+        // 챕터 2 크롤러는 물속에서 맹렬히 빨라지고, 물 밖(고지대 회랑)으로 올라오면 현저히 느려짐!
+        const speedMult = isCh2 ? (inWater ? 1.26 : 0.58) : 1.0;
+        this.pos.y = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0;
 
-        // 플레이어 포획 판정 (거리 1.15m 이내 & 벽 없음)
-        if (distToPlayer < 1.15 && this.hasGridLineOfSight(this.pos.x, this.pos.z, playerPos.x, playerPos.z)) {
+        // 플레이어 포획 판정 (거리 1.15m 이내 & 고저차 0.85m 이내 & 벽 없음)
+        const playerFootY = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(playerPos.x, playerPos.z) : 0;
+        if (
+          distToPlayer < 1.15 &&
+          Math.abs(this.pos.y - playerFootY) < 0.85 &&
+          this.hasGridLineOfSight(this.pos.x, this.pos.z, playerPos.x, playerPos.z)
+        ) {
           this.triggerPlayerKill(playerPos, playerCamera);
           return;
         }
@@ -1142,14 +1179,14 @@ export class MonsterAI {
           break;
         }
 
-        // 추격 속도: 7.55 m/s (플레이어 걷기 5.4보다 빠르고, 달리기 9.4보다 느려 거리 벌리기 가능!)
-        this.moveAlongPath(dt, this.chaseSpeed || 7.6, true);
+        this.moveAlongPath(dt, (this.chaseSpeed || 7.6) * speedMult, true);
+        this.pos.y = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0;
         break;
       }
 
       case 'DOOR_BASH': {
         animMode = 'attack';
-        this.pos.y = 0;
+        this.pos.y = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0;
         this.stateTimer -= dt;
         this.bashHitTimer -= dt;
 
@@ -1196,7 +1233,7 @@ export class MonsterAI {
 
       case 'STUNNED': {
         animMode = 'attack';
-        this.pos.y = 0;
+        this.pos.y = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0;
         this.stateTimer -= dt;
         // 고통스러워하며 좌우로 몸부림침
         this.targetYaw += Math.sin(this.stateTimer * 14.0) * dt * 5.0;
@@ -1251,9 +1288,10 @@ export class MonsterAI {
     fwd.y = 0;
     if (fwd.lengthSq() > 0.001) fwd.normalize();
 
+    const groundY = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(playerPos.x, playerPos.z) : 0;
     this.pos.x = playerPos.x + fwd.x * 1.38;
     this.pos.z = playerPos.z + fwd.z * 1.38;
-    this.pos.y = 0;
+    this.pos.y = groundY;
     this.yaw = Math.atan2(-fwd.x, -fwd.z);
 
     this.monster.root.position.copy(this.pos);

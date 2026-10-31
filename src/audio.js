@@ -1324,6 +1324,84 @@ class AudioManager {
     flatOsc.start(t + 0.95);
     flatOsc.stop(t + 3.25);
   }
+
+  /**
+   * 챕터 2 직육면체 음파 감지기 근접 경고 비프음 (크롤러가 가까울수록 피치 상승 및 더블 빕)
+   * @param {number} closeness 0.0 (멀리 있음) ~ 1.0 (초근접)
+   */
+  playSonarPing(closeness = 0) {
+    this.init();
+    if (!this.ctx || this.isMuted) return;
+
+    const t = this.ctx.currentTime;
+    const c = Math.max(0, Math.min(1, closeness));
+    const baseFreq = 760 + c * 620;
+    const vol = 0.06 + c * 0.14;
+
+    const triggerTone = (offsetSec, freqMul = 1.0) => {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = c > 0.65 ? 'triangle' : 'sine';
+      osc.frequency.setValueAtTime(baseFreq * freqMul, t + offsetSec);
+      osc.frequency.exponentialRampToValueAtTime(baseFreq * freqMul * 0.88, t + offsetSec + 0.065);
+      gain.gain.setValueAtTime(vol, t + offsetSec);
+      gain.gain.exponentialRampToValueAtTime(0.0008, t + offsetSec + 0.07);
+      osc.connect(gain);
+      gain.connect(this.masterGain || this.ctx.destination);
+      osc.start(t + offsetSec);
+      osc.stop(t + offsetSec + 0.075);
+    };
+
+    triggerTone(0, 1.0);
+    if (c > 0.52) {
+      triggerTone(0.085, 1.12);
+    }
+  }
+
+  /**
+   * 챕터 2 허벅지 깊이 침수 수로 보행/질주 시 철썩이는 물장구 발소리
+   */
+  playWaterFootstep(isSprint = false) {
+    this.init();
+    if (!this.ctx || this.isMuted) return;
+
+    const t = this.ctx.currentTime;
+    const dur = isSprint ? 0.22 : 0.18;
+
+    // 1. 저음 물결 출렁임
+    const osc = this.ctx.createOscillator();
+    const oscGain = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(isSprint ? 135 : 105, t);
+    osc.frequency.exponentialRampToValueAtTime(42, t + dur);
+    oscGain.gain.setValueAtTime(isSprint ? 0.22 : 0.14, t);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    osc.connect(oscGain);
+    oscGain.connect(this.masterGain || this.ctx.destination);
+    osc.start(t);
+    osc.stop(t + dur);
+
+    // 2. 밴드패스 노이즈 물보라 철썩임
+    if (this.noiseBuffer) {
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = this.noiseBuffer;
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(isSprint ? 950 : 720, t);
+      filter.frequency.exponentialRampToValueAtTime(380, t + dur);
+      filter.Q.setValueAtTime(1.5, t);
+
+      const nGain = this.ctx.createGain();
+      nGain.gain.setValueAtTime(isSprint ? 0.18 : 0.11, t);
+      nGain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+
+      noise.connect(filter);
+      filter.connect(nGain);
+      nGain.connect(this.masterGain || this.ctx.destination);
+      noise.start(t);
+      noise.stop(t + dur);
+    }
+  }
 }
 
 export const sound = new AudioManager();

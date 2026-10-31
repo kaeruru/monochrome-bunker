@@ -1329,25 +1329,34 @@ class MonochromeBunker3D {
   applyChapterLighting(isBlackout = false) {
     const isCh2 = this.activeChapterId === 'chapter2';
     if (isCh2) {
-      this.flashlightOn = false;
-      this.flashlight.intensity = 0;
+      // 챕터 2: 손전등 대신 직육면체 감지기의 윗면 발광 디퓨저 바가 은은하고 넓은 근거리 작업등 역할 수행
+      this.flashlightOn = true;
+      this.flashlight.color.setHex(0xffdfaa);
+      this.flashlight.distance = 21;
+      this.flashlight.angle = Math.PI / 2.25;
+      this.flashlight.penumbra = 0.88;
+      this.flashlight.intensity = isBlackout ? 10.5 : 14.5;
       if (this.playerFillLight) this.playerFillLight.intensity = 0;
       if (this.btnTouchFlashlight) {
         this.btnTouchFlashlight.classList.remove('active');
         this.btnTouchFlashlight.style.opacity = '0.35';
-        this.btnTouchFlashlight.title = '수로 구역: 손전등 비활성화';
+        this.btnTouchFlashlight.title = '수로 구역: 직육면체 음파 감지기 작동 중';
       }
       this.scene.background.setHex(isBlackout ? 0x050202 : 0x090503);
       if (this.scene.fog) {
         this.scene.fog.color.setHex(isBlackout ? 0x050202 : 0x090503);
-        this.scene.fog.density = 0.046;
+        this.scene.fog.density = 0.036;
       }
       if (this.ambientLight) {
-        this.ambientLight.color.setHex(isBlackout ? 0x280e06 : 0x422616);
-        this.ambientLight.intensity = isBlackout ? 0.32 : 0.76;
+        this.ambientLight.color.setHex(isBlackout ? 0x2e1208 : 0x52321c);
+        this.ambientLight.intensity = isBlackout ? 0.45 : 0.96;
       }
     } else {
       this.flashlightOn = !isBlackout;
+      this.flashlight.color.setHex(0xf0f6ff);
+      this.flashlight.distance = 36;
+      this.flashlight.angle = Math.PI / 3.3;
+      this.flashlight.penumbra = 0.72;
       this.flashlight.intensity = isBlackout ? 0 : this.flashlightMaxIntensity;
       if (this.playerFillLight) this.playerFillLight.intensity = isBlackout ? 0.22 : 1.45;
       if (this.btnTouchFlashlight) {
@@ -1371,18 +1380,27 @@ class MonochromeBunker3D {
     const cfg = CHAPTER_CONFIGS[chapterId] || CHAPTER_CONFIGS.chapter1;
     this.activeChapterId = cfg.id;
     this.currentChapterConfig = cfg;
+    this.sonarBeepTimer = 0.5;
 
     // 1. 3D 맵 재구성 (지오메트리, 벽, 문, 수면, 전등)
     if (this.map) {
       this.map.rebuildMap(cfg.data, cfg.id);
       if (this.map.spawnPos) {
-        this.playerPos.set(this.map.spawnPos.x, 1.62, this.map.spawnPos.z);
+        this.playerFootY = this.map.getFloorHeightAt(this.map.spawnPos.x, this.map.spawnPos.z);
+        this.playerPos.set(
+          this.map.spawnPos.x,
+          this.playerFootY + this.playerEyeHeight,
+          this.map.spawnPos.z
+        );
         this.playerCamera.position.copy(this.playerPos);
       }
     }
 
-    // 1-1. 환경 조명 및 손전등 적용
+    // 1-1. 환경 조명 및 1인칭 장비(손전등 vs 직육면체 감지기) 적용
     this.applyChapterLighting(false);
+    if (this.viewModel) {
+      this.viewModel.setChapterMode(cfg.id);
+    }
 
     // 2. 괴물 AI 챕터 설정 및 벤트/노드 재구성
     if (this.monsterAI) {
@@ -1584,7 +1602,6 @@ class MonochromeBunker3D {
     const isCh2 = this.activeChapterId === 'chapter2';
     // 챕터 2에서는 물이 허벅지까지 차올라 -35% 속도 감소 (0.65배 속도)
     const waterMult = inWater ? (isCh2 ? (isActivelySprinting ? 0.70 : 0.65) : (isActivelySprinting ? 0.94 : 0.82)) : 1.0;
-    const targetEyeH = (inWater && isCh2) ? this.playerEyeHeight - 0.28 : this.playerEyeHeight;
 
     if (isMoving) {
       const currentSpeed = (isActivelySprinting ? this.sprintSpeed : this.walkSpeed) * waterMult;
@@ -1598,7 +1615,19 @@ class MonochromeBunker3D {
       if (!this.map.checkCollision(this.playerPos.x, nextZ, this.playerRadius)) {
         this.playerPos.z = nextZ;
       }
+    }
 
+    // 경사로('M') 및 벽면 철제 사다리('H' - 사다리 앞으로 전진 시 자동 등반)에 따른 플레이어 고도(Y) 부드럽게 보간
+    const targetFootY = this.map ? this.map.getFloorHeightAt(this.playerPos.x, this.playerPos.z) : 0;
+    this.playerFootY = THREE.MathUtils.lerp(
+      this.playerFootY !== undefined ? this.playerFootY : targetFootY,
+      targetFootY,
+      Math.min(1, dt * 14)
+    );
+    const targetEyeH = this.playerFootY + ((inWater && isCh2) ? this.playerEyeHeight - 0.26 : this.playerEyeHeight);
+    this.playerPos.y = targetEyeH;
+
+    if (isMoving) {
       const bobFreq = isActivelySprinting ? 15.5 : 10.0;
       const bobAmp = isActivelySprinting ? (inWater ? 0.095 : 0.085) : (inWater ? 0.065 : 0.052);
       this.walkCycle += dt * bobFreq;
@@ -1607,7 +1636,11 @@ class MonochromeBunker3D {
       this.footstepTimer += dt;
       const stepInterval = isActivelySprinting ? (inWater ? 0.32 : 0.27) : (inWater ? 0.50 : 0.44);
       if (this.footstepTimer > stepInterval) {
-        sound.playFootstep(isActivelySprinting, inWater);
+        if (inWater && isCh2 && sound.playWaterFootstep) {
+          sound.playWaterFootstep(isActivelySprinting);
+        } else {
+          sound.playFootstep(isActivelySprinting, inWater);
+        }
         if (this.monsterAI) {
           const soundRad = inWater ? (isActivelySprinting ? 34.0 : 18.0) : (isActivelySprinting ? 22.0 : 9.0);
           this.monsterAI.notifyPlayerSound(this.playerPos.x, this.playerPos.z, soundRad, inWater ? '수로 물살 첨벙거림' : '발소리');
@@ -1632,7 +1665,7 @@ class MonochromeBunker3D {
       });
     }
 
-    // 6. 손전등 & 근접 보조광 방향 동기화
+    // 6. 손전등 & 챕터 2 직육면체 감지기 상단 발광 작업등 / 음파 레이더 동기화
     this.flashlight.position.copy(this.playerCamera.position);
     if (this.playerFillLight) {
       this.playerFillLight.position.copy(this.playerCamera.position);
@@ -1640,13 +1673,46 @@ class MonochromeBunker3D {
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this.playerCamera.quaternion);
     this.flashlightTarget.position.copy(this.playerCamera.position).addScaledVector(forward, 15);
 
+    if (isCh2) {
+      // 이동 시에는 직육면체 기기 윗면 발광부가 전방을 비추어 밝기(15.5)가 올라가고,
+      // 정지 시에는 기기를 세워 레이더 화면을 확인하므로 은은한 주변광(9.5)으로 자연스럽게 전환
+      const targetSonarLight = isMoving ? 15.5 : 9.5;
+      this.flashlight.intensity = THREE.MathUtils.lerp(this.flashlight.intensity, targetSonarLight, Math.min(1, dt * 8));
+
+      // 크롤러와의 거리 및 상대 각도를 계산해 직육면체 레이더 화면 갱신 + 접근 시 빨라지는 비프음 재생
+      const mActive = Boolean(this.monsterAI && this.monsterAI.state !== 'VENT_LURK');
+      let mDist = 99;
+      let relAngle = 0;
+      if (mActive && this.monsterAI) {
+        const dx = this.monsterAI.pos.x - this.playerPos.x;
+        const dz = this.monsterAI.pos.z - this.playerPos.z;
+        mDist = Math.hypot(dx, dz);
+        const angleToMonster = Math.atan2(dx, dz);
+        const camYaw = Math.atan2(forward.x, forward.z);
+        relAngle = camYaw - angleToMonster;
+      }
+      if (this.viewModel && this.viewModel.updateSonarRadar) {
+        this.viewModel.updateSonarRadar(dt, mDist, relAngle, mActive);
+      }
+
+      if (mActive && mDist < 26.0) {
+        this.sonarBeepTimer = (this.sonarBeepTimer || 0) - dt;
+        const closeness = Math.max(0, Math.min(1, 1 - (mDist - 2.5) / 23.5));
+        const beepInterval = 1.35 - closeness * 1.18;
+        if (this.sonarBeepTimer <= 0) {
+          this.sonarBeepTimer = beepInterval;
+          if (sound.playSonarPing) sound.playSonarPing(closeness);
+        }
+      }
+    }
+
     // 6-1. 괴물 AI 시스템 업데이트 (벤트 이동, 청각/시각 수색, 추격, 방호문 강타, 조명탄 스턴)
     if (this.monsterAI) {
       this.monsterAI.update(
         dt,
         this.playerPos,
         this.playerCamera,
-        this.flashlightOn,
+        isCh2 ? isMoving : this.flashlightOn,
         isActivelySprinting,
         isMoving
       );

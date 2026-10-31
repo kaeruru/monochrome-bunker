@@ -262,6 +262,7 @@ export class FirstPersonViewModel {
     this.camera.add(this.root);
 
     this.time = 0;
+    this.chapterId = 'chapter1';
     this.currentItemType = null;
     this.currentItemUpdater = null;
 
@@ -269,6 +270,9 @@ export class FirstPersonViewModel {
     this.equipProgress = 1.0;    // 0 -> 1 (아이템 들기 모션)
     this.actionTimer = 0;        // > 0 이면 앞으로 손을 뻗어 조작하는 모션
     this.flashlightClickTimer = 0;
+    this.sonarInspectRatio = 1.0; // 1.0 = 정지 시 화면을 들어 레이더 확인, 0.0 = 이동 시 상단 발광면을 전방으로 기울임
+    this.radarSweepAngle = 0;
+    this.radarRedrawAccum = 0;
 
     // 시선 회전 관성(Sway) 계산용 이전 카메라 각도
     this.lastYaw = 0;
@@ -355,17 +359,17 @@ export class FirstPersonViewModel {
     knuckleGuard.position.set(0.01, 0.03, -0.04);
     this.leftArmGroup.add(knuckleGuard);
 
-    // 4. 전술 손전등 본체
-    const torchGroup = new THREE.Group();
-    torchGroup.position.set(0.025, 0.022, -0.08);
-    this.leftArmGroup.add(torchGroup);
+    // 4. 전술 손전등 본체 (챕터 1 / 챕터 3 전용)
+    this.torchGroup = new THREE.Group();
+    this.torchGroup.position.set(0.025, 0.022, -0.08);
+    this.leftArmGroup.add(this.torchGroup);
 
     const torchBody = new THREE.Mesh(
       new THREE.CylinderGeometry(0.022, 0.02, 0.18, 12),
       this.armorPlateMat
     );
     torchBody.rotation.x = Math.PI / 2;
-    torchGroup.add(torchBody);
+    this.torchGroup.add(torchBody);
 
     const torchHead = new THREE.Mesh(
       new THREE.CylinderGeometry(0.032, 0.024, 0.055, 14),
@@ -373,7 +377,7 @@ export class FirstPersonViewModel {
     );
     torchHead.rotation.x = Math.PI / 2;
     torchHead.position.z = -0.1;
-    torchGroup.add(torchHead);
+    this.torchGroup.add(torchHead);
 
     this.torchLens = new THREE.Mesh(
       new THREE.CircleGeometry(0.028, 14),
@@ -381,7 +385,81 @@ export class FirstPersonViewModel {
     );
     this.torchLens.rotation.y = Math.PI;
     this.torchLens.position.z = -0.129;
-    torchGroup.add(this.torchLens);
+    this.torchGroup.add(this.torchLens);
+
+    // 5. 챕터 2 전용: 직육면체 수중 음파 레이더 감지기 + 상단 발광 작업등 (Cuboid Sonar Tracker & Top Worklight)
+    this.sonarDeviceGroup = new THREE.Group();
+    this.sonarDeviceGroup.position.set(0.032, 0.042, -0.075);
+    this.sonarDeviceGroup.visible = false;
+    this.leftArmGroup.add(this.sonarDeviceGroup);
+
+    // 직육면체 본체 하우징
+    const sonarBody = new THREE.Mesh(
+      new THREE.BoxGeometry(0.092, 0.142, 0.044),
+      this.armorPlateMat
+    );
+    this.sonarDeviceGroup.add(sonarBody);
+
+    // 상/하단 충격 흡수 고무 범퍼
+    for (const by of [-0.066, 0.066]) {
+      const bumper = new THREE.Mesh(
+        new THREE.BoxGeometry(0.098, 0.018, 0.048),
+        this.gloveMat
+      );
+      bumper.position.y = by;
+      this.sonarDeviceGroup.add(bumper);
+    }
+
+    // 기기 윗면(+Y) 발광 디퓨저 작업등 바 (이동 시 기기를 앞으로 기울여 약한 손전등 역할 수행)
+    const topHousing = new THREE.Mesh(
+      new THREE.BoxGeometry(0.084, 0.014, 0.038),
+      this.armorPlateMat
+    );
+    topHousing.position.set(0, 0.078, 0);
+    this.sonarDeviceGroup.add(topHousing);
+
+    this.sonarTopLightMat = new THREE.MeshBasicMaterial({ color: 0xffe4b0 });
+    const topDiffuserBar = new THREE.Mesh(
+      new THREE.BoxGeometry(0.076, 0.010, 0.030),
+      this.sonarTopLightMat
+    );
+    topDiffuserBar.position.set(0, 0.083, 0);
+    this.sonarDeviceGroup.add(topDiffuserBar);
+
+    // 우측 상단 음파 수신 안테나
+    const sonarAntenna = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.005, 0.007, 0.055, 8),
+      this.armorPlateMat
+    );
+    sonarAntenna.position.set(0.036, 0.095, -0.01);
+    this.sonarDeviceGroup.add(sonarAntenna);
+
+    // 전면(+Z, 정지 시 플레이어를 향하는 면) 실시간 음파 레이더 디스플레이 캔버스
+    this.radarCanvas = document.createElement('canvas');
+    this.radarCanvas.width = 128;
+    this.radarCanvas.height = 128;
+    this.radarCtx = this.radarCanvas.getContext('2d');
+    this.radarTex = new THREE.CanvasTexture(this.radarCanvas);
+    this.radarScreenMat = new THREE.MeshBasicMaterial({ map: this.radarTex });
+
+    const radarScreenMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(0.076, 0.086),
+      this.radarScreenMat
+    );
+    radarScreenMesh.position.set(0, 0.012, 0.0235);
+    this.sonarDeviceGroup.add(radarScreenMesh);
+
+    // 전면 하단 조작 버튼 3개
+    for (let bi = -1; bi <= 1; bi++) {
+      const btn = new THREE.Mesh(
+        new THREE.BoxGeometry(0.018, 0.012, 0.006),
+        bi === 0 ? this.pdaScreenMat : this.gloveMat
+      );
+      btn.position.set(bi * 0.024, -0.046, 0.023);
+      this.sonarDeviceGroup.add(btn);
+    }
+
+    this.updateSonarRadar(0.1, 99, 0, false);
   }
 
   buildRightArmItemHolder() {
@@ -470,6 +548,116 @@ export class FirstPersonViewModel {
   }
 
   /**
+   * 챕터별 좌측 손 장비 전환:
+   * - 챕터 2: 손전등 비활성화 -> 직육면체 음파 레이더 감지기 + 상단 발광 작업등 장착
+   * - 챕터 1 / 3: 기존 전술 손전등 장착
+   */
+  setChapterMode(chapterId) {
+    this.chapterId = chapterId || 'chapter1';
+    const isCh2 = this.chapterId === 'chapter2';
+    if (this.torchGroup) this.torchGroup.visible = !isCh2;
+    if (this.sonarDeviceGroup) this.sonarDeviceGroup.visible = isCh2;
+    this.sonarInspectRatio = 1.0;
+  }
+
+  /**
+   * 챕터 2 직육면체 감지기 전면 레이더 디스플레이 캔버스 갱신 (갤럭시 탭 S9 FE 최적화: 15FPS 스로틀링)
+   * @param {number} dt
+   * @param {number} distToMonster
+   * @param {number} relAngle 플레이어 시선 기준 괴물의 상대 방위각 (라디안, 0 = 정면)
+   * @param {boolean} monsterActive
+   */
+  updateSonarRadar(dt, distToMonster = 99, relAngle = 0, monsterActive = false) {
+    if (!this.radarCtx) return;
+    this.radarSweepAngle = (this.radarSweepAngle + dt * 3.8) % (Math.PI * 2);
+    this.radarRedrawAccum += dt;
+    if (this.radarRedrawAccum < 0.065) return;
+    this.radarRedrawAccum = 0;
+
+    const ctx = this.radarCtx;
+    const w = 128;
+    const h = 128;
+    const cx = 64;
+    const cy = 56;
+    const maxR = 46;
+
+    // 1. 어두운 앰버 CRT 배경
+    ctx.fillStyle = '#0c0703';
+    ctx.fillRect(0, 0, w, h);
+
+    // 2. 동심원 거리 링 (8m, 16m, 24m) & 십자선
+    ctx.strokeStyle = 'rgba(255, 148, 42, 0.36)';
+    ctx.lineWidth = 1.2;
+    for (const rFrac of [0.35, 0.68, 1.0]) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, maxR * rFrac, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = 'rgba(255, 148, 42, 0.22)';
+    ctx.beginPath();
+    ctx.moveTo(cx - maxR, cy);
+    ctx.lineTo(cx + maxR, cy);
+    ctx.moveTo(cx, cy - maxR);
+    ctx.lineTo(cx, cy + maxR);
+    ctx.stroke();
+
+    // 3. 회전하는 레이더 스윕 라인
+    const sx = cx + Math.sin(this.radarSweepAngle) * maxR;
+    const sy = cy - Math.cos(this.radarSweepAngle) * maxR;
+    ctx.strokeStyle = 'rgba(255, 182, 72, 0.78)';
+    ctx.lineWidth = 2.0;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(sx, sy);
+    ctx.stroke();
+
+    // 4. 플레이어 중심점 마커
+    ctx.fillStyle = '#ffd280';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 5. 크롤러 음파 타겟 블립 표시 (28m 이내 감지)
+    const isDanger = monsterActive && distToMonster < 28;
+    if (isDanger) {
+      const clampedR = Math.min(maxR - 3, (distToMonster / 26) * maxR);
+      const bx = cx + Math.sin(relAngle) * clampedR;
+      const by = cy - Math.cos(relAngle) * clampedR;
+
+      const pulse = 0.5 + 0.5 * Math.sin(this.time * (distToMonster < 10 ? 16 : 9));
+      ctx.fillStyle = distToMonster < 10 ? '#ff3b1f' : '#ff9a2e';
+      ctx.beginPath();
+      ctx.arc(bx, by, 3.8 + pulse * 2.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = distToMonster < 10 ? 'rgba(255, 68, 34, 0.85)' : 'rgba(255, 165, 55, 0.75)';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.arc(bx, by, 6.5 + pulse * 4.5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // 6. 하단 디지털 상태창 (거리 및 경고 표시)
+    ctx.fillStyle = '#1a0e06';
+    ctx.fillRect(6, 106, 116, 18);
+    ctx.strokeStyle = 'rgba(255, 148, 42, 0.48)';
+    ctx.strokeRect(6, 106, 116, 18);
+
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'center';
+    if (isDanger) {
+      ctx.fillStyle = distToMonster < 10 ? '#ff4422' : '#ffb84d';
+      ctx.fillText(`DIST: ${distToMonster.toFixed(1)}m`, 64, 119);
+    } else {
+      ctx.fillStyle = '#c88232';
+      ctx.fillText('SONAR: CLEAR', 64, 119);
+    }
+
+    this.radarTex.needsUpdate = true;
+  }
+
+  /**
    * 우측 손에 들고 있을 아이템을 교체하고 장착 애니메이션을 재생합니다.
    * - 이미 사전 생성된 메쉬의 visible만 토글하므로 런타임 멈춤이 전혀 발생하지 않습니다.
    * @param {string|null} itemType
@@ -539,23 +727,46 @@ export class FirstPersonViewModel {
       }
     }
 
-    // 3. 왼손(손전등 + PDA) 위치/각도 애니메이션
+    // 3. 왼손(손전등 or 챕터 2 직육면체 감지기) 위치/각도 애니메이션
     let torchClickOffset = 0;
     if (this.flashlightClickTimer > 0) {
       this.flashlightClickTimer = Math.max(0, this.flashlightClickTimer - dt);
       torchClickOffset = Math.sin((this.flashlightClickTimer / 0.22) * Math.PI) * 0.028;
     }
 
+    const isCh2 = this.chapterId === 'chapter2';
+    // 챕터 2: 멈추면(isMoving=false) 기기를 세워 들어(sonarInspectRatio -> 1) 레이더 화면을 보여주고,
+    // 움직이면(isMoving=true) 기기를 앞으로 눕혀(sonarInspectRatio -> 0) 기기 윗면 발광부가 전방을 비추게 함!
+    const targetInspect = (isCh2 && !isMoving) ? 1.0 : 0.0;
+    this.sonarInspectRatio = THREE.MathUtils.lerp(
+      this.sonarInspectRatio,
+      targetInspect,
+      Math.min(1, dt * 7.5)
+    );
+
+    const inspectRaiseX = isCh2 ? this.sonarInspectRatio * 0.095 : 0;
+    const inspectRaiseY = isCh2 ? this.sonarInspectRatio * 0.078 : 0;
+    const inspectPullZ = isCh2 ? this.sonarInspectRatio * 0.055 : 0;
+
     this.leftArmGroup.position.set(
-      -0.26 + breathX + bobX * 0.9 + this.swayX,
-      -0.23 + sprintDropY + breathY - bobY * 1.1 + this.swayY - torchClickOffset * 0.5,
-      -0.42 + torchClickOffset + sprintArmPump
+      -0.26 + inspectRaiseX + breathX + bobX * 0.9 + this.swayX,
+      -0.23 + inspectRaiseY + sprintDropY + breathY - bobY * 1.1 + this.swayY - torchClickOffset * 0.5,
+      -0.42 + inspectPullZ + torchClickOffset + sprintArmPump
     );
     this.leftArmGroup.rotation.set(
       -sprintTilt * 0.6 + this.swayY * 1.4,
       this.swayX * 1.5,
       bobX * 1.5 - (isSprinting ? 0.12 : 0)
     );
+
+    if (isCh2 && this.sonarDeviceGroup) {
+      // 이동 시(ratio=0): 상단 LED 작업등(+Y)이 전방(-Z)을 향하도록 -1.18 rad 기울임
+      // 정지 시(ratio=1): 전면 레이더 스크린(+Z)이 플레이어 시선을 정면으로 향하도록 -0.12 rad 세움
+      const devicePitch = THREE.MathUtils.lerp(-1.18, -0.12, this.sonarInspectRatio);
+      const deviceYaw = THREE.MathUtils.lerp(0.08, 0.26, this.sonarInspectRatio);
+      const deviceRoll = THREE.MathUtils.lerp(0.0, -0.08, this.sonarInspectRatio);
+      this.sonarDeviceGroup.rotation.set(devicePitch, deviceYaw, deviceRoll);
+    }
 
     // 4. 오른손(아이템 파지 손) 장착 & 액션 & 아이들 모션
     if (this.equipProgress < 1.0) {
