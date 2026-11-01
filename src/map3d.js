@@ -642,19 +642,8 @@ export class Map3D {
   }
 
   spawnEntities() {
-    // 벙커 내부 동료 대원 (플레이어 스폰 좌측에서 주변 경계 - 협동 생존 컨셉)
-    const cx = this.spawnPos.x - 2.3;
-    const cz = this.spawnPos.z - 1.2;
-    const cy = this.getFloorHeightAt(cx, cz);
-    this.companion = new PlayerCharacterEntity('동료 대원 #02', true);
-    this.companion.root.position.set(cx, cy, cz);
-    this.companion.root.rotation.y = 0.45;
-    this.mapGroup.add(this.companion.root);
-    this.propColliders.push({
-      x: this.companion.root.position.x,
-      z: this.companion.root.position.z,
-      r: 0.48
-    });
+    // 더미 동료 대원 생성 제거 (실제 멀티플레이 플레이어만 스폰)
+    this.companion = null;
   }
 
   /**

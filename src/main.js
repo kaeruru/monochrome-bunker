@@ -1611,22 +1611,93 @@ class MonochromeBunker3D {
   }
 
   deployMission() {
-    this.isDeployed = true;
-    const targetChapter = this.selectedChapterId || 'chapter2';
-    this.loadChapter(targetChapter);
-    this.showGameplayUI();
-    this.missionStartTime = performance.now();
-    this.callsign = (this.callsignInput?.value || 'OPERATIVE-01').trim();
-    if (this.monsterAI) {
-      this.monsterAI.setDifficulty(this.difficulty);
-    }
+    if (this.isDeploying) return;
+    this.isDeploying = true;
+
     if (this.gameSetupModalEl) {
       this.gameSetupModalEl.classList.add('hidden');
     }
-    this.controls.setDisabled(false);
-    this.controls.requestPointerLock();
-    sound.playDoorSound(true);
-    this.showGameToast(`[DEPLOYED] 대원 [${this.callsign}] 작전 투입 완료.`, 'success');
+
+    const targetChapter = this.selectedChapterId || 'chapter2';
+    this.callsign = (this.callsignInput?.value || 'OPERATIVE-01').trim();
+
+    // 전술 로딩 스크린 생성 및 깔끔한 진입 애니메이션
+    let loadingEl = document.getElementById('tactical-loading-screen');
+    if (!loadingEl) {
+      loadingEl = document.createElement('div');
+      loadingEl.id = 'tactical-loading-screen';
+      loadingEl.style.cssText = `
+        position: fixed; inset: 0; z-index: 99999;
+        background: radial-gradient(circle at center, #0a0f14 0%, #030507 100%);
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        color: #d8e4ec; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        transition: opacity 0.45s ease-out;
+      `;
+      loadingEl.innerHTML = `
+        <div style="width: 400px; max-width: 90vw; text-align: center; border: 1px solid rgba(88,140,180,0.35); background: rgba(8,14,20,0.92); padding: 26px 22px; border-radius: 4px; box-shadow: 0 0 35px rgba(0,0,0,0.9);">
+          <div style="font-size: 11px; letter-spacing: 3px; color: #64b5f6; font-weight: bold; margin-bottom: 8px;">[ CBRN TACTICAL INFILTRATION ]</div>
+          <div id="loading-stage-title" style="font-size: 15px; font-weight: 600; color: #ffffff; margin-bottom: 16px;">작전 구역 환경 데이터 동기화 중...</div>
+          <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; margin-bottom: 12px; border: 1px solid rgba(88,140,180,0.25);">
+            <div id="loading-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #1976d2, #64b5f6); transition: width 0.12s ease-out;"></div>
+          </div>
+          <div id="loading-log-text" style="font-size: 11px; color: #8899a6; font-family: monospace; text-align: left; height: 18px; overflow: hidden;">> INITIALIZING SECTOR MAP GEOMETRY...</div>
+        </div>
+      `;
+      document.body.appendChild(loadingEl);
+    } else {
+      loadingEl.style.display = 'flex';
+      loadingEl.style.opacity = '1';
+    }
+
+    const progressBar = loadingEl.querySelector('#loading-progress-bar');
+    const stageTitle = loadingEl.querySelector('#loading-stage-title');
+    const logText = loadingEl.querySelector('#loading-log-text');
+
+    let progress = 0;
+    const interval = setInterval(() => {
+      progress += Math.floor(Math.random() * 14) + 12;
+      if (progress > 100) progress = 100;
+
+      if (progressBar) progressBar.style.width = `${progress}%`;
+
+      if (progress < 35) {
+        if (stageTitle) stageTitle.textContent = '시설 3D 지형 및 수로 격자 로딩...';
+        if (logText) logText.textContent = '> LOADING SECTOR GEOMETRY & ACOUSTIC NODES...';
+      } else if (progress < 75) {
+        if (stageTitle) stageTitle.textContent = '원격 감시 센서 및 생체 신호 연결...';
+        if (logText) logText.textContent = '> SYNCHRONIZING CCTV GRID & LIFE-SIGN RADAR...';
+      } else if (progress < 100) {
+        if (stageTitle) stageTitle.textContent = '대원 전술 슈트 신경망 동기화...';
+        if (logText) logText.textContent = '> SECURING BIO-CONTAINMENT PERIMETER...';
+      } else {
+        if (stageTitle) stageTitle.textContent = '투입 준비 완료. 전술 침투 개시.';
+        if (logText) logText.textContent = '[CONFIRMED] ALL SYSTEMS ARMED & READY.';
+      }
+
+      if (progress >= 100) {
+        clearInterval(interval);
+        setTimeout(() => {
+          this.isDeployed = true;
+          this.isDeploying = false;
+          this.loadChapter(targetChapter);
+          this.showGameplayUI();
+          this.missionStartTime = performance.now();
+          if (this.monsterAI) {
+            this.monsterAI.setDifficulty(this.difficulty);
+          }
+          this.controls.setDisabled(false);
+          this.controls.requestPointerLock();
+          sound.playDoorSound(true);
+          this.showGameToast(`[DEPLOYED] 대원 [${this.callsign}] 작전 투입 완료.`, 'success');
+
+          // 부드럽게 페이드 아웃
+          loadingEl.style.opacity = '0';
+          setTimeout(() => {
+            loadingEl.style.display = 'none';
+          }, 450);
+        }, 220);
+      }
+    }, 120);
   }
 
   /**
@@ -1739,11 +1810,37 @@ class MonochromeBunker3D {
     if (this.map) {
       this.map.rebuildMap(cfg.data, cfg.id);
       if (this.map.spawnPos) {
-        this.playerFootY = this.map.getFloorHeightAt(this.map.spawnPos.x, this.map.spawnPos.z);
+        let spawnX = this.map.spawnPos.x;
+        let spawnZ = this.map.spawnPos.z;
+
+        // 멀티플레이 분산 스폰: 대원들이 같은 위치에 겹쳐서 끼이지 않도록 방 인덱스별로 2m 이상 분산 스폰
+        if (this.currentRoomPlayers && this.currentRoomPlayers.length > 1 && this.networkManager && this.networkManager.playerId) {
+          const myIdx = this.currentRoomPlayers.findIndex(p => p.id === this.networkManager.playerId);
+          if (myIdx > 0) {
+            const offsets = [
+              { x: 0, z: 0 },
+              { x: 2.2, z: 0.8 },
+              { x: -2.2, z: 0.8 },
+              { x: 0.8, z: 2.2 },
+              { x: -0.8, z: 2.2 },
+              { x: 2.4, z: -1.6 },
+              { x: -2.4, z: -1.6 }
+            ];
+            const off = offsets[myIdx % offsets.length];
+            const testX = spawnX + off.x;
+            const testZ = spawnZ + off.z;
+            if (!this.map.checkCollision(testX, testZ, this.playerRadius)) {
+              spawnX = testX;
+              spawnZ = testZ;
+            }
+          }
+        }
+
+        this.playerFootY = this.map.getFloorHeightAt(spawnX, spawnZ);
         this.playerPos.set(
-          this.map.spawnPos.x,
+          spawnX,
           this.playerFootY + this.playerEyeHeight,
-          this.map.spawnPos.z
+          spawnZ
         );
         this.playerCamera.position.copy(this.playerPos);
       }
