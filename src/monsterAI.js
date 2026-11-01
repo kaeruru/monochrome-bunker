@@ -1230,13 +1230,18 @@ export class MonsterAI {
       const progress = 1.0 - Math.max(0, this.killTimer / 1.75);
 
       if (this.killerType === 'lurker') {
-        // 매복자 악어의 솟구치는 곰덫 턱을 카메라가 정면 응시
-        this.lurkerEntity.root.getWorldPosition(this._tmpHeadWorld);
-        this._tmpHeadWorld.y += 0.48;
+        // 매복자 악어의 솟구치는 곰덫 안면과 강철 이빨을 카메라가 정면 응시
+        if (this.lurkerEntity.upperTrapJaw) {
+          this.lurkerEntity.upperTrapJaw.getWorldPosition(this._tmpHeadWorld);
+          this._tmpHeadWorld.y -= 0.08; // 쩍 벌어진 위턱과 아래턱 사이 입안 정중앙을 정확히 직시
+        } else {
+          this.lurkerEntity.root.getWorldPosition(this._tmpHeadWorld);
+          this._tmpHeadWorld.y += 0.82;
+        }
 
         const jitter = (1.0 - progress * 0.35) * 0.035;
         playerCamera.position.x = playerPos.x + (Math.random() - 0.5) * jitter;
-        playerCamera.position.y = (this.lurkerPos.y + 0.95) + (Math.random() - 0.5) * jitter;
+        playerCamera.position.y = (this.lurkerPos.y + 1.42) + (Math.random() - 0.5) * jitter; // 눈높이를 1.42m로 상향하여 배가 아닌 안면/아가리가 화면에 선명하게 프레이밍
         playerCamera.position.z = playerPos.z + (Math.random() - 0.5) * jitter;
         playerCamera.lookAt(this._tmpHeadWorld);
 
@@ -2085,11 +2090,12 @@ export class MonsterAI {
     if (this._tmpFwd.lengthSq() > 0.001) this._tmpFwd.normalize();
 
     if (killerType === 'lurker' && this.lurkerEntity) {
-      // #2 매복자 악어 점프스케어: 플레이어 바로 정면 1.18m 위치로 수면을 뚫고 솟구쳐 곰덫 아가리로 안면 가격
-      const offsetDist = 1.18;
+      // #2 매복자 악어 점프스케어: 플레이어 바로 정면 1.12m 위치로 수면을 뚫고 솟구쳐 곰덫 아가리로 안면 가격
+      const offsetDist = 1.12;
+      const floorY = (this.map && this.map.getFloorHeightAt) ? this.map.getFloorHeightAt(playerPos.x, playerPos.z) : 0.0;
       this.lurkerPos.x = playerPos.x + this._tmpFwd.x * offsetDist;
       this.lurkerPos.z = playerPos.z + this._tmpFwd.z * offsetDist;
-      this.lurkerPos.y = 0.0;
+      this.lurkerPos.y = floorY;
       this.lurkerYaw = Math.atan2(-this._tmpFwd.x, -this._tmpFwd.z);
 
       this.lurkerEntity.root.position.copy(this.lurkerPos);

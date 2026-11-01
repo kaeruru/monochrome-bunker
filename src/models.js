@@ -2345,12 +2345,12 @@ export class LurkerCrocodileEntity {
     const isErupting = mode === 'chase' || mode === 'attack' || mode === 'jumpscare';
 
     if (mode === 'jumpscare') {
-      // 점프스케어 시: 수면을 가르며 카메라 정면으로 몸통 전체가 솟구치며 곰덫 아가리가 쩍 갈라짐!
+      // 점프스케어 시: 수면을 가르며 카메라 정면으로 몸통 전체가 솟구치며 곰덫 아가리가 정면에서 쩍 갈라짐!
       const snapWave = Math.abs(Math.sin(t * 12.0));
-      this.bodyGroup.position.y = THREE.MathUtils.lerp(this.bodyGroup.position.y, 0.95 + snapWave * 0.22, dt * 14);
-      this.bodyGroup.rotation.x = -0.38 + Math.sin(t * 12.0) * 0.15;
-      this.upperTrapJaw.rotation.x = -1.05 - snapWave * 0.25;
-      this.lowerTrapJaw.rotation.x = 0.95 + snapWave * 0.25;
+      this.bodyGroup.position.y = THREE.MathUtils.lerp(this.bodyGroup.position.y, 0.82 + snapWave * 0.16, dt * 14);
+      this.bodyGroup.rotation.x = -0.06 + Math.sin(t * 12.0) * 0.08; // 배가 위로 까지지 않고 머리와 아가리가 카메라 정면을 정확히 돌진
+      this.upperTrapJaw.rotation.x = -1.05 - snapWave * 0.22;
+      this.lowerTrapJaw.rotation.x = 0.95 + snapWave * 0.22;
     } else if (isErupting) {
       // 기습 시: 수면 위로 몸통 전체가 솟구쳐 오르며 곰덫 아가리를 쩍 벌리고 물어뜯음!
       const snapWave = Math.abs(Math.sin(t * 7.5));
