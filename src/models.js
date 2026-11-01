@@ -1391,6 +1391,376 @@ export class MonsterEntity {
 }
 
 // ============================================================================
+// 1-A-2. 제1장(벙커) 대체 추격자: [SCP-096 샤이 가이 (Scp096Entity)]
+// - 저용량 단일 SkinnedMesh GLB 에셋 (public/models/scp-096.glb - 약 890KB)
+// - 21개 전신 골격 노드를 실시간 역운동학/순운동학(FK) 절차적 애니메이션으로 제어
+// - [대기 (신음/전율/호흡)], [순찰 (구부정한 활보)], [추격 (4배 수직 탈골 턱 개방 및 폭주 질주)],
+//   [점프스케어 (안면 급돌진 및 카메라 포획)] 완벽 구현
+// ============================================================================
+
+let scp096GltfPromise = null;
+export function preloadScp096Model() {
+  if (!scp096GltfPromise) {
+    const loader = new GLTFLoader();
+    scp096GltfPromise = new Promise((resolve) => {
+      loader.load(
+        '/models/scp-096.glb',
+        (gltf) => resolve(gltf),
+        undefined,
+        (err) => {
+          console.warn('[Model] Primary SCP-096 load failed, trying relative path:', err);
+          loader.load(
+            'models/scp-096.glb',
+            (gltf) => resolve(gltf),
+            undefined,
+            (err2) => {
+              console.error('[Model] Failed to load SCP-096 GLB model:', err2);
+              resolve(null);
+            }
+          );
+        }
+      );
+    });
+  }
+  return scp096GltfPromise;
+}
+
+if (typeof window !== 'undefined') {
+  preloadScp096Model();
+}
+
+export class Scp096Entity {
+  constructor() {
+    this.mats = getMaterials();
+    this.root = new THREE.Group();
+    this.time = Math.random() * 10;
+    this.animMode = 'idle';
+    this.lastMode = 'idle';
+
+    this.enableSound = false;
+    this.soundVolume = 0.25;
+    this.walkCyclePhase = 0;
+    this.walkTimer = 0;
+    this.growlTimer = 2.5 + Math.random() * 3.5;
+    this.jumpscareProgress = 0;
+
+    // 헤드 앵커 (킬캠 및 플레이어 시선 추적용)
+    this.headGroup = new THREE.Group();
+    this.headGroup.position.set(0, 2.15, 0.45);
+    this.root.add(this.headGroup);
+
+    // 안광 / 안면 포인트 라이트
+    this.faceLight = new THREE.PointLight(0xff2211, 2.4, 7.5);
+    this.faceLight.position.set(0, 0.1, 0.35);
+    this.headGroup.add(this.faceLight);
+
+    // 흉곽 심장 라이트
+    this.heartLight = new THREE.PointLight(0xff1808, 1.8, 5.5);
+    this.heartLight.position.set(0, 1.45, 0.2);
+    this.root.add(this.heartLight);
+
+    this.model = null;
+    this.bones = {};
+    this.isLoaded = false;
+
+    this.loadModel();
+  }
+
+  async loadModel() {
+    const gltf = await preloadScp096Model();
+    if (!gltf) return;
+
+    this.model = SkeletonUtils.clone(gltf.scene);
+
+    // Scale 0.138: 신장 약 2.45m급의 비정상적으로 거대한 창백한 인간형 크리처
+    this.model.scale.set(0.138, 0.138, 0.138);
+    // 발바닥을 바닥(Y=0.0m)에 밀착
+    this.model.position.set(0, 1.47, 0);
+
+    let headBone = null;
+    let spineBone = null;
+
+    this.model.traverse((child) => {
+      if (child.isBone) {
+        this.bones[child.name] = child;
+        child.userData.bindQuat = child.quaternion.clone();
+        child.userData.bindPos = child.position.clone();
+        if (child.name === 'Head_19') headBone = child;
+        if (child.name === 'Spine2_36') spineBone = child;
+      }
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+        if (child.material) {
+          child.material.roughness = 0.72;
+          child.material.metalness = 0.08;
+        }
+      }
+    });
+
+    if (headBone) {
+      headBone.add(this.headGroup);
+      this.headGroup.position.set(0, 0.1, 0.35);
+    }
+    if (spineBone) {
+      spineBone.add(this.heartLight);
+      this.heartLight.position.set(0, 0.15, 0.15);
+    }
+
+    this.root.add(this.model);
+    this.isLoaded = true;
+  }
+
+  resetBones() {
+    for (const name in this.bones) {
+      const b = this.bones[name];
+      if (b.userData.bindQuat) b.quaternion.copy(b.userData.bindQuat);
+      if (b.userData.bindPos) b.position.copy(b.userData.bindPos);
+    }
+  }
+
+  update(dt, mode = this.animMode, moveDist = null) {
+    if (mode !== this.lastMode) {
+      if (this.enableSound && (mode === 'chase' || mode === 'attack')) {
+        sound.playMonsterScreech(this.soundVolume * 1.15);
+      } else if (this.enableSound && mode === 'jumpscare') {
+        sound.playMonsterJumpscare();
+      }
+
+      if (mode === 'jumpscare') {
+        this.jumpscareProgress = 0;
+      } else if (this.lastMode === 'jumpscare' && this.model) {
+        this.model.position.set(0, 1.47, 0);
+      }
+      this.lastMode = mode;
+    }
+    this.animMode = mode;
+    this.time += dt;
+
+    if (!this.isLoaded) return;
+
+    this.resetBones();
+
+    const t = this.time;
+    const isChase = mode === 'chase';
+    const isStalk = mode === 'stalk';
+    const isAttack = mode === 'attack';
+    const isJumpscare = mode === 'jumpscare';
+
+    let isMoving = false;
+    const stepInterval = isChase ? 0.24 : 0.48;
+    if (typeof moveDist === 'number') {
+      if (moveDist > 0.0003) {
+        isMoving = true;
+        this.walkCyclePhase += (moveDist / (isChase ? 1.4 : 0.95)) * Math.PI;
+      }
+    } else if (isChase || isStalk) {
+      isMoving = true;
+      const speed = isChase ? 8.5 : 3.6;
+      this.walkCyclePhase += (dt * speed / (isChase ? 1.4 : 0.95)) * Math.PI;
+    }
+
+    if (isMoving) {
+      this.walkTimer = (this.walkTimer || 0) + dt;
+      if (this.walkTimer >= stepInterval) {
+        this.walkTimer -= stepInterval;
+        if (this.enableSound) {
+          sound.playMonsterFootstep(this.soundVolume, isChase);
+        }
+      }
+    } else {
+      this.walkTimer = 0;
+      this.growlTimer -= dt;
+      if (this.growlTimer <= 0) {
+        this.growlTimer = 3.5 + Math.random() * 4.5;
+        if (this.enableSound && (mode === 'idle' || isStalk)) {
+          sound.playMonsterGrowl(this.soundVolume * 0.7);
+        }
+      }
+    }
+
+    const phase = this.walkCyclePhase || 0;
+    const b = this.bones;
+
+    if (this.faceLight) {
+      if (isJumpscare) {
+        this.faceLight.intensity = 15.0;
+      } else {
+        const p = Math.sin(t * (isChase ? 8.0 : 2.5)) * 0.7;
+        this.faceLight.intensity = (isChase ? 4.5 : 2.2) + p;
+      }
+    }
+
+    if (isJumpscare) {
+      this.jumpscareProgress += dt;
+      const jp = this.jumpscareProgress;
+      const lunge = THREE.MathUtils.clamp((jp - 0.04) / 0.22, 0, 1);
+      const surge = 1 - Math.pow(1 - lunge, 3);
+
+      if (this.model) {
+        this.model.position.set(
+          (Math.random() - 0.5) * 0.03,
+          1.47 + surge * 0.22,
+          surge * 0.92
+        );
+      }
+
+      if (b['Spine1_37']) b['Spine1_37'].rotateX(0.15);
+      if (b['Spine2_36']) b['Spine2_36'].rotateX(0.12);
+
+      if (b['Head_19']) {
+        b['Head_19'].rotateX(-0.15 + (Math.random() - 0.5) * 0.16);
+        b['Head_19'].rotateY((Math.random() - 0.5) * 0.18);
+        b['Head_19'].rotateZ((Math.random() - 0.5) * 0.14);
+      }
+
+      if (b['Jaw_16']) b['Jaw_16'].rotateX(1.15 + Math.sin(jp * 32.0) * 0.08);
+
+      if (b['Arm1.L_14']) {
+        b['Arm1.L_14'].rotateZ(-0.55);
+        b['Arm1.L_14'].rotateX(1.15 + (Math.random() - 0.5) * 0.08);
+      }
+      if (b['Arm1.R_33']) {
+        b['Arm1.R_33'].rotateZ(0.55);
+        b['Arm1.R_33'].rotateX(1.15 + (Math.random() - 0.5) * 0.08);
+      }
+      return;
+    }
+
+    if (isChase) {
+      const bob = Math.abs(Math.sin(phase)) * 0.14;
+      if (b['Hip_44']) {
+        b['Hip_44'].position.y = b['Hip_44'].userData.bindPos.y - bob;
+        b['Hip_44'].rotateZ(Math.sin(phase) * 0.08);
+      }
+
+      if (b['Spine1_37']) {
+        b['Spine1_37'].rotateX(0.62);
+        b['Spine1_37'].rotateZ(Math.sin(phase) * 0.12);
+      }
+      if (b['Spine2_36']) b['Spine2_36'].rotateX(0.32);
+      if (b['Spine3_35']) b['Spine3_35'].rotateX(0.18);
+
+      if (b['Neck_20']) b['Neck_20'].rotateX(-0.15);
+      if (b['Head_19']) {
+        b['Head_19'].rotateX(-0.45 + (Math.random() - 0.5) * 0.08);
+        b['Head_19'].rotateY((Math.random() - 0.5) * 0.10);
+      }
+
+      if (b['Jaw_16']) b['Jaw_16'].rotateX(0.88 + Math.sin(t * 18.0) * 0.16);
+
+      const armSwing = Math.sin(phase) * 0.88;
+      if (b['Arm1.L_14']) {
+        b['Arm1.L_14'].rotateZ(-1.05);
+        b['Arm1.L_14'].rotateX(0.45 + armSwing);
+      }
+      if (b['Arm2.L_13']) b['Arm2.L_13'].rotateZ(-0.35 + Math.max(0, -armSwing) * 0.45);
+
+      if (b['Arm1.R_33']) {
+        b['Arm1.R_33'].rotateZ(1.05);
+        b['Arm1.R_33'].rotateX(0.45 - armSwing);
+      }
+      if (b['Arm2.R_32']) b['Arm2.R_32'].rotateZ(0.35 + Math.max(0, armSwing) * 0.45);
+
+      const legStride = 0.85;
+      const legSwing = Math.sin(phase);
+      const legLift = Math.max(0, -Math.cos(phase));
+      const otherSwing = Math.sin(phase + Math.PI);
+      const otherLift = Math.max(0, -Math.cos(phase + Math.PI));
+
+      if (b['Leg1.L_40']) b['Leg1.L_40'].rotateZ(legSwing * legStride);
+      if (b['Leg2.L_39']) b['Leg2.L_39'].rotateZ(legLift * (legStride * 1.3));
+      if (b['Foot.L_38']) b['Foot.L_38'].rotateZ(-legSwing * (legStride * 0.5));
+
+      if (b['Leg1.R_43']) b['Leg1.R_43'].rotateZ(-otherSwing * legStride);
+      if (b['Leg2.R_42']) b['Leg2.R_42'].rotateZ(-otherLift * (legStride * 1.3));
+      if (b['Foot.R_41']) b['Foot.R_41'].rotateZ(otherSwing * (legStride * 0.5));
+
+    } else if (isMoving || isStalk) {
+      const bob = Math.abs(Math.sin(phase)) * 0.08;
+      if (b['Hip_44']) {
+        b['Hip_44'].position.y = b['Hip_44'].userData.bindPos.y - bob;
+      }
+
+      if (b['Spine1_37']) {
+        b['Spine1_37'].rotateX(0.42);
+        b['Spine1_37'].rotateY(Math.sin(phase) * 0.06);
+      }
+      if (b['Spine2_36']) b['Spine2_36'].rotateX(0.24);
+
+      if (b['Head_19']) {
+        b['Head_19'].rotateX(-0.18 + Math.sin(t * 1.6) * 0.06);
+        b['Head_19'].rotateY(Math.sin(t * 1.2) * 0.12);
+      }
+      if (b['Jaw_16']) b['Jaw_16'].rotateX(0.22 + Math.sin(t * 2.8) * 0.05);
+
+      const armSwing = Math.sin(phase) * 0.38;
+      if (b['Arm1.L_14']) {
+        b['Arm1.L_14'].rotateZ(-1.28);
+        b['Arm1.L_14'].rotateX(armSwing);
+      }
+      if (b['Arm1.R_33']) {
+        b['Arm1.R_33'].rotateZ(1.28);
+        b['Arm1.R_33'].rotateX(-armSwing);
+      }
+
+      const legStride = 0.52;
+      const legSwing = Math.sin(phase);
+      const legLift = Math.max(0, -Math.cos(phase));
+      const otherSwing = Math.sin(phase + Math.PI);
+      const otherLift = Math.max(0, -Math.cos(phase + Math.PI));
+
+      if (b['Leg1.L_40']) b['Leg1.L_40'].rotateZ(legSwing * legStride);
+      if (b['Leg2.L_39']) b['Leg2.L_39'].rotateZ(legLift * (legStride * 1.15));
+      if (b['Leg1.R_43']) b['Leg1.R_43'].rotateZ(-otherSwing * legStride);
+      if (b['Leg2.R_42']) b['Leg2.R_42'].rotateZ(-otherLift * (legStride * 1.15));
+
+    } else if (isAttack) {
+      const snap = Math.sin(t * 9.0);
+      if (b['Spine1_37']) b['Spine1_37'].rotateX(0.35 + snap * 0.25);
+      if (b['Jaw_16']) b['Jaw_16'].rotateX(0.72 + Math.max(0, snap) * 0.35);
+
+      if (b['Arm1.L_14']) {
+        b['Arm1.L_14'].rotateZ(-0.95);
+        b['Arm1.L_14'].rotateX(0.85 + snap * 0.55);
+      }
+      if (b['Arm1.R_33']) {
+        b['Arm1.R_33'].rotateZ(0.95);
+        b['Arm1.R_33'].rotateX(0.85 - snap * 0.55);
+      }
+
+    } else {
+      const breathe = Math.sin(t * 2.2);
+      const shiver = Math.sin(t * 22.0) * 0.025;
+
+      if (b['Spine1_37']) b['Spine1_37'].rotateX(0.28 + breathe * 0.03);
+      if (b['Spine2_36']) b['Spine2_36'].rotateX(0.22 + breathe * 0.02);
+
+      if (b['Head_19']) {
+        b['Head_19'].rotateX(0.18 + shiver);
+        b['Head_19'].rotateZ(Math.cos(t * 16.0) * 0.02);
+      }
+      if (b['Jaw_16']) b['Jaw_16'].rotateX(0.12 + Math.abs(shiver) * 2.0);
+
+      if (b['Arm1.L_14']) {
+        b['Arm1.L_14'].rotateZ(-1.26 + breathe * 0.02);
+        b['Arm1.L_14'].rotateX(0.24 + shiver * 0.8);
+      }
+      if (b['Arm2.L_13']) b['Arm2.L_13'].rotateZ(-0.35);
+
+      if (b['Arm1.R_33']) {
+        b['Arm1.R_33'].rotateZ(1.26 - breathe * 0.02);
+        b['Arm1.R_33'].rotateX(0.24 + shiver * 0.8);
+      }
+      if (b['Arm2.R_32']) b['Arm2.R_32'].rotateZ(0.35);
+
+      if (b['Leg1.L_40']) b['Leg1.L_40'].rotateZ(shiver * 0.5);
+      if (b['Leg1.R_43']) b['Leg1.R_43'].rotateZ(-shiver * 0.5);
+    }
+  }
+}
+
+// ============================================================================
 // 1-B. 제2장(침수 수로) 주력 추격자: [SCP-682 불사의 악어 파충류 괴물 (CrawlerCrocodileEntity)]
 // - 저용량 고퀄리티 단일 SkinnedMesh GLB 에셋 (public/models/scp-682_low-poly_style.glb)
 // - 내장 뼈대 리깅 및 3개 애니메이션('idle', 'walk', 'attack') 완전 연동

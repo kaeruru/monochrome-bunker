@@ -3,7 +3,8 @@ import {
   MonsterEntity,
   CrawlerCrocodileEntity,
   LurkerCrocodileEntity,
-  SnareMangleEntity
+  SnareMangleEntity,
+  Scp096Entity
 } from './models.js';
 import {
   TILE_MAP,
@@ -68,6 +69,12 @@ export class MonsterAI {
     this.stalkerEntity.soundVolume = 0.0;
     this.rootGroup.add(this.stalkerEntity.root);
 
+    this.scp096Entity = new Scp096Entity();
+    this.scp096Entity.enableSound = false;
+    this.scp096Entity.soundVolume = 0.0;
+    this.scp096Entity.root.visible = false;
+    this.rootGroup.add(this.scp096Entity.root);
+
     this.crawlerEntity = new CrawlerCrocodileEntity();
     this.crawlerEntity.enableSound = false;
     this.crawlerEntity.soundVolume = 0.0;
@@ -84,7 +91,16 @@ export class MonsterAI {
     this.snareEntity.root.visible = false;
     this.rootGroup.add(this.snareEntity.root);
 
-    this.monster = this.stalkerEntity;
+    const savedCh1Skin = (typeof localStorage !== 'undefined' && localStorage.getItem('mb_ch1_monster')) || 'original';
+    if (savedCh1Skin === 'scp096') {
+      this.monster = this.scp096Entity;
+      this.stalkerEntity.root.visible = false;
+      this.scp096Entity.root.visible = true;
+    } else {
+      this.monster = this.stalkerEntity;
+      this.stalkerEntity.root.visible = true;
+      this.scp096Entity.root.visible = false;
+    }
 
     // 제2장 삼두 괴수(#2 매복자, #3 맹글) 전용 상태 및 순찰 경로 변수
     this.lurkerNodes = [];
@@ -299,16 +315,25 @@ export class MonsterAI {
       this.activeVentNodes = [...chapterConfig.ventNodes];
     }
 
-    // 챕터별 전용 괴물 모델 전환 (챕터 1: 스토커, 챕터 2: 수로 삼두 괴수)
+    // 챕터별 전용 괴물 모델 전환 (챕터 1: 스토커/SCP-096, 챕터 2: 수로 삼두 괴수)
+    const ch1Skin = (typeof localStorage !== 'undefined' && localStorage.getItem('mb_ch1_monster')) || 'original';
     if (this.chapterId === 'chapter2') {
       this.monster = this.crawlerEntity;
       this.stalkerEntity.root.visible = false;
+      this.scp096Entity.root.visible = false;
       this.crawlerEntity.root.visible = true;
       this.lurkerEntity.root.visible = true;
       this.snareEntity.root.visible = true;
     } else {
-      this.monster = this.stalkerEntity;
-      this.stalkerEntity.root.visible = true;
+      if (ch1Skin === 'scp096') {
+        this.monster = this.scp096Entity;
+        this.stalkerEntity.root.visible = false;
+        this.scp096Entity.root.visible = true;
+      } else {
+        this.monster = this.stalkerEntity;
+        this.stalkerEntity.root.visible = true;
+        this.scp096Entity.root.visible = false;
+      }
       this.crawlerEntity.root.visible = false;
       this.lurkerEntity.root.visible = false;
       this.snareEntity.root.visible = false;
@@ -317,6 +342,20 @@ export class MonsterAI {
 
     this.rebuildVentNetworkMeshes();
     this.resetForNewMatch();
+  }
+
+  setChapter1Skin(skin = 'original') {
+    if (this.chapterId !== 'chapter2') {
+      if (skin === 'scp096') {
+        this.monster = this.scp096Entity;
+        this.stalkerEntity.root.visible = false;
+        this.scp096Entity.root.visible = true;
+      } else {
+        this.monster = this.stalkerEntity;
+        this.stalkerEntity.root.visible = true;
+        this.scp096Entity.root.visible = false;
+      }
+    }
   }
 
   /**

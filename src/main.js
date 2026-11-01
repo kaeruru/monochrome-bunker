@@ -120,9 +120,16 @@ class MonochromeBunker3D {
     }
 
     // 10. 3D 괴물 & 캐릭터 모델링 쇼케이스 뷰어 초기화
-    this.modelViewer = new ModelShowcaseViewer((isOpen) => {
-      this.controls.setDisabled(isOpen);
-    });
+    this.modelViewer = new ModelShowcaseViewer(
+      (isOpen) => {
+        this.controls.setDisabled(isOpen);
+      },
+      (skin) => {
+        if (this.monsterAI) {
+          this.monsterAI.setChapter1Skin(skin);
+        }
+      }
+    );
 
     // 11. UI 엘리먼트 참조
     this.promptEl = document.getElementById('interact-prompt');
