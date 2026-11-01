@@ -202,6 +202,14 @@ class MonochromeBunker3D {
     this.btnCopyRoomCode = document.getElementById('btn-copy-room-code');
     this.roomPlayerCount = document.getElementById('room-player-count');
     this.roomPlayerList = document.getElementById('room-player-list');
+    this.btnStartCoop = document.getElementById('btn-start-coop');
+    this.coopWaitingMsg = document.getElementById('coop-waiting-msg');
+    this.btnLeaveCoop = document.getElementById('btn-leave-coop');
+    this.currentRoomMapDisplay = document.getElementById('current-room-map-display');
+    this.coopModeTabs = document.getElementById('coop-mode-tabs');
+    this.coopTabCreateView = document.getElementById('coop-tab-create-view');
+    this.coopTabJoinView = document.getElementById('coop-tab-join-view');
+    this.currentRoomPlayers = [];
     this.setupStatusMsg = document.getElementById('setup-status-msg');
 
     // 모바일 터치 패드 커스텀 컨트롤 DOM
@@ -317,18 +325,44 @@ class MonochromeBunker3D {
         if (info.mapId && info.mapId !== this.activeChapterId) {
           this.loadChapter(info.mapId);
         }
+        this.currentRoomPlayers = (info.players && info.players.length > 0)
+          ? [...info.players]
+          : [{ id: info.playerId, callsign: this.callsign, isHost: info.isHost, ping: 0 }];
+
+        if (this.coopModeTabs) this.coopModeTabs.classList.add('hidden');
+        if (this.coopTabCreateView) this.coopTabCreateView.classList.add('hidden');
+        if (this.coopTabJoinView) this.coopTabJoinView.classList.add('hidden');
         if (this.roomInfoBox) this.roomInfoBox.classList.remove('hidden');
         if (this.roomCodeDisplay) this.roomCodeDisplay.textContent = info.roomId;
-        if (this.roomPlayerCount) this.roomPlayerCount.textContent = (info.players?.length || 1);
-        if (this.roomPlayerList && info.players) {
-          this.roomPlayerList.innerHTML = info.players.map(p =>
-            `<div class="roster-item">[${p.isHost ? 'HOST' : 'MEMBER'}] ${p.callsign}</div>`
-          ).join('');
-        }
+
+        this.updateRoomRoster();
+
         if (this.setupStatusMsg) {
           this.setupStatusMsg.textContent = `작전 세션 [${info.roomId}] 접속 완료 (${info.isHost ? '지휘관' : '대원'}).`;
         }
         this.showGameToast(`[NET] 작전 세션 [${info.roomId}]에 성공적으로 연결되었습니다.`, 'success');
+      },
+      onPlayerJoined: (player) => {
+        // 호스트 화면에 새 참가자 즉시 추가 및 실시간 갱신!
+        if (!this.currentRoomPlayers.some(p => p.id === player.id)) {
+          this.currentRoomPlayers.push(player);
+        }
+        this.updateRoomRoster();
+      },
+      onPlayerLeft: (playerId, callsign) => {
+        this.currentRoomPlayers = this.currentRoomPlayers.filter(p => p.id !== playerId);
+        this.updateRoomRoster();
+      },
+      onGameStarted: (msg) => {
+        if (msg.mapId && msg.mapId !== this.activeChapterId) {
+          this.loadChapter(msg.mapId);
+        }
+        this.showGameToast('[MISSION LAUNCH] 전 대원 작전 구역으로 일제히 투입됩니다!', 'success');
+        this.deployMission();
+      },
+      onMapChanged: (mapId) => {
+        if (this.networkManager) this.networkManager.mapId = mapId;
+        this.updateRoomRoster();
       },
       onRoomError: (err) => {
         if (this.setupStatusMsg) this.setupStatusMsg.textContent = err;
@@ -1343,6 +1377,35 @@ class MonochromeBunker3D {
       });
     }
 
+    // 협동 세션 전원 출격 (작전 시작) 버튼
+    if (this.btnStartCoop) {
+      this.btnStartCoop.addEventListener('pointerdown', (e) => e.stopPropagation());
+      this.btnStartCoop.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!this.networkManager || !this.networkManager.isHost) {
+          this.showGameToast('[NET] 작전 개시 명령은 지휘관(호스트)만 하달할 수 있습니다.', 'warn');
+          return;
+        }
+        const mapToLaunch = this.selectedCoopMapId || this.activeChapterId || 'chapter2';
+        this.networkManager.startGame(mapToLaunch);
+      });
+    }
+
+    // 협동 세션 퇴장 버튼
+    if (this.btnLeaveCoop) {
+      this.btnLeaveCoop.addEventListener('click', () => {
+        if (this.networkManager && this.networkManager.ws) {
+          this.networkManager.ws.close();
+        }
+        this.currentRoomPlayers = [];
+        if (this.roomInfoBox) this.roomInfoBox.classList.add('hidden');
+        if (this.coopModeTabs) this.coopModeTabs.classList.remove('hidden');
+        if (this.coopTabCreateView) this.coopTabCreateView.classList.remove('hidden');
+        this.networkManager.connect();
+        this.showGameToast('[NET] 세션에서 퇴장했습니다.', 'info');
+      });
+    }
+
     // 난이도 프리셋 버튼
     document.querySelectorAll('.diff-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -1505,6 +1568,37 @@ class MonochromeBunker3D {
     };
     window.addEventListener('pointerdown', unlockAudio);
     window.addEventListener('keydown', unlockAudio);
+  }
+
+  updateRoomRoster() {
+    if (!this.roomPlayerList) return;
+    if (this.roomPlayerCount) {
+      this.roomPlayerCount.textContent = this.currentRoomPlayers.length;
+    }
+    this.roomPlayerList.innerHTML = this.currentRoomPlayers.map(p => {
+      const isHost = p.isHost;
+      const roleBadge = isHost ? '[HOST/지휘관]' : '[대원]';
+      return `<div class="roster-item" style="display:flex; justify-content:space-between; align-items:center; padding:5px 8px; background:rgba(255,255,255,0.06); border-left:3px solid ${isHost ? '#55ccee' : '#8899aa'}; margin-bottom:4px; font-size:12px;">
+        <span style="font-weight:bold; color:${isHost ? '#55ccee' : '#eef2f7'};">${roleBadge} ${p.callsign}</span>
+        <span style="color:#8899aa; font-size:11px;">${p.ping ? p.ping + 'ms' : 'ONLINE'}</span>
+      </div>`;
+    }).join('');
+
+    const isHost = this.networkManager && this.networkManager.isHost;
+    if (this.btnStartCoop) {
+      this.btnStartCoop.style.display = isHost ? 'block' : 'none';
+    }
+    if (this.coopWaitingMsg) {
+      this.coopWaitingMsg.style.display = isHost ? 'none' : 'block';
+    }
+    if (this.currentRoomMapDisplay && this.networkManager && this.networkManager.mapId) {
+      const mapNames = {
+        chapter1: 'CHAPTER 1: 격리 벙커',
+        chapter2: 'CHAPTER 2: 침수 터널',
+        chapter3: 'CHAPTER 3: 지열 갱도'
+      };
+      this.currentRoomMapDisplay.textContent = mapNames[this.networkManager.mapId] || this.networkManager.mapId.toUpperCase();
+    }
   }
 
   deployMission() {

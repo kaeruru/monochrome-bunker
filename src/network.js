@@ -119,6 +119,23 @@ export class NetworkManager {
     }));
   }
 
+  startGame(mapId = null) {
+    if (!this.isConnected || !this.ws || !this.roomId) return;
+    this.ws.send(JSON.stringify({
+      type: 'start_game',
+      mapId: mapId || this.mapId || 'chapter2'
+    }));
+  }
+
+  changeMap(mapId) {
+    if (!this.isConnected || !this.ws || !this.roomId) return;
+    this.mapId = mapId;
+    this.ws.send(JSON.stringify({
+      type: 'change_map',
+      mapId
+    }));
+  }
+
   handleServerMessage(raw) {
     try {
       const msg = JSON.parse(raw);
@@ -154,6 +171,9 @@ export class NetworkManager {
         case 'player_joined': {
           if (msg.player.id !== this.playerId) {
             this.spawnRemotePlayer(msg.player);
+            if (this.callbacks.onPlayerJoined) {
+              this.callbacks.onPlayerJoined(msg.player);
+            }
             if (this.callbacks.onToast) {
               this.callbacks.onToast(`[NET] 대원 [${msg.player.callsign}]이(가) 벙커 작전에 합류했습니다.`, 'info');
             }
@@ -163,8 +183,25 @@ export class NetworkManager {
 
         case 'player_left': {
           this.removeRemotePlayer(msg.playerId);
+          if (this.callbacks.onPlayerLeft) {
+            this.callbacks.onPlayerLeft(msg.playerId, msg.callsign);
+          }
           if (this.callbacks.onToast) {
             this.callbacks.onToast(`[NET] 대원 [${msg.callsign}]과의 통신이 두절되었습니다. (퇴장)`, 'warning');
+          }
+          break;
+        }
+
+        case 'game_started': {
+          if (this.callbacks.onGameStarted) {
+            this.callbacks.onGameStarted(msg);
+          }
+          break;
+        }
+
+        case 'map_changed': {
+          if (this.callbacks.onMapChanged) {
+            this.callbacks.onMapChanged(msg.mapId);
           }
           break;
         }

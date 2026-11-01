@@ -203,10 +203,10 @@ function handleMessage(ws, msg) {
         return;
       }
 
-      if (room.players.size >= 4) {
+      if (room.players.size >= 8) {
         ws.send(JSON.stringify({
           type: 'error',
-          message: `작전 세션 [${targetRoomId}]의 정원(최대 4인)이 초과되었습니다.`
+          message: `작전 세션 [${targetRoomId}]의 정원(최대 8인)이 초과되었습니다.`
         }));
         return;
       }
@@ -411,6 +411,49 @@ function handleMessage(ws, msg) {
         type: 'chat_radio',
         sender: msg.sender || ws.playerId,
         text: msg.text
+      });
+      break;
+    }
+
+    case 'start_game': {
+      if (!ws.currentRoomId) return;
+      const room = rooms.get(ws.currentRoomId);
+      if (!room) return;
+
+      // 오직 호스트(방장)만 작전 시작 명령을 하달할 수 있음
+      if (room.hostId !== ws.playerId) {
+        ws.send(JSON.stringify({
+          type: 'error',
+          message: '작전 개시 명령은 지휘관(호스트)만 하달할 수 있습니다.'
+        }));
+        return;
+      }
+
+      const mapId = msg.mapId || room.mapId || 'chapter2';
+      room.mapId = mapId;
+      room.isStarted = true;
+
+      console.log(`[GAME STARTED] Room ${room.id} launched into ${mapId} by host ${ws.playerId}`);
+
+      // 방 안의 모든 대원에게 작전 개시 및 투입 브로드캐스트
+      broadcastToRoom(room, {
+        type: 'game_started',
+        roomId: room.id,
+        mapId: room.mapId,
+        startedBy: ws.playerId
+      });
+      break;
+    }
+
+    case 'change_map': {
+      if (!ws.currentRoomId) return;
+      const room = rooms.get(ws.currentRoomId);
+      if (!room || room.hostId !== ws.playerId) return;
+
+      room.mapId = msg.mapId;
+      broadcastToRoom(room, {
+        type: 'map_changed',
+        mapId: room.mapId
       });
       break;
     }

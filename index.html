@@ -388,7 +388,7 @@
           <div class="menu-card hidden" id="card-coop">
             <div class="card-title">이어서하기 (협동)</div>
             
-            <div class="card-tabs">
+            <div class="card-tabs" id="coop-mode-tabs">
               <button type="button" class="sub-tab-btn active" data-coop-tab="create" id="btn-mode-solo">세션 개설</button>
               <button type="button" class="sub-tab-btn" data-coop-tab="join" id="btn-mode-coop">세션 참가</button>
             </div>
@@ -410,16 +410,6 @@
                 </div>
 
                 <button type="button" id="btn-host-room" class="btn-minimal-submit">새 세션 개설</button>
-                
-                <div id="room-info-box" class="room-info-box hidden">
-                  <div class="room-code-display-row">
-                    <span>세션 코드:</span>
-                    <strong id="current-room-code-display">SKELD-000</strong>
-                    <button type="button" id="btn-copy-room-code" class="btn-micro">복사</button>
-                  </div>
-                  <div class="room-roster-title">참가 대원 (<span id="room-player-count">1</span>/4):</div>
-                  <div id="room-player-list" class="roster-list"></div>
-                </div>
               </div>
 
               <div id="coop-tab-join-view" class="coop-subview hidden">
@@ -429,9 +419,36 @@
                   <button type="button" id="btn-join-room" class="btn-minimal-submit">참가하기</button>
                 </div>
               </div>
+
+              <!-- 대기실 (세션 개설 또는 참가 성공 시 표시되는 작전 브리핑 룸) -->
+              <div id="room-info-box" class="room-info-box hidden">
+                <div class="room-code-display-row">
+                  <span>세션 코드:</span>
+                  <strong id="current-room-code-display">SKELD-000</strong>
+                  <button type="button" id="btn-copy-room-code" class="btn-micro">복사</button>
+                </div>
+                <div class="minimal-field" style="margin-top: 4px;">
+                  <span style="font-size: 11px; color: #8899aa;">지정 작전 구역: <b id="current-room-map-display" style="color: #ccddee;">CHAPTER 2: 침수 터널</b></span>
+                </div>
+                <div class="room-roster-title">참가 대원 (<span id="room-player-count">1</span>/8):</div>
+                <div id="room-player-list" class="roster-list" style="max-height: 120px; overflow-y: auto;"></div>
+                
+                <div class="coop-action-box" style="margin-top: 8px; display: flex; flex-direction: column; gap: 6px;">
+                  <!-- 호스트 전용 작전 시작 버튼 -->
+                  <button type="button" id="btn-start-coop" class="btn-primary-action" style="display: none;">
+                    <span>[START] 작전 투입 (전원 출격)</span>
+                  </button>
+                  <!-- 게스트 전용 대기 안내 -->
+                  <div id="coop-waiting-msg" class="status-pill warning" style="display: none; text-align: center; padding: 6px;">
+                    [대기 중] 지휘관의 작전 개시 명령을 대기하고 있습니다...
+                  </div>
+                  <!-- 세션 퇴장 버튼 -->
+                  <button type="button" id="btn-leave-coop" class="btn-micro" style="width: 100%; text-align: center;">[LEAVE] 세션 퇴장</button>
+                </div>
+              </div>
             </div>
 
-            <button type="button" class="btn-minimal-back" data-back-to="campaign">뒤로</button>
+            <button type="button" class="btn-minimal-back" data-back-to="campaign" id="btn-coop-back">뒤로</button>
           </div>
 
           <!-- 3. 업적 카드 -->

@@ -86,19 +86,24 @@ export class MonsterAI {
 
     this.monster = this.stalkerEntity;
 
-    // 제2장 삼두 괴수(#2 매복자, #3 맹글) 전용 상태 변수
+    // 제2장 삼두 괴수(#2 매복자, #3 맹글) 전용 상태 및 순찰 경로 변수
     this.lurkerNodes = [];
+    this.allWaterNodes = [];
     this.lurkerPos = new THREE.Vector3(0, -10, 0);
     this.lurkerYaw = 0;
-    this.lurkerState = 'LURK_WAIT'; // 'LURK_WAIT' | 'LURK_ATTACK' | 'LURK_RELOCATE'
+    this.lurkerState = 'LURK_PATROL'; // 'LURK_WAIT' | 'LURK_PATROL' | 'LURK_ATTACK' | 'LURK_RELOCATE'
     this.lurkerTimer = 0;
+    this.lurkerTargetNode = null;
+    this.lurkerWaterSplashTimer = 0;
     this.lurkerLightExposure = 0;
 
     this.snareNodes = [];
+    this.allCeilingNodes = [];
     this.snarePos = new THREE.Vector3(0, -10, 0);
     this.snareYaw = 0;
-    this.snareState = 'SNARE_CEILING'; // 'SNARE_CEILING' | 'SNARE_HOLD' | 'SNARE_COOLDOWN'
+    this.snareState = 'SNARE_CRAWL'; // 'SNARE_CEILING' | 'SNARE_CRAWL' | 'SNARE_HOLD' | 'SNARE_COOLDOWN'
     this.snareTimer = 0;
+    this.snareTargetNode = null;
     this.snareStaticTimer = 1.5;
     this.snareAlarmTimer = 0;
     this.isPlayerSnared = false;
@@ -316,11 +321,14 @@ export class MonsterAI {
   /**
    * 제2장 전용: 맵 전체를 스캔하여
    * - #2 매복자 악어가 잠복할 '경사로(M)/사다리(H) 바로 앞 수로 입구 타일'(lurkerNodes)
-   * - #3 맹글 악어가 천장에 매달릴 '원통형 침수 수로 요충지 타일'(snareNodes)을 자동 추출
+   * - #2 매복자 악어가 순찰하며 헤엄칠 '전체 수로 네트워크 타일'(allWaterNodes)
+   * - #3 맹글 악어가 천장에 매달릴 요충지(snareNodes) 및 기어다닐 '천장 배관 네트워크 타일'(allCeilingNodes) 자동 추출
    */
   buildChapter2TrioNodes() {
     this.lurkerNodes = [];
+    this.allWaterNodes = [];
     this.snareNodes = [];
+    this.allCeilingNodes = [];
     const readTile = (c, r) => (this.map && this.map.getTileChar ? this.map.getTileChar(c, r) : getTile(c, r));
     const dirs = [
       { dc: 0, dr: -1 },
@@ -333,6 +341,10 @@ export class MonsterAI {
       for (let c = 2; c < MAP_COLS - 2; c++) {
         if (!this.isCrawlerWaterTile(c, r)) continue;
         const w = tileToWorld(c, r);
+
+        // 전체 수로 타일 보관 (헤엄 순찰용)
+        this.allWaterNodes.push({ col: c, row: r, x: w.x, z: w.z });
+        this.allCeilingNodes.push({ col: c, row: r, x: w.x, z: w.z });
 
         // 경사로('M') 또는 사다리('H')와 맞닿은 수로 타일인지 검사
         let exitTile = null;
@@ -368,43 +380,46 @@ export class MonsterAI {
   }
 
   /**
-   * 제2장 #2 매복자 악어(The Lurker)를 플레이어 주변의 경사로/사다리 입구 수면 아래에 재배치
+   * 제2장 #2 매복자 악어(The Lurker)를 수로 내에 재배치하고 순찰 또는 잠복 시작
    */
   relocateLurker(playerPos = null, excludeCurrent = true) {
-    if (!this.lurkerNodes || this.lurkerNodes.length === 0) return;
+    const pool = (this.allWaterNodes && this.allWaterNodes.length > 0) ? this.allWaterNodes : this.lurkerNodes;
+    if (!pool || pool.length === 0) return;
 
-    let candidates = this.lurkerNodes.filter(n => {
-      if (excludeCurrent && Math.hypot(n.x - this.lurkerPos.x, n.z - this.lurkerPos.z) < 3.0) {
+    let candidates = pool.filter(n => {
+      if (excludeCurrent && Math.hypot(n.x - this.lurkerPos.x, n.z - this.lurkerPos.z) < 4.0) {
         return false;
       }
       if (playerPos) {
         const d = Math.hypot(n.x - playerPos.x, n.z - playerPos.z);
-        return d >= 7.5 && d <= 28.0;
+        return d >= 7.0 && d <= 26.0;
       }
       return true;
     });
 
     if (candidates.length === 0) {
-      candidates = this.lurkerNodes;
+      candidates = pool;
     }
 
     const pick = candidates[Math.floor(Math.random() * candidates.length)];
-    this.lurkerPos.set(pick.x, 0.0, pick.z);
-    this.lurkerYaw = Math.atan2(pick.x - pick.exitX, pick.z - pick.exitZ);
-    this.lurkerState = 'LURK_WAIT';
-    this.lurkerTimer = 20 + Math.random() * 10;
+    this.lurkerPos.set(pick.x, 0.02, pick.z);
+    this.lurkerYaw = Math.random() * Math.PI * 2;
+    this.lurkerState = Math.random() < 0.5 ? 'LURK_PATROL' : 'LURK_WAIT';
+    this.lurkerTimer = this.lurkerState === 'LURK_PATROL' ? 12.0 + Math.random() * 8.0 : 8.0 + Math.random() * 6.0;
+    this.lurkerTargetNode = null;
     this.lurkerLightExposure = 0;
     this.lurkerEntity.root.position.copy(this.lurkerPos);
     this.lurkerEntity.root.rotation.y = this.lurkerYaw;
   }
 
   /**
-   * 제2장 #3 맹글 악어(The Snare)를 수로 천장 아치(Y=1.32m)에 재배치
+   * 제2장 #3 맹글 악어(The Snare)를 천장 배관 네트워크에 재배치하고 천장 기어가기/순찰 시작
    */
   relocateSnare(playerPos = null, excludeCurrent = true) {
-    if (!this.snareNodes || this.snareNodes.length === 0) return;
+    const pool = (this.allCeilingNodes && this.allCeilingNodes.length > 0) ? this.allCeilingNodes : this.snareNodes;
+    if (!pool || pool.length === 0) return;
 
-    let candidates = this.snareNodes.filter(n => {
+    let candidates = pool.filter(n => {
       if (excludeCurrent && Math.hypot(n.x - this.snarePos.x, n.z - this.snarePos.z) < 4.5) {
         return false;
       }
@@ -413,20 +428,21 @@ export class MonsterAI {
       }
       if (playerPos) {
         const d = Math.hypot(n.x - playerPos.x, n.z - playerPos.z);
-        return d >= 8.0 && d <= 26.0;
+        return d >= 7.0 && d <= 25.0;
       }
       return true;
     });
 
     if (candidates.length === 0) {
-      candidates = this.snareNodes;
+      candidates = pool;
     }
 
     const pick = candidates[Math.floor(Math.random() * candidates.length)];
     this.snarePos.set(pick.x, 1.32, pick.z);
     this.snareYaw = Math.random() * Math.PI * 2;
-    this.snareState = 'SNARE_CEILING';
-    this.snareTimer = 24 + Math.random() * 12;
+    this.snareState = Math.random() < 0.6 ? 'SNARE_CRAWL' : 'SNARE_CEILING';
+    this.snareTimer = this.snareState === 'SNARE_CRAWL' ? 14.0 + Math.random() * 8.0 : 7.0 + Math.random() * 5.0;
+    this.snareTargetNode = null;
     this.snareEntity.root.position.copy(this.snarePos);
     this.snareEntity.root.rotation.y = this.snareYaw;
   }
@@ -1721,6 +1737,8 @@ export class MonsterAI {
 
   /**
    * 제2장 수로 삼두 괴수 중 보조 포식자 2종(#2 매복자 악어, #3 맹글 악어) 업데이트
+   * - 매복자 악어: 수로를 유유히 헤엄쳐 순찰(LURK_PATROL)하거나 입구에 잠복(LURK_WAIT)하며, 2.35m 내 접근 시 100% 즉시 1인칭 안면 점프스케어 처형 발동!
+   * - 맹글 악어: 천장 배관을 삐걱거리며 기어서 순찰(SNARE_CRAWL)하거나 매달려(SNARE_CEILING) 정전기 잡음을 내며, 머리 위에서 낙하하여 결박!
    */
   updateChapter2Trio(dt, playerPos, playerCamera, flashlightOn) {
     const playerFootY = this.map && this.map.getFloorHeightAt
@@ -1728,39 +1746,103 @@ export class MonsterAI {
       : 0;
 
     // -------------------------------------------------------------------------
-    // [A] #2 매복자 악어 (LurkerCrocodileEntity - 경사로/사다리 입구 잠복 & 손전등 퇴치)
+    // [A] #2 매복자 악어 (LurkerCrocodileEntity - 수중 헤엄 순찰 & 경사로 잠복 & 점프스케어)
     // -------------------------------------------------------------------------
     const dLurk = Math.hypot(playerPos.x - this.lurkerPos.x, playerPos.z - this.lurkerPos.z);
 
-    if (this.lurkerState === 'LURK_WAIT') {
-      this.lurkerTimer -= dt;
+    // 1) 조명탄(Flare) 6.5m 이내 투척 시 수중 깊이 잠수 퇴각
+    let repelledByFlare = false;
+    if (this.interactionSystem && this.interactionSystem.activeFlares) {
+      for (const flare of this.interactionSystem.activeFlares) {
+        if (flare.life > 0 && Math.hypot(flare.mesh.position.x - this.lurkerPos.x, flare.mesh.position.z - this.lurkerPos.z) <= 6.5) {
+          repelledByFlare = true;
+          break;
+        }
+      }
+    }
 
-      // 1) 조명탄(Flare)이 매복자 6.5m 이내에 있으면 강렬한 화염/열기로 인해 잠수 퇴각
-      let repelledByFlare = false;
-      if (this.interactionSystem && this.interactionSystem.activeFlares) {
-        for (const flare of this.interactionSystem.activeFlares) {
-          if (flare.life > 0 && Math.hypot(flare.mesh.position.x - this.lurkerPos.x, flare.mesh.position.z - this.lurkerPos.z) <= 6.5) {
-            repelledByFlare = true;
-            break;
+    if (repelledByFlare && this.lurkerState !== 'LURK_ATTACK') {
+      sound.playLurkerSubmerge();
+      this.lurkerState = 'LURK_RELOCATE';
+      this.lurkerTimer = 1.2;
+    } else if (dLurk < 2.35 && playerFootY < 1.45 && !this.isKillingPlayer && !this.isPlayerSnared) {
+      // [점프스케어] 조명탄/소나 없이 매복자 2.35m 이내에 접근 시 수면을 박차고 솟구쳐 즉시 1인칭 안면 곰덫 처형!
+      this.triggerPlayerKill(playerPos, playerCamera, 'lurker');
+      return;
+    } else if (this.lurkerState === 'LURK_PATROL') {
+      // 수로를 따라 수면을 가르며 헤엄쳐 순찰 및 수중 플레이어 스토킹
+      this.lurkerTimer -= dt;
+      this.lurkerWaterSplashTimer = (this.lurkerWaterSplashTimer || 0) - dt;
+
+      // 주기적 물살 소리 (플레이어가 18m 이내에 있을 때 입체 음향)
+      if (this.lurkerWaterSplashTimer <= 0) {
+        this.lurkerWaterSplashTimer = 3.2 + Math.random() * 1.5;
+        if (dLurk < 18.0 && sound.playFootstepWater) {
+          sound.playFootstepWater(0.24);
+        }
+      }
+
+      // 목표 노드 선정
+      if (!this.lurkerTargetNode || Math.hypot(this.lurkerTargetNode.x - this.lurkerPos.x, this.lurkerTargetNode.z - this.lurkerPos.z) < 0.65) {
+        // 플레이어가 수로(물 속, Y < 0.65)에 있으면 플레이어 방향으로 헤엄침
+        if (playerFootY < 0.65 && dLurk < 24.0) {
+          this.lurkerTargetNode = { x: playerPos.x, z: playerPos.z };
+        } else if (this.allWaterNodes && this.allWaterNodes.length > 0) {
+          // 인접 수로 노드 무작위 탐색
+          const nearby = this.allWaterNodes.filter(n => {
+            const dist = Math.hypot(n.x - this.lurkerPos.x, n.z - this.lurkerPos.z);
+            return dist >= 1.8 && dist <= 7.0;
+          });
+          if (nearby.length > 0) {
+            this.lurkerTargetNode = nearby[Math.floor(Math.random() * nearby.length)];
+          } else {
+            this.lurkerTargetNode = this.allWaterNodes[Math.floor(Math.random() * this.allWaterNodes.length)];
+          }
+
+          // 경사로/사다리 근처라면 일정 확률로 잠복 대기 모드로 전환
+          if (Math.random() < 0.35 && this.lurkerNodes.some(ln => Math.hypot(ln.x - this.lurkerPos.x, ln.z - this.lurkerPos.z) < 2.5)) {
+            this.lurkerState = 'LURK_WAIT';
+            this.lurkerTimer = 6.0 + Math.random() * 6.0;
           }
         }
       }
 
-      if (repelledByFlare) {
-        sound.playLurkerSubmerge();
-        this.lurkerState = 'LURK_RELOCATE';
-        this.lurkerTimer = 1.1;
-      } else if (dLurk < 2.25 && playerFootY < 1.45 && !this.isPlayerSnared && !this.isKillingPlayer) {
-        // 소나 펄스나 조명탄으로 쫓아내지 않고 경사로/사다리 입구를 밟으면 수면 아래에서 곰덫 아가리가 솟구치며 즉시 처형 점프스케어 발동!
-        this.triggerPlayerKill(playerPos, playerCamera, 'lurker');
-        return;
-      } else if (this.lurkerTimer <= 0 && dLurk > 8.0) {
+      if (this.lurkerTargetNode) {
+        const dx = this.lurkerTargetNode.x - this.lurkerPos.x;
+        const dz = this.lurkerTargetNode.z - this.lurkerPos.z;
+        const targetYaw = Math.atan2(dx, dz);
+        let yawDiff = targetYaw - this.lurkerYaw;
+        while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
+        while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
+        this.lurkerYaw += yawDiff * Math.min(1.0, dt * 4.5);
+
+        const swimSpeed = (playerFootY < 0.65 && dLurk < 20.0) ? 3.2 : 2.2;
+        this.lurkerPos.x += Math.sin(this.lurkerYaw) * swimSpeed * dt;
+        this.lurkerPos.z += Math.cos(this.lurkerYaw) * swimSpeed * dt;
+        this.lurkerPos.y = 0.02;
+      }
+
+      if (this.lurkerTimer <= 0 && dLurk > 10.0) {
         this.relocateLurker(playerPos, true);
       }
 
       this.lurkerEntity.root.position.copy(this.lurkerPos);
       this.lurkerEntity.root.rotation.y = this.lurkerYaw;
       this.lurkerEntity.update(dt, 'stalk');
+    } else if (this.lurkerState === 'LURK_WAIT') {
+      // 경사로/사다리 밑 수면 아래 잠복
+      this.lurkerTimer -= dt;
+      this.lurkerPos.y = -0.12;
+
+      if (this.lurkerTimer <= 0) {
+        this.lurkerState = 'LURK_PATROL';
+        this.lurkerTimer = 12.0 + Math.random() * 8.0;
+        this.lurkerTargetNode = null;
+      }
+
+      this.lurkerEntity.root.position.copy(this.lurkerPos);
+      this.lurkerEntity.root.rotation.y = this.lurkerYaw;
+      this.lurkerEntity.update(dt, 'idle');
     } else if (this.lurkerState === 'LURK_ATTACK') {
       this.lurkerTimer -= dt;
       this.lurkerEntity.root.position.copy(this.lurkerPos);
@@ -1772,7 +1854,7 @@ export class MonsterAI {
       }
     } else if (this.lurkerState === 'LURK_RELOCATE') {
       this.lurkerTimer -= dt;
-      this.lurkerPos.y -= dt * 0.85;
+      this.lurkerPos.y -= dt * 0.95;
       this.lurkerEntity.root.position.copy(this.lurkerPos);
       this.lurkerEntity.update(dt, 'idle');
       if (this.lurkerTimer <= 0) {
@@ -1781,53 +1863,95 @@ export class MonsterAI {
     }
 
     // -------------------------------------------------------------------------
-    // [B] #3 맹글 악어 (SnareMangleEntity - 천장 매달림 & 라디오 잡음 & 낙하 결박)
+    // [B] #3 맹글 악어 (SnareMangleEntity - 천장 배관 기어가기 순찰 & 라디오 잡음 & 낙하 결박)
     // -------------------------------------------------------------------------
     const dSnare = Math.hypot(playerPos.x - this.snarePos.x, playerPos.z - this.snarePos.z);
 
-    if (this.snareState === 'SNARE_CEILING') {
+    // 주기적 FNAF Mangle 풍 기괴한 라디오 정전기 잡음
+    this.snareStaticTimer -= dt;
+    if (this.snareStaticTimer <= 0) {
+      this.snareStaticTimer = 2.4 + Math.random() * 1.4;
+      if (dSnare < 19.0) {
+        const sVol = Math.pow(1 - dSnare / 19.0, 1.4) * 0.38;
+        sound.playMangleStatic(sVol);
+      }
+    }
+
+    // 조명탄 퇴치
+    if (repelledByFlare && this.snareState !== 'SNARE_HOLD') {
+      this.snareState = 'SNARE_COOLDOWN';
+      this.snareTimer = 2.5;
+      sound.playLurkerSubmerge();
+    } else if (dSnare < 1.95 && playerFootY < 0.75 && !this.isKillingPlayer && !this.isPlayerSnared && this.snareState !== 'SNARE_COOLDOWN') {
+      // 머리 위에서 낙하하여 결박 발동!
+      this.snareState = 'SNARE_HOLD';
+      this.snareTimer = 4.5;
+      this.snareAlarmTimer = 0.85;
+      this.isPlayerSnared = true;
+      this.snareEscapeProgress = 0;
+      sound.playSnareGrab();
+      this.startChase(playerPos);
+      if (this.callbacks.onToast) {
+        this.callbacks.onToast(
+          '[SNARED] 천장의 맹글 크롤러에게 붙잡혔습니다! [SPACE / E / 클릭] 연타로 탈출하십시오! 스토커 악어가 접근합니다!',
+          'danger'
+        );
+      }
+    } else if (this.snareState === 'SNARE_CRAWL') {
+      // 천장 배관/철골을 따라 거꾸로 매달려 스멀스멀 기어서 순찰
       this.snareTimer -= dt;
 
-      // 천장에서 기괴한 FNAF Mangle 풍 라디오 정전기 잡음 + 금속 긁히는 소리를 주기적으로 방출
-      this.snareStaticTimer -= dt;
-      if (this.snareStaticTimer <= 0) {
-        this.snareStaticTimer = 2.1 + Math.random() * 1.1;
-        if (dSnare < 17.5) {
-          const sVol = Math.pow(1 - dSnare / 17.5, 1.4) * 0.34;
-          sound.playMangleStatic(sVol);
-        }
-      }
+      if (!this.snareTargetNode || Math.hypot(this.snareTargetNode.x - this.snarePos.x, this.snareTargetNode.z - this.snarePos.z) < 0.65) {
+        // 플레이어가 근처(16m)에서 소음을 내면 플레이어 머리 위로 기어감
+        if (dSnare < 16.0) {
+          this.snareTargetNode = { x: playerPos.x, z: playerPos.z };
+        } else if (this.allCeilingNodes && this.allCeilingNodes.length > 0) {
+          const nearby = this.allCeilingNodes.filter(n => {
+            const dist = Math.hypot(n.x - this.snarePos.x, n.z - this.snarePos.z);
+            return dist >= 2.0 && dist <= 7.0;
+          });
+          if (nearby.length > 0) {
+            this.snareTargetNode = nearby[Math.floor(Math.random() * nearby.length)];
+          } else {
+            this.snareTargetNode = this.allCeilingNodes[Math.floor(Math.random() * this.allCeilingNodes.length)];
+          }
 
-      // 조명탄(Flare)이 6.5m 이내에 있으면 천장 위 어둠 속으로 퇴각
-      if (this.interactionSystem && this.interactionSystem.activeFlares) {
-        for (const flare of this.interactionSystem.activeFlares) {
-          if (flare.life > 0 && Math.hypot(flare.mesh.position.x - this.snarePos.x, flare.mesh.position.z - this.snarePos.z) <= 6.5) {
-            this.snareState = 'SNARE_COOLDOWN';
-            this.snareTimer = 2.0;
-            sound.playLurkerSubmerge();
-            break;
+          if (Math.random() < 0.28) {
+            this.snareState = 'SNARE_CEILING';
+            this.snareTimer = 5.0 + Math.random() * 4.0;
           }
         }
       }
 
-      // 플레이어가 천장의 맹글 악어 바로 아래(1.65m 이내, 수로 바닥)를 지나가면 덮쳐서 결박!
-      if (this.snareState === 'SNARE_CEILING' && dSnare < 1.65 && playerFootY < 0.58 && !this.isKillingPlayer) {
-        this.snareState = 'SNARE_HOLD';
-        this.snareTimer = 4.4;
-        this.snareAlarmTimer = 0.85;
-        this.isPlayerSnared = true;
-        this.snareEscapeProgress = 0;
-        sound.playSnareGrab();
-        // 플레이어를 묶어둔 채 괴성을 질러 #1 스토커 악어(The Ripper)를 즉시 호출!
-        this.startChase(playerPos);
-        if (this.callbacks.onToast) {
-          this.callbacks.onToast(
-            '[SNARED] 천장의 맹글 크롤러에게 붙잡혔습니다! [SPACE / E / 클릭] 연타로 탈출하십시오! 스토커 악어가 접근합니다!',
-            'danger'
-          );
-        }
-      } else if (this.snareTimer <= 0 && dSnare > 8.0) {
+      if (this.snareTargetNode) {
+        const dx = this.snareTargetNode.x - this.snarePos.x;
+        const dz = this.snareTargetNode.z - this.snarePos.z;
+        const targetYaw = Math.atan2(dx, dz);
+        let yawDiff = targetYaw - this.snareYaw;
+        while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
+        while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
+        this.snareYaw += yawDiff * Math.min(1.0, dt * 3.8);
+
+        const crawlSpeed = (dSnare < 14.0) ? 2.4 : 1.7;
+        this.snarePos.x += Math.sin(this.snareYaw) * crawlSpeed * dt;
+        this.snarePos.z += Math.cos(this.snareYaw) * crawlSpeed * dt;
+        this.snarePos.y = 1.32;
+      }
+
+      if (this.snareTimer <= 0 && dSnare > 9.0) {
         this.relocateSnare(playerPos, true);
+      }
+
+      this.snareEntity.root.position.copy(this.snarePos);
+      this.snareEntity.root.rotation.y = this.snareYaw;
+      this.snareEntity.update(dt, 'chase');
+    } else if (this.snareState === 'SNARE_CEILING') {
+      // 천장에서 멈춰서 정전기 잡음을 내며 주변 탐색
+      this.snareTimer -= dt;
+      if (this.snareTimer <= 0) {
+        this.snareState = 'SNARE_CRAWL';
+        this.snareTimer = 12.0 + Math.random() * 8.0;
+        this.snareTargetNode = null;
       }
 
       this.snareEntity.root.position.copy(this.snarePos);
@@ -1837,7 +1961,6 @@ export class MonsterAI {
       this.snareTimer -= dt;
       this.snareEscapeProgress = Math.min(100, this.snareEscapeProgress + dt * 18.0);
 
-      // 플레이어 코앞(0.82m)에 매달려 두 개의 머리를 흔들며 몸부림침
       const dirToSnareX = this.snarePos.x - playerPos.x;
       const dirToSnareZ = this.snarePos.z - playerPos.z;
       const len = Math.max(0.01, Math.hypot(dirToSnareX, dirToSnareZ));
@@ -1850,7 +1973,7 @@ export class MonsterAI {
       this.snareEntity.root.rotation.y = this.snareYaw;
       this.snareEntity.update(dt, 'attack');
 
-      // 결박 중 0.9초마다 라디오 괴성과 물보라 파동을 일으켜 #1 스토커 악어에게 실시간 위치 전송
+      // 결박 중 0.9초마다 라디오 괴성
       this.snareAlarmTimer -= dt;
       if (this.snareAlarmTimer <= 0) {
         this.snareAlarmTimer = 0.92;
@@ -1861,7 +1984,7 @@ export class MonsterAI {
         }
       }
 
-      // 제한시간 내 탈출 연타 실패 시 천장 맹글 악어가 플레이어를 낚아채 즉시 처형!
+      // 탈출 연타 실패 시 천장 맹글 악어가 플레이어를 낚아채 즉시 처형!
       if (this.snareTimer <= 0 && this.snareEscapeProgress < 100 && !this.isKillingPlayer) {
         this.triggerPlayerKill(playerPos, playerCamera);
         return;
