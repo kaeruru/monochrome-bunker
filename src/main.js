@@ -299,9 +299,19 @@ class MonochromeBunker3D {
           }
         }
       },
+      onLockerOpenSync: (lockerId) => {
+        if (this.interactionSystem) {
+          this.interactionSystem.applyRemoteLockerOpen(lockerId);
+        }
+      },
       onItemDropSync: (item, x, z) => {
         if (this.interactionSystem) {
-          this.interactionSystem.spawnWorldItem(item.id, x, 0.22, z, '동료 대원이 내려놓음');
+          const typeStr = typeof item === 'object' && item ? (item.type || item.id) : item;
+          if (typeStr) {
+            const inCh2Water = this.interactionSystem.map && this.interactionSystem.map.chapterId === 'chapter2' && this.interactionSystem.map.isWaterAt && this.interactionSystem.map.isWaterAt(x, z);
+            const dropY = inCh2Water ? 0.62 : 0.22;
+            this.interactionSystem.spawnWorldItem(typeStr, x, dropY, z, '동료 대원이 내려놓음');
+          }
         }
       },
       onCoreInsertSync: (partType, total) => {
@@ -335,6 +345,9 @@ class MonochromeBunker3D {
         if (info.mapId && info.mapId !== this.activeChapterId) {
           this.loadChapter(info.mapId);
         }
+        if (info.matchSeed) {
+          this.matchSeed = info.matchSeed;
+        }
         this.currentRoomPlayers = (info.players && info.players.length > 0)
           ? [...info.players]
           : [{ id: info.playerId, callsign: this.callsign, isHost: info.isHost, ping: 0 }];
@@ -364,6 +377,9 @@ class MonochromeBunker3D {
         this.updateRoomRoster();
       },
       onGameStarted: (msg) => {
+        if (msg.matchSeed) {
+          this.matchSeed = msg.matchSeed;
+        }
         if (msg.mapId && msg.mapId !== this.activeChapterId) {
           this.loadChapter(msg.mapId);
         }
@@ -398,6 +414,11 @@ class MonochromeBunker3D {
       onItemPickup: (itemId, slot) => {
         if (this.networkManager && this.networkManager.roomId) {
           this.networkManager.sendItemPickup(itemId, slot);
+        }
+      },
+      onLockerOpen: (lockerId) => {
+        if (this.networkManager && this.networkManager.roomId) {
+          this.networkManager.sendLockerOpen(lockerId);
         }
       },
       onItemDrop: (item, x, z) => {
@@ -1866,7 +1887,7 @@ class MonochromeBunker3D {
 
     // 3. 상호작용 및 파밍 시스템 리셋
     if (this.interactionSystem) {
-      this.interactionSystem.setupNewMatch(cfg);
+      this.interactionSystem.setupNewMatch(cfg, this.matchSeed);
     }
 
     // 4. CCTV 콘솔 연동 업데이트

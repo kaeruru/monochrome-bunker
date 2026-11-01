@@ -183,10 +183,12 @@ function handleMessage(ws, msg) {
         ping: 0
       };
 
+      const matchSeed = Math.floor(Math.random() * 2147483647);
       const room = {
         id: roomId,
         hostId: ws.playerId,
         mapId: msg.mapId || 'chapter1',
+        matchSeed,
         players: new Map([[ws, playerInfo]]),
         doors: new Map(),
         coreProgress: 0,
@@ -202,6 +204,7 @@ function handleMessage(ws, msg) {
         playerId: ws.playerId,
         isHost: true,
         mapId: room.mapId,
+        matchSeed: room.matchSeed,
         players: [playerInfo]
       }));
 
@@ -258,6 +261,7 @@ function handleMessage(ws, msg) {
         playerId: ws.playerId,
         isHost: false,
         mapId: room.mapId || 'chapter1',
+        matchSeed: room.matchSeed,
         players: playerList,
         doors: Array.from(room.doors.entries())
       }));
@@ -328,7 +332,7 @@ function handleMessage(ws, msg) {
         doorId: msg.doorId,
         isOpen: msg.isOpen,
         playerId: ws.playerId
-      });
+      }, ws);
       break;
     }
 
@@ -342,7 +346,7 @@ function handleMessage(ws, msg) {
         itemId: msg.itemId,
         slot: msg.slot,
         playerId: ws.playerId
-      });
+      }, ws);
       break;
     }
 
@@ -357,7 +361,20 @@ function handleMessage(ws, msg) {
         x: msg.x,
         z: msg.z,
         playerId: ws.playerId
-      });
+      }, ws);
+      break;
+    }
+
+    case 'locker_open': {
+      if (!ws.currentRoomId) return;
+      const room = rooms.get(ws.currentRoomId);
+      if (!room) return;
+
+      broadcastToRoom(room, {
+        type: 'locker_open',
+        lockerId: msg.lockerId,
+        playerId: ws.playerId
+      }, ws);
       break;
     }
 
@@ -371,7 +388,7 @@ function handleMessage(ws, msg) {
         partType: msg.partType,
         totalInserted: msg.totalInserted,
         playerId: ws.playerId
-      });
+      }, ws);
       break;
     }
 
@@ -458,6 +475,7 @@ function handleMessage(ws, msg) {
         type: 'game_started',
         roomId: room.id,
         mapId: room.mapId,
+        matchSeed: room.matchSeed,
         startedBy: ws.playerId
       });
       break;

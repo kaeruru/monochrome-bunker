@@ -74,6 +74,15 @@ const CANDIDATE_SPAWN_SPOTS_CH2 = [
   { col: 3,  row: 18, zone: '서측 원통 배수관 (서남 방수 보관함)', isLocker: true }
 ];
 
+function createSeededRandom(s) {
+  let seed = (typeof s === 'number' ? s : 123456789) % 2147483647;
+  if (seed <= 0) seed += 2147483646;
+  return function() {
+    seed = (seed * 16807) % 2147483647;
+    return (seed - 1) / 2147483646;
+  };
+}
+
 export class InteractionAndEscapeSystem {
   constructor(map, viewModel, callbacks = {}) {
     this.map = map;
@@ -93,6 +102,7 @@ export class InteractionAndEscapeSystem {
     this.lockers = [];
     // 구역 스캔 단말기
     this.scannerTerminal = null;
+    this.openedLockerItemIds = new Set();
     // 바닥에 점화된 조명탄 목록
     this.activeFlares = [];
 
@@ -174,7 +184,8 @@ export class InteractionAndEscapeSystem {
   /**
    * 매 판 새로운 아이템 무작위 배치 및 오브젝트 초기화
    */
-  setupNewMatch() {
+  setupNewMatch(cfg = null, seed = null) {
+    this.openedLockerItemIds = new Set();
     // 맵 리빌드 시 mapGroup 자식이 초기화되므로, interactionSystem 그룹이 분리되지 않도록 항상 재연결
     if (this.map && this.map.mapGroup && (!this.group.parent || this.group.parent !== this.map.mapGroup)) {
       this.map.mapGroup.add(this.group);
@@ -233,12 +244,12 @@ export class InteractionAndEscapeSystem {
     }
 
     // 5. 14개 후보 스팟 중 무작위 셔플하여 필수 코어 부품 4개 + 조명탄 배치
-    this.spawnRandomizedItemsAndLockers();
+    this.spawnRandomizedItemsAndLockers(seed);
 
     // 6. 스폰 지점 바로 옆 보급 상자에 기본 조명탄 1개 배치 (시작하자마자 1인칭 파지 테스트 가능!)
     const starterPos = tileToWorld(22, isCh2 ? 16 : 8);
     const starterTopY = this.buildSupplyCrateProp(starterPos.x, starterPos.z);
-    this.spawnWorldItem('flare', starterPos.x, starterTopY + 0.06, starterPos.z, '내부 보급 상자');
+    this.spawnWorldItem('flare', starterPos.x, starterTopY + 0.06, starterPos.z, '내부 보급 상자', 'starter_flare');
 
     this.syncViewModelAndHUD();
   }
@@ -517,11 +528,12 @@ export class InteractionAndEscapeSystem {
   /**
    * 14개 후보 스팟을 셔플하여 필수 코어 부품 4개 + 조명탄 2개 + 빈 캐비닛들을 배치합니다.
    */
-  spawnRandomizedItemsAndLockers() {
+  spawnRandomizedItemsAndLockers(seed = null) {
     const spotPool = this.map.chapterId === 'chapter2' ? CANDIDATE_SPAWN_SPOTS_CH2 : CANDIDATE_SPAWN_SPOTS;
     const shuffled = [...spotPool];
+    const rng = seed ? createSeededRandom(seed) : Math.random;
     for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const j = Math.floor(rng() * (i + 1));
       [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
 
@@ -541,11 +553,12 @@ export class InteractionAndEscapeSystem {
       const itemType = i < itemsToSpawn.length ? itemsToSpawn[i] : null;
 
       if (spot.isLocker) {
-        this.buildInteractiveLocker(pos.x, pos.z, spot.zone, itemType);
+        this.buildInteractiveLocker(pos.x, pos.z, spot.zone, itemType, `locker_${spot.col}_${spot.row}`);
       } else {
         const crateTopY = this.buildSupplyCrateProp(pos.x, pos.z);
         if (itemType) {
-          this.spawnWorldItem(itemType, pos.x, crateTopY + 0.08, pos.z, spot.zone);
+          const itemId = `item_${spot.col}_${spot.row}_${itemType}`;
+          this.spawnWorldItem(itemType, pos.x, crateTopY + 0.08, pos.z, spot.zone, itemId);
         }
       }
     }
@@ -554,7 +567,7 @@ export class InteractionAndEscapeSystem {
   /**
    * 문을 열어 내부를 조사할 수 있는 철제 전술 보관함(Locker) 생성
    */
-  buildInteractiveLocker(x, z, zoneName, hiddenItemType = null) {
+  buildInteractiveLocker(x, z, zoneName, hiddenItemType = null, customId = null) {
     const floorY = this.map.getFloorHeightAt(x, z);
     const inCh2Water = this.map.chapterId === 'chapter2' && this.map.isWaterAt(x, z);
     const waterBaseH = inCh2Water ? 0.58 : 0.0;
@@ -612,6 +625,7 @@ export class InteractionAndEscapeSystem {
     lockerGroup.add(beacon);
 
     const lockerObj = {
+      id: customId || `locker_${x.toFixed(1)}_${z.toFixed(1)}`,
       x,
       baseY: lockerBaseY,
       z,
@@ -627,7 +641,7 @@ export class InteractionAndEscapeSystem {
   /**
    * 월드 바닥/선반에 3D 아이템 스폰
    */
-  spawnWorldItem(itemType, x, y, z, zoneName = '시설 내부') {
+  spawnWorldItem(itemType, x, y, z, zoneName = '시설 내부', customId = null) {
     const { group, updateItemAnim } = buildItemMesh3D(itemType);
     const inCh2Water = this.map.chapterId === 'chapter2' && this.map.isWaterAt(x, z);
     // 수로 침수 구역에서는 수면(0.56m) 아래로 묻히지 않도록 최소 높이 0.72m 보장
@@ -651,7 +665,7 @@ export class InteractionAndEscapeSystem {
     this.group.add(group);
 
     const itemEntry = {
-      id: `item_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      id: customId || `item_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       type: itemType,
       x,
       y: safeY,
@@ -773,6 +787,21 @@ export class InteractionAndEscapeSystem {
   /**
    * 월드 아이템 줍기
    */
+  applyRemoteLockerOpen(lockerId) {
+    const lk = this.lockers.find(l => l.id === lockerId);
+    if (!lk || lk.isOpen) return;
+    lk.isOpen = true;
+    sound.playLockerOpen();
+    if (lk.hiddenItemType) {
+      const itemId = `${lk.id}_${lk.hiddenItemType}`;
+      if (!this.openedLockerItemIds.has(itemId)) {
+        this.openedLockerItemIds.add(itemId);
+        this.spawnWorldItem(lk.hiddenItemType, lk.x, (lk.baseY || 0) + 0.96, lk.z + 0.05, lk.zoneName, itemId);
+      }
+      lk.hiddenItemType = null;
+    }
+  }
+
   pickupWorldItem(itemEntry) {
     // 현재 선택된 슬롯이 비어 있으면 거기에 우선 넣고, 아니면 빈 슬롯 탐색
     let targetSlot = this.inventory[this.selectedSlot] === null
@@ -833,8 +862,8 @@ export class InteractionAndEscapeSystem {
       const meta = ITEM_METADATA[heldType];
       this.notifyToast(`[DROPPED] ${meta.name}을(를) 바닥에 내려놓았습니다.`, 'info');
     }
-    if (this.callbacks.onCoreInsert) {
-      this.callbacks.onCoreInsert(heldType, this.coreState.totalInstalled);
+    if (this.callbacks.onItemDrop && heldType !== 'flare') {
+      this.callbacks.onItemDrop(heldType, dropX, dropZ);
     }
     return true;
   }
@@ -871,9 +900,14 @@ export class InteractionAndEscapeSystem {
     const heldType = this.inventory[this.selectedSlot];
     const meta = heldType ? ITEM_METADATA[heldType] : null;
 
+    const allFilled = this.coreState.socketMeshes.length > 0 && this.coreState.socketMeshes.every(s => s.filled);
+
     if (!heldType || !meta || !meta.isCorePart) {
       const remaining = this.coreState.maxTotal - this.coreState.totalInstalled;
-      if (remaining === 0) {
+      if (remaining === 0 || allFilled) {
+        if (!this.isEscapeOpen) {
+          this.unlockEscapeGate();
+        }
         this.notifyToast('[READY] 중앙 코어가 100% 가동되었습니다. 북쪽 비상 탈출 게이트로 이동하십시오.', 'success');
       } else {
         this.notifyToast(
@@ -890,6 +924,9 @@ export class InteractionAndEscapeSystem {
     );
 
     if (!targetSocket) {
+      if ((this.coreState.totalInstalled >= this.coreState.maxTotal || allFilled) && !this.isEscapeOpen) {
+        this.unlockEscapeGate();
+      }
       this.notifyToast(`[WARNING] 이미 해당 부품(${meta.name})은 모두 결합되었습니다.`, 'warn');
       return false;
     }
@@ -913,7 +950,8 @@ export class InteractionAndEscapeSystem {
     sound.playCoreInsert(this.coreState.totalInstalled, this.coreState.maxTotal);
     this.syncViewModelAndHUD();
 
-    if (this.coreState.totalInstalled >= this.coreState.maxTotal) {
+    const nowAllFilled = this.coreState.socketMeshes.length > 0 && this.coreState.socketMeshes.every(s => s.filled);
+    if (this.coreState.totalInstalled >= this.coreState.maxTotal || nowAllFilled) {
       this.unlockEscapeGate();
     } else {
       this.notifyToast(
@@ -941,10 +979,15 @@ export class InteractionAndEscapeSystem {
       mountedMesh.scale.setScalar(0.85);
       targetSocket.mountAnchor.add(mountedMesh);
     }
+    if (partType === 'energy_cell') this.coreState.energyCells++;
+    else if (partType === 'security_keycard') this.coreState.securityKeycard++;
+    else if (partType === 'coolant_valve') this.coreState.coolantValve++;
+
     this.coreState.totalInstalled = totalInstalled || (this.coreState.totalInstalled + 1);
     sound.playCoreInsert(this.coreState.totalInstalled, this.coreState.maxTotal);
-    this.updateHUDObjectives();
-    if (this.coreState.totalInstalled >= this.coreState.maxTotal && !this.isEscapeOpen) {
+    this.updateObjectiveHUD();
+    const allFilled = this.coreState.socketMeshes.length > 0 && this.coreState.socketMeshes.every(s => s.filled);
+    if ((this.coreState.totalInstalled >= this.coreState.maxTotal || allFilled) && !this.isEscapeOpen) {
       this.unlockEscapeGate();
     }
   }
@@ -1148,11 +1191,19 @@ export class InteractionAndEscapeSystem {
       this.viewModel.triggerInteractAnim();
 
       if (lk.hiddenItemType) {
-        this.spawnWorldItem(lk.hiddenItemType, lk.x, (lk.baseY || 0) + 0.96, lk.z + 0.05, lk.zoneName);
+        const itemId = `${lk.id}_${lk.hiddenItemType}`;
+        if (!this.openedLockerItemIds.has(itemId)) {
+          this.openedLockerItemIds.add(itemId);
+          this.spawnWorldItem(lk.hiddenItemType, lk.x, (lk.baseY || 0) + 0.96, lk.z + 0.05, lk.zoneName, itemId);
+        }
         const meta = ITEM_METADATA[lk.hiddenItemType];
         this.notifyToast(`[DISCOVERED] 보관함 내부에서 ${meta.name}을(를) 확인했습니다.`, 'success');
+        lk.hiddenItemType = null;
       } else {
         this.notifyToast('[INSPECT] 보관함을 개방했습니다. 비어 있습니다.', 'info');
+      }
+      if (this.callbacks.onLockerOpen) {
+        this.callbacks.onLockerOpen(lk.id);
       }
       return true;
     }
@@ -1173,11 +1224,16 @@ export class InteractionAndEscapeSystem {
 
     if (target.type === 'escape_gate') {
       if (!this.isEscapeOpen) {
-        this.notifyToast(
-          `[LOCKED] 탈출 게이트가 잠겨 있습니다. 중앙 코어에 부품 4개를 먼저 결합하십시오. (${this.coreState.totalInstalled}/4)`,
-          'warn'
-        );
-        return false;
+        const allFilled = this.coreState.socketMeshes.length > 0 && this.coreState.socketMeshes.every(s => s.filled);
+        if (this.coreState.totalInstalled >= this.coreState.maxTotal || allFilled) {
+          this.unlockEscapeGate();
+        } else {
+          this.notifyToast(
+            `[LOCKED] 탈출 게이트가 잠겨 있습니다. 중앙 코어에 부품 4개를 먼저 결합하십시오. (${this.coreState.totalInstalled}/4)`,
+            'warn'
+          );
+          return false;
+        }
       }
       this.isGameCleared = true;
       if (this.callbacks.onEscapeSuccess) {

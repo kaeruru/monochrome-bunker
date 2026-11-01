@@ -157,11 +157,13 @@ export class NetworkManager {
           }
 
           if (this.callbacks.onRoomJoined) {
+            this.matchSeed = msg.matchSeed || null;
             this.callbacks.onRoomJoined({
               roomId: this.roomId,
               playerId: this.playerId,
               isHost: this.isHost,
               mapId: msg.mapId || 'chapter1',
+              matchSeed: this.matchSeed,
               players: msg.players
             });
           }
@@ -193,6 +195,9 @@ export class NetworkManager {
         }
 
         case 'game_started': {
+          if (msg.matchSeed) {
+            this.matchSeed = msg.matchSeed;
+          }
           if (this.callbacks.onGameStarted) {
             this.callbacks.onGameStarted(msg);
           }
@@ -251,6 +256,7 @@ export class NetworkManager {
         }
 
         case 'item_pickup': {
+          if (msg.playerId && msg.playerId === this.playerId) break;
           if (this.callbacks.onItemPickupSync) {
             this.callbacks.onItemPickupSync(msg.itemId, msg.slot, msg.playerId);
           }
@@ -258,13 +264,23 @@ export class NetworkManager {
         }
 
         case 'item_drop': {
+          if (msg.playerId && msg.playerId === this.playerId) break;
           if (this.callbacks.onItemDropSync) {
             this.callbacks.onItemDropSync(msg.item, msg.x, msg.z);
           }
           break;
         }
 
+        case 'locker_open': {
+          if (msg.playerId && msg.playerId === this.playerId) break;
+          if (this.callbacks.onLockerOpenSync) {
+            this.callbacks.onLockerOpenSync(msg.lockerId, msg.playerId);
+          }
+          break;
+        }
+
         case 'core_insert': {
+          if (msg.playerId && msg.playerId === this.playerId) break;
           if (this.callbacks.onCoreInsertSync) {
             this.callbacks.onCoreInsertSync(msg.partType, msg.totalInserted, msg.playerId);
           }
@@ -512,6 +528,14 @@ export class NetworkManager {
       type: 'item_pickup',
       itemId,
       slot
+    }));
+  }
+
+  sendLockerOpen(lockerId) {
+    if (!this.isConnected || !this.ws || !this.roomId) return;
+    this.ws.send(JSON.stringify({
+      type: 'locker_open',
+      lockerId
     }));
   }
 
