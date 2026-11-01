@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { sound } from './audio.js';
 
 // ============================================================================
@@ -1389,523 +1391,246 @@ export class MonsterEntity {
 }
 
 // ============================================================================
-// 1-B. 제2장(침수 수로) 주력 추격자: [네크로모프 슬래셔 (Slasher Necromorph / CrawlerCrocodileEntity)]
-// - 데드 스페이스(Dead Space)의 슬래셔(Slasher)를 계승한 정통 바이오 호러 크리처.
-// - 단순 기계/도형 조합을 탈피하여, 실제 핏빛 생고기 근육 섬유(Flesh), 상아색 뼈 칼날(Bone), 창백한 부패 피부(Pale Skin)
-//   실사 텍스처를 3D 유기체 곡면에 직접 매핑하여 압도적인 시각적 공포와 생체 혐오감을 형성합니다.
-// - 구부정한 흉곽, 어깨 위로 높게 솟구쳐 'ㄱ'자로 꺾여 내려오는 거대한 한 쌍의 뼈 낫(Bone Scythes),
-//   가슴팍 한가운데 무력하게 축 늘어져 달랑거리는 원래 인간의 작은 손 2개, 목이 꺾인 일그러진 두개골,
-//   그리고 수중을 박차며 성큼성큼 다가오는 역관절 핏빛 다리를 갖춥니다.
+// 1-B. 제2장(침수 수로) 주력 추격자: [SCP-682 불사의 악어 파충류 괴물 (CrawlerCrocodileEntity)]
+// - 저용량 고퀄리티 단일 SkinnedMesh GLB 에셋 (public/models/scp-682_low-poly_style.glb)
+// - 내장 뼈대 리깅 및 3개 애니메이션('idle', 'walk', 'attack') 완전 연동
+// - 스토킹/추격/공격/점프스케어 상태에 따른 속도 및 블렌딩 제어
 // ============================================================================
+
+let scp682GltfPromise = null;
+export function preloadScp682Model() {
+  if (!scp682GltfPromise) {
+    const loader = new GLTFLoader();
+    scp682GltfPromise = new Promise((resolve) => {
+      loader.load(
+        '/models/scp-682_low-poly_style.glb',
+        (gltf) => resolve(gltf),
+        undefined,
+        (err) => {
+          console.warn('[Model] Primary GLB load failed, trying relative path:', err);
+          loader.load(
+            'models/scp-682_low-poly_style.glb',
+            (gltf) => resolve(gltf),
+            undefined,
+            (err2) => {
+              console.error('[Model] Failed to load SCP-682 GLB model:', err2);
+              resolve(null);
+            }
+          );
+        }
+      );
+    });
+  }
+  return scp682GltfPromise;
+}
+
+if (typeof window !== 'undefined') {
+  preloadScp682Model();
+}
+
 export class CrawlerCrocodileEntity {
   constructor() {
     this.mats = getMaterials();
     this.root = new THREE.Group();
     this.time = Math.random() * 10;
-    this.animMode = 'stalk';
-    this.lastMode = 'stalk';
+    this.animMode = 'idle';
+    this.lastMode = 'idle';
 
     this.enableSound = false;
     this.soundVolume = 0.25;
     this.walkCyclePhase = 0;
-    this.lastStepIndex = -1;
-    this.lastBeatIndex = -1;
+    this.walkTimer = 0;
+    this.growlTimer = 3.0 + Math.random() * 4.0;
     this.jumpscareProgress = 0;
 
-    this.scytheArms = [];
-    this.humanArms = [];
-    this.legs = [];
-    this.headGroup = null;
+    // Head anchor for kill cam and jumpscare targeting
+    this.headGroup = new THREE.Group();
+    this.headGroup.position.set(0, 1.35, 1.8);
+    this.root.add(this.headGroup);
 
-    this.buildSlasherAnatomy();
+    // Ominous predatory crimson light from monster head/jaws
+    this.heartLight = new THREE.PointLight(0xff1808, 2.8, 9.0);
+    this.heartLight.position.set(0, 0.1, 0.4);
+    this.headGroup.add(this.heartLight);
+
+    // Animation & mesh state
+    this.model = null;
+    this.mixer = null;
+    this.actions = {};
+    this.currentAction = null;
+    this.isLoaded = false;
+
+    this.loadModel();
   }
 
-  buildSlasherAnatomy() {
-    // 신장 약 2.5m급의 압도적인 바이오 호러 크리처
-    this.root.scale.set(1.22, 1.22, 1.22);
+  async loadModel() {
+    const gltf = await preloadScp682Model();
+    if (!gltf) return;
 
-    // 수로 바닥(Y=0.0m)에 발이 닿고 수면(Y=0.56m) 위로 흉곽과 뼈 낫이 솟구치도록 Y=0.74m 배치
-    this.bodyGroup = new THREE.Group();
-    this.bodyGroup.position.set(0, 0.74, 0);
-    this.root.add(this.bodyGroup);
+    this.model = SkeletonUtils.clone(gltf.scene);
 
-    // 1. 구부정한 척추 기둥 및 찢어진 인간의 몸통 (Hunched Torso & Spine)
-    this.torsoGroup = new THREE.Group();
-    this.torsoGroup.position.set(0, 0.95, 0);
-    this.bodyGroup.add(this.torsoGroup);
+    // Scale 0.22: 전장 약 5.2m, 전고 약 2.0m, 폭 약 2.4m
+    // 수로 3m 폭 통로를 가득 채우며 플레이어를 압도하는 거대 괴수
+    this.model.scale.set(0.22, 0.22, 0.22);
+    this.model.position.set(0, 0.03, 0);
 
-    // 뒤틀린 S자 척추 기둥 (핏빛 근육과 뼈 마디)
-    const spineCurve = createSculptedBioLimb(
-      [
-        [0, -0.45, -0.12],
-        [0, -0.15, -0.05],
-        [0, 0.18, 0.08],
-        [0, 0.45, 0.22]
-      ],
-      0.14,
-      0.10,
-      {
-        segments: 18,
-        flutes: 6,
-        ribFreq: 24,
-        ribAmp: 0.14,
-        mat: this.mats.slasherFlesh
-      }
-    );
-    this.torsoGroup.add(spineCurve);
-
-    // 가슴 상부/쇄골: 인간이었을 때의 창백하게 부패한 살갗 (Pale Skin)
-    const upperChest = createSculptedBioLimb(
-      [
-        [-0.24, 0.32, 0.18],
-        [0, 0.38, 0.24],
-        [0.24, 0.32, 0.18]
-      ],
-      0.11,
-      0.11,
-      {
-        segments: 14,
-        flutes: 4,
-        bulge: 0.22,
-        mat: this.mats.slasherPale
-      }
-    );
-    this.torsoGroup.add(upperChest);
-
-    // 흉곽 하부 및 복부: 세로로 흉측하게 찢어져 붉은 내장과 근육 섬유질이 노출된 살점 (Raw Bloody Flesh)
-    const gutFlesh = createSculptedBioLimb(
-      [
-        [0, 0.26, 0.20],
-        [0, 0.02, 0.16],
-        [0, -0.25, 0.08],
-        [0, -0.42, 0.0]
-      ],
-      0.16,
-      0.12,
-      {
-        segments: 16,
-        radialSegs: 12,
-        flutes: 6,
-        fluteDepth: 0.18,
-        ribFreq: 20,
-        ribAmp: 0.12,
-        bulge: 0.28,
-        mat: this.mats.slasherFlesh
-      }
-    );
-    this.torsoGroup.add(gutFlesh);
-
-    // 찢어진 흉곽 틈새로 삐져나온 6개의 날카로운 부러진 갈비뼈 핀 (Broken Rib Spikes)
-    for (let side of [-1, 1]) {
-      for (let r = 0; r < 3; r++) {
-        const ribPin = new THREE.Mesh(
-          new THREE.ConeGeometry(0.016, 0.18 - r * 0.02, 5),
-          this.mats.slasherBone
-        );
-        ribPin.position.set(side * (0.13 + r * 0.02), 0.18 - r * 0.14, 0.16 + r * 0.03);
-        ribPin.rotation.set(0.3, 0, -side * 0.7);
-        this.torsoGroup.add(ribPin);
-      }
-    }
-
-    // 가슴 내부에서 붉은빛으로 불길하게 맥동하는 생체 심장 코어
-    this.heartLight = new THREE.PointLight(0xff1818, 2.5, 4.2, 1.8);
-    this.heartLight.position.set(0, 0.12, 0.10);
-    this.torsoGroup.add(this.heartLight);
-
-    // 2. 가슴팍에 무력하게 축 늘어져 달랑거리는 원래 인간의 작은 손 2개 (Torpid Human Arms)
-    // - 네크로모프 슬래셔 특유의 소름 돋는 '불쾌한 골짜기' 핵심 디테일!
-    for (let side of [-1, 1]) {
-      const armRoot = new THREE.Group();
-      armRoot.position.set(side * 0.11, 0.16, 0.22);
-      this.torsoGroup.add(armRoot);
-
-      // 늘어진 상박
-      const humanUpper = createSculptedBioLimb(
-        [
-          [0, 0, 0],
-          [side * 0.03, -0.16, 0.02]
-        ],
-        0.035,
-        0.026,
-        { segments: 8, flutes: 3, mat: this.mats.slasherPale }
-      );
-      armRoot.add(humanUpper);
-
-      // 무력한 하박과 손가락
-      const humanLower = createSculptedBioLimb(
-        [
-          [side * 0.03, -0.16, 0.02],
-          [side * 0.04, -0.36, 0.06]
-        ],
-        0.026,
-        0.018,
-        { segments: 8, flutes: 3, mat: this.mats.slasherPale }
-      );
-      armRoot.add(humanLower);
-
-      // 쪼그라든 손가락
-      for (let f = -1; f <= 1; f++) {
-        const finger = new THREE.Mesh(
-          new THREE.ConeGeometry(0.005, 0.06, 4),
-          this.mats.slasherPale
-        );
-        finger.position.set(side * 0.04 + f * 0.01, -0.38, 0.07);
-        finger.rotation.x = Math.PI - 0.2;
-        armRoot.add(finger);
-      }
-
-      this.humanArms.push({ armRoot, side });
-    }
-
-    // 3. 어깨 위로 높게 솟구쳐 'ㄱ'자로 꺾여 내려오는 한 쌍의 거대한 뼈 낫 (Dorsal Bone Scythes)
-    // - 레퍼런스 이미지(데드스페이스 슬래셔)의 상징이자 메인 살인 흉기!
-    this.scytheArms = [];
-    for (let side of [-1, 1]) {
-      const scytheBase = new THREE.Group();
-      scytheBase.position.set(side * 0.24, 0.42, 0.08);
-      this.torsoGroup.add(scytheBase);
-
-      // 어깨 뒤에서 위로 높게 치솟는 굵은 핏빛 근육 상박 (Upper Scythe Limb - 전고 2.5m까지 솟구침)
-      const upperScytheMesh = createSculptedBioLimb(
-        [
-          [0, 0, 0],
-          [side * 0.16, 0.42, -0.06],
-          [side * 0.32, 0.82, -0.10],
-          [side * 0.28, 1.05, 0.05]
-        ],
-        0.13,
-        0.095,
-        {
-          segments: 20,
-          radialSegs: 12,
-          flutes: 6,
-          fluteDepth: 0.18,
-          ribFreq: 22,
-          ribAmp: 0.12,
-          bulge: 0.22,
-          mat: this.mats.slasherFlesh
+    let headBoneFound = null;
+    this.model.traverse((child) => {
+      if (child.isMesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+        if (child.material) {
+          child.material.roughness = 0.68;
+          child.material.metalness = 0.22;
         }
-      );
-      scytheBase.add(upperScytheMesh);
-
-      // 꼭대기 팔꿈치 힌지 관절: 전방 아래를 향해 'ㄱ'자로 사납게 꺾임
-      const elbowJoint = new THREE.Group();
-      elbowJoint.position.set(side * 0.28, 1.05, 0.05);
-      scytheBase.add(elbowJoint);
-
-      // 관절 부위 튀어나온 핏빛 힘줄 덩어리
-      const elbowFlesh = new THREE.Mesh(
-        new THREE.SphereGeometry(0.11, 8, 8),
-        this.mats.slasherFlesh
-      );
-      elbowFlesh.scale.set(1.0, 1.3, 1.1);
-      elbowJoint.add(elbowFlesh);
-
-      // 아래로 길게 뻗은 치명적인 상아색 뼈 낫 칼날 (Scythe Blade - 전장 1.45m!)
-      // - 칼날 끝에는 검붉은 피가 묻어 있고 바닥/수면을 가르며 전진
-      const bladeMesh = createSculptedBioLimb(
-        [
-          [0, 0, 0],
-          [side * 0.04, -0.55, 0.35],
-          [side * 0.02, -1.15, 0.65],
-          [0, -1.45, 0.82]
-        ],
-        0.095,
-        0.008,
-        {
-          segments: 24,
-          radialSegs: 10,
-          flutes: 4,
-          fluteDepth: 0.24,
-          ribFreq: 18,
-          ribAmp: 0.08,
-          bulge: 0.12,
-          mat: this.mats.slasherBone
-        }
-      );
-      elbowJoint.add(bladeMesh);
-
-      // 칼날 뒤쪽에 돋아난 보조 뼈 갈퀴 가시 (Barbs)
-      for (let b = 1; b <= 3; b++) {
-        const barb = new THREE.Mesh(
-          new THREE.ConeGeometry(0.018, 0.14, 4),
-          this.mats.slasherBone
-        );
-        barb.position.set(side * 0.03, -0.32 * b, 0.22 * b - 0.05);
-        barb.rotation.x = -Math.PI / 3;
-        elbowJoint.add(barb);
       }
-
-      this.scytheArms.push({ scytheBase, elbowJoint, side });
-    }
-
-    // 4. 목이 꺾인 일그러진 인간 두개골 (Disfigured Necromorph Head)
-    this.headGroup = new THREE.Group();
-    this.headGroup.position.set(0, 0.48, 0.24);
-    // 목이 오른쪽으로 기괴하게 꺾여 있음
-    this.headGroup.rotation.z = 0.28;
-    this.headGroup.rotation.y = -0.15;
-    this.torsoGroup.add(this.headGroup);
-
-    // 일그러진 두개골 (창백한 살점 + 뭉개진 얼굴)
-    const headCranium = createSculptedBioLimb(
-      [
-        [0, 0, 0],
-        [0, 0.12, 0.04],
-        [0, 0.22, 0.02]
-      ],
-      0.10,
-      0.085,
-      { segments: 10, flutes: 4, bulge: 0.25, mat: this.mats.slasherPale }
-    );
-    this.headGroup.add(headCranium);
-
-    // 이마와 관자놀이에서 삐져나온 기괴한 뼈 돌기 뿔 (Cranial Horns)
-    for (let side of [-1, 1]) {
-      const horn = new THREE.Mesh(
-        new THREE.ConeGeometry(0.022, 0.12, 4),
-        this.mats.slasherBone
-      );
-      horn.position.set(side * 0.08, 0.18, 0.08);
-      horn.rotation.set(0.4, 0, side * 0.5);
-      this.headGroup.add(horn);
-
-      // 어둠 속에서 번뜩이는 백색 핀포인트 동공
-      const eyePupil = new THREE.Mesh(
-        new THREE.SphereGeometry(0.010, 6, 6),
-        this.mats.nightmarePupil
-      );
-      eyePupil.position.set(side * 0.05, 0.11, 0.10);
-      this.headGroup.add(eyePupil);
-    }
-
-    // 찢어진 턱과 핏빛 아가리
-    const disfiguredJaw = createSculptedBioLimb(
-      [
-        [0, 0.02, 0.06],
-        [0, -0.10, 0.12]
-      ],
-      0.062,
-      0.042,
-      { segments: 8, flutes: 3, mat: this.mats.slasherFlesh }
-    );
-    this.headGroup.add(disfiguredJaw);
-
-    // 5. 뒤틀린 역관절 다리 2개 (Digitigrade Muscular Legs)
-    this.legs = [];
-    for (let side of [-1, 1]) {
-      const hipGroup = new THREE.Group();
-      hipGroup.position.set(side * 0.20, -0.42, 0.0);
-      this.torsoGroup.add(hipGroup);
-
-      // 굵고 핏빛 근육질 대퇴골 (Thigh)
-      const thigh = createSculptedBioLimb(
-        [
-          [0, 0, 0],
-          [side * 0.06, -0.32, -0.15],
-          [side * 0.08, -0.62, -0.22]
-        ],
-        0.115,
-        0.082,
-        { segments: 14, flutes: 5, ribFreq: 18, ribAmp: 0.10, bulge: 0.24, mat: this.mats.slasherFlesh }
-      );
-      hipGroup.add(thigh);
-
-      // 뒤로 꺾인 역관절 무릎
-      const kneeGroup = new THREE.Group();
-      kneeGroup.position.set(side * 0.08, -0.62, -0.22);
-      hipGroup.add(kneeGroup);
-
-      // 길쭉하고 앙상한 정강이 (Shin)
-      const shin = createSculptedBioLimb(
-        [
-          [0, 0, 0],
-          [side * 0.02, -0.38, 0.18],
-          [0, -0.65, 0.28]
-        ],
-        0.078,
-        0.052,
-        { segments: 14, flutes: 4, ribFreq: 16, ribAmp: 0.10, mat: this.mats.slasherFlesh }
-      );
-      kneeGroup.add(shin);
-
-      // 찢어진 뼈 발굽 / 갈퀴 발 (Torn Bone Foot)
-      const ankleGroup = new THREE.Group();
-      ankleGroup.position.set(0, -0.65, 0.28);
-      kneeGroup.add(ankleGroup);
-
-      for (let k = -1; k <= 1; k++) {
-        const claw = new THREE.Mesh(
-          new THREE.ConeGeometry(0.016, 0.16, 4),
-          this.mats.slasherBone
-        );
-        claw.position.set(k * 0.038, -0.04, 0.08);
-        claw.rotation.x = Math.PI / 2 + 0.15;
-        ankleGroup.add(claw);
+      if (child.isBone && (child.name === 'head_06' || child.name.toLowerCase().includes('head'))) {
+        headBoneFound = child;
       }
+    });
 
-      this.legs.push({ hipGroup, kneeGroup, ankleGroup, side });
+    if (headBoneFound) {
+      // headGroup을 headBone 자식으로 재배치하여 고개/턱 움직임에 동기화
+      headBoneFound.add(this.headGroup);
+      this.headGroup.position.set(0, 0.05, 0.35);
     }
+
+    this.root.add(this.model);
+
+    // AnimationMixer 생성 및 애니메이션 등록
+    this.mixer = new THREE.AnimationMixer(this.model);
+    if (gltf.animations) {
+      for (const clip of gltf.animations) {
+        const action = this.mixer.clipAction(clip);
+        action.setLoop(THREE.LoopRepeat);
+        this.actions[clip.name] = action;
+      }
+    }
+
+    this.isLoaded = true;
+    this.setAnimation(this.animMode, 0.05);
+  }
+
+  setAnimation(mode, fadeDuration = 0.22) {
+    if (!this.mixer || !this.isLoaded) return;
+
+    let targetClip = 'idle';
+    let timeScale = 1.0;
+
+    if (mode === 'chase') {
+      targetClip = 'walk';
+      timeScale = 1.95;
+    } else if (mode === 'stalk') {
+      targetClip = 'walk';
+      timeScale = 1.05;
+    } else if (mode === 'attack') {
+      targetClip = 'attack';
+      timeScale = 1.35;
+    } else if (mode === 'jumpscare') {
+      targetClip = 'attack';
+      timeScale = 1.75;
+    } else {
+      targetClip = 'idle';
+      timeScale = 1.0;
+    }
+
+    const nextAction = this.actions[targetClip];
+    if (!nextAction) return;
+
+    if (this.currentAction === nextAction) {
+      nextAction.timeScale = timeScale;
+      return;
+    }
+
+    nextAction.reset();
+    nextAction.timeScale = timeScale;
+    nextAction.play();
+
+    if (this.currentAction) {
+      this.currentAction.crossFadeTo(nextAction, fadeDuration, true);
+    }
+    this.currentAction = nextAction;
   }
 
   update(dt, mode = this.animMode, moveDist = null) {
     if (mode !== this.lastMode) {
       if (this.enableSound && (mode === 'chase' || mode === 'attack')) {
         sound.playCrawlerScreech(this.soundVolume * 1.15);
+      } else if (this.enableSound && mode === 'jumpscare') {
+        sound.playCrawlerJumpscare();
       }
+
       if (mode === 'jumpscare') {
         this.jumpscareProgress = 0;
-      } else if (this.lastMode === 'jumpscare') {
-        this.bodyGroup.position.set(0, 0.74, 0);
-        this.bodyGroup.rotation.set(0, 0, 0);
-        this.torsoGroup.position.set(0, 0.95, 0);
+      } else if (this.lastMode === 'jumpscare' && this.model) {
+        this.model.position.set(0, 0.03, 0);
       }
       this.lastMode = mode;
+      this.setAnimation(mode, 0.2);
     }
     this.animMode = mode;
+    this.time += dt;
 
-    const speedMult = mode === 'chase' ? 2.6 : mode === 'attack' ? 2.1 : mode === 'stalk' ? 1.2 : 0.7;
-    this.time += dt * speedMult;
-    const t = this.time;
+    // 믹서 애니메이션 갱신
+    if (this.mixer) {
+      this.mixer.update(dt);
+    }
 
-    // 1. 심장 맥동 라이트
-    const beatRate = mode === 'chase' ? 3.4 : 1.4;
-    const beatCycle = (this.time * beatRate) % 1.0;
-    const curBeatIdx = Math.floor(this.time * beatRate);
-    if (this.enableSound && curBeatIdx !== this.lastBeatIndex) {
-      this.lastBeatIndex = curBeatIdx;
-      if (mode === 'idle' || mode === 'stalk') {
-        sound.playCrawlerGrowl(this.soundVolume * 0.7);
+    // 포식자 붉은 안광 맥동
+    if (this.heartLight) {
+      if (mode === 'jumpscare') {
+        this.heartLight.intensity = 14.0;
+      } else {
+        const pulse = Math.sin(this.time * (mode === 'chase' ? 7.0 : 2.5)) * 0.8;
+        this.heartLight.intensity = (mode === 'chase' ? 4.2 : 2.6) + pulse;
       }
     }
-    const lub = Math.exp(-Math.pow((beatCycle - 0.12) * 14, 2));
-    if (this.heartLight) {
-      this.heartLight.intensity = mode === 'jumpscare' ? 12.0 : (2.0 + lub * 3.5);
-    }
 
-    // 2. 점프스케어 모션: 카메라 정면으로 몸을 들이밀며 화면 양옆에서 두 거대 뼈 낫을 X자로 교차해 내리꽂음!
+    // 점프스케어 시 카메라 전방으로 맹렬한 급돌진 & 물어뜯기
     if (mode === 'jumpscare') {
       this.jumpscareProgress = (this.jumpscareProgress || 0) + dt;
       const jp = this.jumpscareProgress;
-      const lunge = THREE.MathUtils.clamp((jp - 0.05) / 0.24, 0, 1);
+      const lunge = THREE.MathUtils.clamp((jp - 0.04) / 0.22, 0, 1);
       const surge = 1 - Math.pow(1 - lunge, 3);
-
-      this.bodyGroup.position.set(0, 0.74 + surge * 0.45, 0.35 + surge * 0.68);
-      this.bodyGroup.rotation.x = -0.15 + Math.sin(jp * 32) * 0.06;
-      this.bodyGroup.rotation.y = (Math.random() - 0.5) * 0.08;
-
-      // 두 거대 뼈 낫이 번쩍 솟구친 후 플레이어의 안면 정면으로 맹렬히 교차해 내리꽂힘
-      for (let i = 0; i < this.scytheArms.length; i++) {
-        const sc = this.scytheArms[i];
-        const slashAngle = THREE.MathUtils.lerp(-0.45, 0.85, surge) + Math.sin(jp * 36) * 0.14;
-        sc.scytheBase.rotation.x = slashAngle;
-        sc.scytheBase.rotation.z = -sc.side * (0.35 + surge * 0.45);
-        sc.elbowJoint.rotation.x = 0.25 + surge * 0.65;
-      }
-
-      // 머리가 기괴하게 경련하며 덜덜 떨림
-      if (this.headGroup) {
-        this.headGroup.rotation.x = Math.sin(jp * 42) * 0.25;
-        this.headGroup.rotation.y = Math.cos(jp * 36) * 0.25;
-        this.headGroup.rotation.z = 0.28 + Math.sin(jp * 48) * 0.18;
+      if (this.model) {
+        this.model.position.set(
+          (Math.random() - 0.5) * 0.04,
+          0.03 + surge * 0.25,
+          surge * 0.88
+        );
       }
       return;
     }
 
+    // 이동 발걸음 및 물살 가르기 사운드 동기화
     const isChase = mode === 'chase';
-    const isAttack = mode === 'attack';
-    const stepMeters = isChase ? 1.45 : 1.05;
-
+    const isStalk = mode === 'stalk';
     let isMoving = false;
     if (typeof moveDist === 'number') {
-      if (moveDist > 0.0003) {
-        isMoving = true;
-        this.walkCyclePhase = (this.walkCyclePhase || 0) + (moveDist / stepMeters) * Math.PI;
-      }
-    } else if (mode === 'stalk' || mode === 'chase') {
+      if (moveDist > 0.0003) isMoving = true;
+    } else if (isChase || isStalk) {
       isMoving = true;
-      const fallbackSpeed = isChase ? 5.6 : 3.2;
-      this.walkCyclePhase = (this.walkCyclePhase || 0) + (dt * fallbackSpeed / stepMeters) * Math.PI;
     }
 
-    const phase = this.walkCyclePhase || 0;
-
-    // 이동 발걸음 사운드 동기화
-    const stepIdx = Math.floor((phase + Math.PI / 2) / Math.PI);
-    if (this.enableSound && stepIdx !== this.lastStepIndex && isMoving) {
-      this.lastStepIndex = stepIdx;
-      sound.playCrawlerFootstep(this.soundVolume, isChase);
-    }
-
-    // 3. 네크로모프 구부정한 몸통 보행 바운스 & 좌우 진자 흔들림
-    const bobY = isMoving
-      ? Math.abs(Math.cos(phase)) * (isChase ? 0.08 : 0.04)
-      : Math.sin(t * 2.0) * 0.015;
-    const swayZ = isMoving
-      ? Math.sin(phase) * (isChase ? 0.09 : 0.045)
-      : Math.sin(t * 1.5) * 0.02;
-
-    this.bodyGroup.position.set(0, 0.74 + bobY, 0);
-    this.torsoGroup.rotation.x = isChase ? 0.28 : (isAttack ? -0.15 : 0.12);
-    this.torsoGroup.rotation.y = isMoving ? Math.sin(phase) * 0.10 : 0;
-    this.torsoGroup.rotation.z = swayZ;
-
-    // 4. 거대 뼈 낫 팔 애니메이션 (Scythe Slash / Walk Cycle)
-    for (let i = 0; i < this.scytheArms.length; i++) {
-      const sc = this.scytheArms[i];
-      if (isAttack) {
-        // 공격 시 두 낫을 치켜들고 찍어누르는 위협 모션
-        const snap = Math.sin(t * 8.0);
-        sc.scytheBase.rotation.x = -0.35 + snap * 0.55;
-        sc.scytheBase.rotation.z = -sc.side * 0.25;
-        sc.elbowJoint.rotation.x = 0.25 + Math.max(0, snap) * 0.45;
-      } else if (isMoving) {
-        // 이동/추격 시 거대한 뼈 낫을 앞뒤로 사납게 휘두르며 물살을 가름
-        const armSwing = Math.sin(phase + (sc.side < 0 ? 0 : Math.PI)) * (isChase ? 0.52 : 0.28);
-        sc.scytheBase.rotation.x = (isChase ? 0.22 : 0.05) + armSwing;
-        sc.scytheBase.rotation.z = -sc.side * (isChase ? 0.24 : 0.16) + Math.cos(phase) * 0.05;
-        sc.elbowJoint.rotation.x = (isChase ? 0.35 : 0.18) + Math.max(0, -armSwing) * 0.25;
-      } else {
-        // 대기 시 어깨 위에서 덜덜 떨리며 불길하게 대기
-        sc.scytheBase.rotation.x = Math.sin(t * 1.8 + i) * 0.06;
-        sc.scytheBase.rotation.z = -sc.side * 0.18;
-        sc.elbowJoint.rotation.x = 0.12 + Math.sin(t * 2.2) * 0.04;
+    if (isMoving) {
+      const stepInterval = isChase ? 0.22 : 0.42;
+      this.walkTimer = (this.walkTimer || 0) + dt;
+      if (this.walkTimer >= stepInterval) {
+        this.walkTimer -= stepInterval;
+        if (this.enableSound) {
+          sound.playCrawlerFootstep(this.soundVolume, isChase);
+        }
       }
-    }
-
-    // 5. 가슴팍의 작은 인간 팔: 이동 관성에 따라 힘없이 덜렁거림
-    for (let i = 0; i < this.humanArms.length; i++) {
-      const ha = this.humanArms[i];
-      const swing = isMoving ? Math.sin(phase * 1.5 + i) * 0.35 : Math.sin(t * 2.5 + i) * 0.08;
-      ha.armRoot.rotation.x = swing;
-      ha.armRoot.rotation.z = ha.side * 0.12 + swing * 0.2;
-    }
-
-    // 6. 목 꺾인 일그러진 머리: 까딱거리며 플레이어를 노려봄
-    if (this.headGroup) {
-      const twitch = isChase ? (Math.random() - 0.5) * 0.14 : Math.sin(t * 1.6) * 0.05;
-      this.headGroup.rotation.x = (isChase ? 0.15 : 0.0) + twitch;
-      this.headGroup.rotation.y = -0.15 + (isMoving ? -swayZ * 1.2 : Math.sin(t * 1.2) * 0.12);
-      this.headGroup.rotation.z = 0.28 + Math.sin(t * 2.0) * 0.06;
-    }
-
-    // 7. 역관절 다리 2족 보행 애니메이션
-    const stride = isChase ? 0.65 : 0.42;
-    for (let i = 0; i < this.legs.length; i++) {
-      const leg = this.legs[i];
-      if (!isMoving) {
-        leg.hipGroup.rotation.x = 0;
-        leg.kneeGroup.rotation.x = 0;
-        continue;
+    } else {
+      this.walkTimer = 0;
+      // 대기 시 주기적 저음 으르렁거림
+      this.growlTimer = (this.growlTimer || 4.0) - dt;
+      if (this.growlTimer <= 0) {
+        this.growlTimer = 4.0 + Math.random() * 5.0;
+        if (this.enableSound && (mode === 'idle' || mode === 'stalk')) {
+          sound.playCrawlerGrowl(this.soundVolume * 0.7);
+        }
       }
-      const legPhase = phase + (leg.side < 0 ? 0 : Math.PI);
-      const legSwing = Math.sin(legPhase);
-      const legLift = Math.max(0, -Math.cos(legPhase));
-
-      leg.hipGroup.rotation.x = legSwing * stride;
-      leg.kneeGroup.rotation.x = legLift * (stride * 1.1);
-      leg.ankleGroup.rotation.x = -legSwing * (stride * 0.6);
     }
   }
 }

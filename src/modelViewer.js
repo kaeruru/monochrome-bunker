@@ -69,7 +69,7 @@ export class ModelShowcaseViewer {
         <div class="mv-tool-group">
           <span class="mv-label">관찰 대상:</span>
           <button class="tool-btn mv-target-btn active" data-target="trio">[TRIO] 제2장 삼두 괴수</button>
-          <button class="tool-btn mv-target-btn" data-target="crawler">[#1 RIPPER] 스토커 악어</button>
+          <button class="tool-btn mv-target-btn" data-target="crawler">[#1 SCP-682] 메인 악어 괴수</button>
           <button class="tool-btn mv-target-btn" data-target="lurker">[#2 LURKER] 매복자 악어</button>
           <button class="tool-btn mv-target-btn" data-target="snare">[#3 SNARE] 맹글 악어</button>
           <button class="tool-btn mv-target-btn" data-target="monster">[CH.1] 제1장 스토커</button>
@@ -174,25 +174,25 @@ export class ModelShowcaseViewer {
       this.lurker.root.visible = true;
       this.crawler.root.visible = true;
       this.snare.root.visible = true;
-      this.lurker.root.position.set(-1.35, 0, 0);
+      this.lurker.root.position.set(-2.0, 0, 0);
       this.crawler.root.position.set(0, 0, 0);
-      this.snare.root.position.set(1.35, -0.1, 0);
-      this.orbitDist = 3.9;
-      this.orbitCenterY = 0.78;
-      if (titleEl) titleEl.textContent = '[THE FLOODED TRIO] 제2장 침수 수로 나이트메어 삼두 괴수';
+      this.snare.root.position.set(2.0, -0.1, 0);
+      this.orbitDist = 5.6;
+      this.orbitCenterY = 0.85;
+      if (titleEl) titleEl.textContent = '[THE FLOODED TRIO] 제2장 침수 수로 삼두 괴수';
       if (descEl) {
         descEl.textContent =
-          '좌측: #2 매복자 악어(경사로/사다리 입구 잠복, 불빛으로 퇴치) | 중앙: #1 스토커 악어(3분할 나이트메어 하악 주력 추격자) | 우측: #3 맹글 악어(천장 낙하 결박 및 스토커 호출)';
+          '좌측: #2 매복자 악어(경사로/사다리 입구 잠복) | 중앙: #1 SCP-682 악어 괴수(골격 애니메이션 주력 추격자) | 우측: #3 맹글 악어(천장 낙하 결박)';
       }
     } else if (target === 'crawler') {
       this.crawler.root.visible = true;
       this.crawler.root.position.set(0, 0, 0);
-      this.orbitDist = 3.1;
-      this.orbitCenterY = 0.55;
-      if (titleEl) titleEl.textContent = '[#1 THE RIPPER] 제2장 스토커 악어 (Nightmare Freddy 포지션)';
+      this.orbitDist = 4.8;
+      this.orbitCenterY = 0.85;
+      if (titleEl) titleEl.textContent = '[#1 SCP-682 / CRAWLER] 제2장 불사의 파충류 괴수 (메인 추격자)';
       if (descEl) {
         descEl.textContent =
-          '물소리 파동과 맹글의 괴성을 추적하는 주력 처형 괴수입니다. 뜯겨나간 갑피 사이로 노출된 엔도 척추, 녹슨 철근 가시와 철조망, 추격/공격 시 좌·우·하단 3갈래로 쪼개지는 나이트메어 하악을 갖춥니다.';
+          '사용자 제공 저용량 고퀄리티 SkinnedMesh GLB 에셋. 단 1회 드로우콜로 모바일/태블릿에서도 60FPS 완벽 방어. 골격 리깅 내장 3종 애니메이션([대기(idle)], [보행/추격(walk)], [공격/점프스케어(attack)])과 수중 물살 음향이 실시간 동기화됩니다.';
       }
     } else if (target === 'lurker') {
       this.lurker.root.visible = true;
