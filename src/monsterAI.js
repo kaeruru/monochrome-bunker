@@ -820,10 +820,10 @@ export class MonsterAI {
     const dz = playerPos.z - this.pos.z;
     const dist = Math.hypot(dx, dz);
 
-    // 안개 가시거리(10.5m)와 괴물 시야 거리를 정밀 일치시켜 보이지 않는 원거리 억까 원천 차단
-    // 챕터 2는 맵 자체가 손전등과 괴물이 무관하므로 손전등 온오프에 영향받지 않고 10.5m 기준 일정
+    // 안개 가시거리(8.2m)와 괴물 시야 거리를 정밀 일치시켜 보이지 않는 원거리 억까 원천 차단
+    // 챕터 2는 맵 자체가 손전등과 괴물이 무관하므로 손전등 온오프에 영향받지 않고 8.2m 기준 일정
     const maxSightDist = isCh2
-      ? 10.5
+      ? 8.2
       : (flashlightOn ? 15.0 : (isBlackout ? 3.5 : 5.2));
     if (dist > maxSightDist) return false;
 
@@ -1886,9 +1886,12 @@ export class MonsterAI {
     }
 
     // -------------------------------------------------------------------------
-    // [B] #3 맹글 악어 (SnareMangleEntity - 천장 배관 기어가기 순찰 & 라디오 잡음 & 낙하 결박)
+    // [B] #3 맹글 악어 (SnareMangleEntity - 수로 천장 배관만 기어다님 & 라디오 잡음 & 낙하 결박)
+    // 맹글 악어는 오직 침수 수로(물속) 상공에서만 이동하며, 물 밖(육상/고지대)으로는 나가지 못함!
     // -------------------------------------------------------------------------
     const dSnare = Math.hypot(playerPos.x - this.snarePos.x, playerPos.z - this.snarePos.z);
+    const inWater = this.map && this.map.isWaterAt ? this.map.isWaterAt(playerPos.x, playerPos.z) : false;
+    const playerInWater = inWater && playerFootY < 0.65;
 
     // 주기적 FNAF Mangle 풍 기괴한 라디오 정전기 잡음
     this.snareStaticTimer -= dt;
@@ -1905,8 +1908,8 @@ export class MonsterAI {
       this.snareState = 'SNARE_COOLDOWN';
       this.snareTimer = 2.5;
       sound.playLurkerSubmerge();
-    } else if (dSnare < 1.95 && playerFootY < 0.75 && !this.isKillingPlayer && !this.isPlayerSnared && this.snareState !== 'SNARE_COOLDOWN') {
-      // 머리 위에서 낙하하여 결박 발동!
+    } else if (dSnare < 1.95 && playerInWater && !this.isKillingPlayer && !this.isPlayerSnared && this.snareState !== 'SNARE_COOLDOWN') {
+      // 플레이어가 물속에 있을 때만 머리 위에서 낙하하여 결박 발동!
       this.snareState = 'SNARE_HOLD';
       this.snareTimer = 4.5;
       this.snareAlarmTimer = 0.85;
@@ -1921,14 +1924,15 @@ export class MonsterAI {
         );
       }
     } else if (this.snareState === 'SNARE_CRAWL') {
-      // 천장 배관/철골을 따라 거꾸로 매달려 스멀스멀 기어서 순찰
+      // 침수 수로 상공 천장 배관 네트워크를 따라 거꾸로 매달려 기어서 순찰
       this.snareTimer -= dt;
 
       if (!this.snareTargetNode || Math.hypot(this.snareTargetNode.x - this.snarePos.x, this.snareTargetNode.z - this.snarePos.z) < 0.65) {
-        // 플레이어가 근처(16m)에서 소음을 내면 플레이어 머리 위로 기어감
-        if (dSnare < 16.0) {
+        // 플레이어가 물속에 있고 14m 이내에 있을 때만 플레이어 위치로 이동
+        if (playerInWater && dSnare < 14.0) {
           this.snareTargetNode = { x: playerPos.x, z: playerPos.z };
         } else if (this.allCeilingNodes && this.allCeilingNodes.length > 0) {
+          // 플레이어가 물 밖(육상/고지대)에 있거나 멀면 오직 수로(물속) 천장 노드만을 순찰
           const nearby = this.allCeilingNodes.filter(n => {
             const dist = Math.hypot(n.x - this.snarePos.x, n.z - this.snarePos.z);
             return dist >= 2.0 && dist <= 7.0;
@@ -1955,9 +1959,19 @@ export class MonsterAI {
         while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
         this.snareYaw += yawDiff * Math.min(1.0, dt * 3.8);
 
-        const crawlSpeed = (dSnare < 14.0) ? 2.4 : 1.7;
-        this.snarePos.x += Math.sin(this.snareYaw) * crawlSpeed * dt;
-        this.snarePos.z += Math.cos(this.snareYaw) * crawlSpeed * dt;
+        const crawlSpeed = (playerInWater && dSnare < 14.0) ? 2.4 : 1.7;
+        const nextX = this.snarePos.x + Math.sin(this.snareYaw) * crawlSpeed * dt;
+        const nextZ = this.snarePos.z + Math.cos(this.snareYaw) * crawlSpeed * dt;
+
+        // 맹글 악어 이동 보호: 물 밖(육상/플랫폼/경사로 밖)으로는 절대 나가지 않음
+        const isWaterNext = this.map && this.map.isWaterAt ? this.map.isWaterAt(nextX, nextZ) : true;
+        if (isWaterNext) {
+          this.snarePos.x = nextX;
+          this.snarePos.z = nextZ;
+        } else {
+          // 수로 경계에 도달하면 즉시 다른 수로 천장 노드로 방향 전환
+          this.snareTargetNode = null;
+        }
         this.snarePos.y = 1.32;
       }
 
@@ -1981,6 +1995,15 @@ export class MonsterAI {
       this.snareEntity.root.rotation.y = this.snareYaw;
       this.snareEntity.update(dt, 'stalk');
     } else if (this.snareState === 'SNARE_HOLD') {
+      // 플레이어가 결박 도중 물 밖으로 벗어난 경우 즉시 결박 해제
+      if (!playerInWater && !this.isKillingPlayer) {
+        this.isPlayerSnared = false;
+        this.snareEscapeProgress = 0;
+        this.snareState = 'SNARE_COOLDOWN';
+        this.snareTimer = 3.0;
+        sound.playLurkerSubmerge();
+        return;
+      }
       this.snareTimer -= dt;
       this.snareEscapeProgress = Math.min(100, this.snareEscapeProgress + dt * 18.0);
 

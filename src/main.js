@@ -97,6 +97,9 @@ class MonochromeBunker3D {
     this._cachedForward = new THREE.Vector3(0, 0, -1);
     this._extraBlipsPool = [];
 
+    // 챕터 2 전용 자욱한 수증기/물안개 부유 입자 시스템 초기화
+    this.createMistParticles();
+
     // 모바일 60FPS를 위해 불필요한 실시간 PointLight 제거
     this.playerFillLight = null;
 
@@ -508,10 +511,12 @@ class MonochromeBunker3D {
       // 디벗 (갤럭시 탭 S9 FE) 및 저사양 노트북 최적화
       this.renderer.setPixelRatio(0.85);
       this.renderer.toneMappingExposure = 0.85;
-      if (this.scene && this.scene.fog) this.scene.fog.density = 0.048;
-      if (this.flashlight) {
-        this.flashlight.distance = 30;
-        this.flashlight.intensity = 24;
+      if (this.activeChapterId !== 'chapter2') {
+        if (this.scene && this.scene.fog && this.scene.fog.isFogExp2) this.scene.fog.density = 0.048;
+        if (this.flashlight) {
+          this.flashlight.distance = 30;
+          this.flashlight.intensity = 24;
+        }
       }
       if (descEl) {
         descEl.textContent = '갤럭시 탭 S9 FE 및 구형 노트북 추천: 렌더 스케일 최적화로 발열과 끊김을 줄이고 60FPS를 방어합니다.';
@@ -520,10 +525,12 @@ class MonochromeBunker3D {
       // 고사양 게이밍 데스크톱
       this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
       this.renderer.toneMappingExposure = 0.90;
-      if (this.scene && this.scene.fog) this.scene.fog.density = 0.055;
-      if (this.flashlight) {
-        this.flashlight.distance = 40;
-        this.flashlight.intensity = 28;
+      if (this.activeChapterId !== 'chapter2') {
+        if (this.scene && this.scene.fog && this.scene.fog.isFogExp2) this.scene.fog.density = 0.055;
+        if (this.flashlight) {
+          this.flashlight.distance = 40;
+          this.flashlight.intensity = 28;
+        }
       }
       if (descEl) {
         descEl.textContent = '고사양 게이밍 PC 추천: 디스플레이 네이티브 해상도 및 최고 품질 조명을 적용합니다.';
@@ -532,10 +539,12 @@ class MonochromeBunker3D {
       // 보통 (기본 밸런스 모드)
       this.renderer.setPixelRatio(1.0);
       this.renderer.toneMappingExposure = 0.88;
-      if (this.scene && this.scene.fog) this.scene.fog.density = 0.052;
-      if (this.flashlight) {
-        this.flashlight.distance = 36;
-        this.flashlight.intensity = 26;
+      if (this.activeChapterId !== 'chapter2') {
+        if (this.scene && this.scene.fog && this.scene.fog.isFogExp2) this.scene.fog.density = 0.052;
+        if (this.flashlight) {
+          this.flashlight.distance = 36;
+          this.flashlight.intensity = 26;
+        }
       }
       if (descEl) {
         descEl.textContent = '표준 밸런스 모드: 100% 해상도와 기본 인더스트리얼 조명을 적용합니다.';
@@ -1620,15 +1629,47 @@ class MonochromeBunker3D {
     this.showGameToast(`[DEPLOYED] 대원 [${this.callsign}] 작전 투입 완료.`, 'success');
   }
 
+  /**
+   * 챕터 2 전용 침수 수로 자욱한 수증기/물안개 부유 입자 시스템 생성
+   */
+  createMistParticles() {
+    const count = 140;
+    const geom = new THREE.BufferGeometry();
+    const positions = new Float32Array(count * 3);
+    const speeds = new Float32Array(count);
+    for (let i = 0; i < count; i++) {
+      positions[i * 3 + 0] = (Math.random() - 0.5) * 14.0;
+      positions[i * 3 + 1] = 0.1 + Math.random() * 2.8;
+      positions[i * 3 + 2] = (Math.random() - 0.5) * 14.0;
+      speeds[i] = 0.15 + Math.random() * 0.25;
+    }
+    geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    this._mistSpeeds = speeds;
+
+    // 몽글몽글한 수증기/물안개 미세 입자 재질
+    const mat = new THREE.PointsMaterial({
+      color: 0x88c0d0,
+      size: 0.045,
+      transparent: true,
+      opacity: 0.38,
+      blending: THREE.AdditiveBlending,
+      fog: true,
+      depthWrite: false
+    });
+    this.mistParticles = new THREE.Points(geom, mat);
+    this.mistParticles.visible = false;
+    this.scene.add(this.mistParticles);
+  }
+
   applyChapterLighting(isBlackout = false) {
     const isCh2 = this.activeChapterId === 'chapter2';
     if (isCh2) {
-      // 챕터 2: 차가운 암흑 침수 수로 전술 조명 & 억까 방지 반응 거리(10.5m) 안개 밸런스
-      this.flashlightOn = !isBlackout;
+      // 챕터 2: 차가운 암흑 침수 수로 전술 조명 & 뿌연 수증기 물안개 (가시거리 8.2m)
+      this.flashlightOn = true;
       this.flashlight.color.setHex(0xeef5fc); // 차가운 청백색 전술 스포트라이트
-      this.flashlight.distance = 13.5;
+      this.flashlight.distance = 8.5; // 안개 한계선(8.2m)과 정밀 일치시켜 먼 벽에 빛이 닿지 않도록 도형 실루엣 완전 차단
       this.flashlight.angle = Math.PI / 3.4; // 좁고 집중된 전술 빔
-      this.flashlight.penumbra = 0.75;
+      this.flashlight.penumbra = 0.85; // 부드러운 수중 빛 번짐
       this.flashlight.intensity = isBlackout ? 0 : 22.0;
       if (this.playerFillLight) this.playerFillLight.intensity = isBlackout ? 0 : 0.35;
 
@@ -1647,15 +1688,18 @@ class MonochromeBunker3D {
         this.btnTouchCCTV.style.display = 'none';
       }
 
-      this.scene.background.setHex(isBlackout ? 0x010203 : 0x020406);
-      if (this.scene.fog) {
-        this.scene.fog.color.setHex(isBlackout ? 0x010203 : 0x020406);
-        this.scene.fog.density = 0.078; // 억까 방지 반응 가시거리: 약 10.5m (11m 이상 짙은 암흑 안개 차단)
-      }
+      // 선형 안개 THREE.Fog(color, near, far) 사용:
+      // near=1.6m에서 안개가 시작되어 far=8.2m에서 정확히 100% 완전 불투명 안개 차단!
+      // far 너머의 벽, 바닥, 기둥, 파이프, 괴물은 단 1픽셀의 외곽선/도형 실루엣도 남기지 않고 안개 속으로 완벽히 녹아듦!
+      const fogColor = isBlackout ? 0x010203 : 0x03060a;
+      this.scene.background.setHex(fogColor);
+      this.scene.fog = new THREE.Fog(fogColor, 1.6, 8.2);
+
       if (this.ambientLight) {
-        this.ambientLight.color.setHex(isBlackout ? 0x080f14 : 0x121d24);
-        this.ambientLight.intensity = isBlackout ? 0.05 : 0.18; // 어둡고 음산한 침수 수로 환경광
+        this.ambientLight.color.setHex(isBlackout ? 0x04080c : 0x060f16);
+        this.ambientLight.intensity = isBlackout ? 0.04 : 0.12; // 어둡고 음산한 침수 수로 환경광
       }
+      if (this.mistParticles) this.mistParticles.visible = true;
     } else {
       this.flashlightOn = !isBlackout;
       this.flashlight.color.setHex(0xf0f6ff);
@@ -1675,14 +1719,12 @@ class MonochromeBunker3D {
         this.btnTouchFlashlight.title = '전술 손전등 온/오프';
       }
       this.scene.background.setHex(0x040405);
-      if (this.scene.fog) {
-        this.scene.fog.color.setHex(0x040405);
-        this.scene.fog.density = 0.052;
-      }
+      this.scene.fog = new THREE.FogExp2(0x040405, 0.052);
       if (this.ambientLight) {
         this.ambientLight.color.setHex(isBlackout ? 0xff2211 : 0x282c32);
         this.ambientLight.intensity = isBlackout ? 0.25 : 0.58;
       }
+      if (this.mistParticles) this.mistParticles.visible = false;
     }
   }
 
@@ -2063,6 +2105,25 @@ class MonochromeBunker3D {
           if (sound.playSonarPing) sound.playSonarPing(closeness);
         }
       }
+    }
+
+    // 6-0. 챕터 2 전용 자욱한 수증기 물안개 부유 입자 업데이트 (플레이어 주변 맴돌기)
+    if (this.mistParticles && this.mistParticles.visible) {
+      const posAttr = this.mistParticles.geometry.attributes.position;
+      const posArr = posAttr.array;
+      const pCam = this.playerCamera.position;
+      const count = this._mistSpeeds ? this._mistSpeeds.length : 0;
+      for (let i = 0; i < count; i++) {
+        posArr[i * 3 + 1] += this._mistSpeeds[i] * dt * 0.4;
+        const dx = posArr[i * 3 + 0] - pCam.x;
+        const dz = posArr[i * 3 + 2] - pCam.z;
+        if (Math.hypot(dx, dz) > 7.5 || posArr[i * 3 + 1] > pCam.y + 1.8) {
+          posArr[i * 3 + 0] = pCam.x + (Math.random() - 0.5) * 11.0;
+          posArr[i * 3 + 1] = Math.max(0.1, pCam.y - 1.2 + Math.random() * 0.4);
+          posArr[i * 3 + 2] = pCam.z + (Math.random() - 0.5) * 11.0;
+        }
+      }
+      posAttr.needsUpdate = true;
     }
 
     // 6-1. 괴물 AI 시스템 업데이트 (벤트 이동, 청각/시각 수색, 추격, 방호문 강타, 조명탄 스턴)
