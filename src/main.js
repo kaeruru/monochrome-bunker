@@ -1634,21 +1634,17 @@ class MonochromeBunker3D {
 
       if (this.btnTouchFlashlight) {
         const lbl = this.btnTouchFlashlight.querySelector('.btn-label');
-        if (lbl) lbl.textContent = 'LIGHT';
+        if (lbl) lbl.textContent = 'PULSE';
         const sub = this.btnTouchFlashlight.querySelector('.btn-sub');
         if (sub) sub.textContent = '[ F ]';
-        this.btnTouchFlashlight.classList.toggle('active', this.flashlightOn);
+        this.btnTouchFlashlight.classList.add('active');
         this.btnTouchFlashlight.style.opacity = '1.0';
-        this.btnTouchFlashlight.title = '전술 손전등 온/오프 (F키 / 은신 지원)';
+        this.btnTouchFlashlight.title = '소나 펄스 충격파 발사 (F키 / 매복자 퇴치 & 추격자 악어 유인)';
       }
 
-      // 챕터 2에서는 CCTV 대신 소나 펄스 버튼으로 보조 터치 버튼 전환
+      // 챕터 2에서는 CCTV가 없으므로 터치 CCTV 버튼 숨김
       if (this.btnTouchCCTV) {
-        const lbl = this.btnTouchCCTV.querySelector('.btn-label');
-        if (lbl) lbl.textContent = 'PULSE';
-        const sub = this.btnTouchCCTV.querySelector('.btn-sub');
-        if (sub) sub.textContent = '[ G ]';
-        this.btnTouchCCTV.title = '전방 소나 펄스 발사 (매복자 퇴치 / 쿨타임 7초)';
+        this.btnTouchCCTV.style.display = 'none';
       }
 
       this.scene.background.setHex(isBlackout ? 0x010203 : 0x020406);
@@ -1668,6 +1664,7 @@ class MonochromeBunker3D {
       this.flashlight.penumbra = 0.72;
       this.flashlight.intensity = isBlackout ? 0 : this.flashlightMaxIntensity;
       if (this.playerFillLight) this.playerFillLight.intensity = isBlackout ? 0.22 : 1.45;
+      if (this.btnTouchCCTV) this.btnTouchCCTV.style.display = '';
       if (this.btnTouchFlashlight) {
         const lbl = this.btnTouchFlashlight.querySelector('.btn-label');
         if (lbl) lbl.textContent = 'LIGHT';
@@ -1872,46 +1869,30 @@ class MonochromeBunker3D {
       }
     }
 
-    // 3. 손전등 토글 (F키 또는 우측 하단 버튼 - 챕터 1 및 챕터 2 공통 지원)
+    // 3. F키 조작: 챕터 1 전술 손전등 온오프 vs 챕터 2 소나 펄스 충격파
     if (this.controls.consumeFlashlight()) {
-      this.flashlightOn = !this.flashlightOn;
-      const maxInt = this.activeChapterId === 'chapter2' ? 22.0 : this.flashlightMaxIntensity;
-      this.flashlight.intensity = this.flashlightOn ? maxInt : 0;
-      if (this.playerFillLight) {
-        this.playerFillLight.intensity = this.flashlightOn ? (this.activeChapterId === 'chapter2' ? 0.35 : 1.45) : 0;
-      }
-      sound.playFlashlightClick(this.flashlightOn);
-      if (this.viewModel) {
-        this.viewModel.triggerFlashlightAnim(this.flashlightOn);
-      }
-      if (this.btnTouchFlashlight) {
-        this.btnTouchFlashlight.classList.toggle('active', this.flashlightOn);
+      if (this.activeChapterId === 'chapter2') {
+        this.triggerSonarPulse();
+      } else {
+        this.flashlightOn = !this.flashlightOn;
+        this.flashlight.intensity = this.flashlightOn ? this.flashlightMaxIntensity : 0;
+        if (this.playerFillLight) {
+          this.playerFillLight.intensity = this.flashlightOn ? 1.45 : 0;
+        }
+        sound.playFlashlightClick(this.flashlightOn);
+        if (this.viewModel) {
+          this.viewModel.triggerFlashlightAnim(this.flashlightOn);
+        }
+        if (this.btnTouchFlashlight) {
+          this.btnTouchFlashlight.classList.toggle('active', this.flashlightOn);
+        }
       }
     }
 
-    // 4. CCTV 단축키/버튼 또는 챕터 2 소나 펄스 발사
+    // 4. CCTV 단축키/버튼 또는 챕터 2 보조 소나 펄스 발사
     if (this.controls.consumeCCTV()) {
       if (this.activeChapterId === 'chapter2') {
-        if (this.sonarPulseCooldown > 0) {
-          sound.playFlashlightClick(false);
-        } else {
-          this.sonarPulseCooldown = 7.0;
-          sound.playSonarPulse();
-          if (this.viewModel) {
-            this.viewModel.triggerSonarPulseAnim();
-          }
-          this._tmpForward.set(0, 0, -1).applyQuaternion(this.playerCamera.quaternion);
-          this._tmpForward.y = 0;
-          if (this._tmpForward.lengthSq() > 0.001) this._tmpForward.normalize();
-
-          const repelled = this.monsterAI && this.monsterAI.repelLurkerBySonarPulse
-            ? this.monsterAI.repelLurkerBySonarPulse(this.playerPos, this._tmpForward)
-            : false;
-
-          if (repelled) {
-            this.showGameToast('[PULSE] 전방 매복자를 소나 충격파로 격퇴했습니다. 스토커 악어가 반응합니다!', 'warn');
-          }
-        }
+        this.triggerSonarPulse();
       } else {
         if (this.nearInteractable && this.nearInteractable.type === 'console') {
           if (this.interactionSystem && this.interactionSystem.isBlackout) {
@@ -2033,12 +2014,12 @@ class MonochromeBunker3D {
     this.flashlightTarget.position.copy(this.playerCamera.position).addScaledVector(forward, 15);
 
     if (isCh2) {
-      // 챕터 2: 손전등 켰을 때 전방 집중 전술 빔 투사, 껐을 때는 칠흑 같은 암흑(은신 모드)
-      if (this.flashlightOn) {
-        const targetSonarLight = isMoving ? 22.0 : 18.0;
-        this.flashlight.intensity = THREE.MathUtils.lerp(this.flashlight.intensity, targetSonarLight, Math.min(1, dt * 8));
-      } else {
-        this.flashlight.intensity = 0;
+      // 챕터 2: 플레이어가 이동하면 조명이 자동으로 밝아지고(22.0), 정지하면 레이더 화면 확인을 위해 은은하게(6.0) 자동 전환
+      this.flashlightOn = true;
+      const targetSonarLight = isMoving ? 22.0 : 6.0;
+      this.flashlight.intensity = THREE.MathUtils.lerp(this.flashlight.intensity, targetSonarLight, Math.min(1, dt * 7));
+      if (this.playerFillLight) {
+        this.playerFillLight.intensity = THREE.MathUtils.lerp(this.playerFillLight.intensity, isMoving ? 0.35 : 0.10, Math.min(1, dt * 7));
       }
 
       // 삼두 괴수(#1 스토커, #2 매복자, #3 맹글)와의 거리 및 상대 각도를 계산해 레이더 화면 갱신 + 접근 비프음 재생
@@ -2076,7 +2057,7 @@ class MonochromeBunker3D {
       if (mActive && mDist < 26.0) {
         this.sonarBeepTimer = (this.sonarBeepTimer || 0) - dt;
         const closeness = Math.max(0, Math.min(1, 1 - (mDist - 2.5) / 23.5));
-        const beepInterval = 1.35 - closeness * 1.18;
+        const beepInterval = Math.max(0.52, 1.35 - closeness * 0.85);
         if (this.sonarBeepTimer <= 0) {
           this.sonarBeepTimer = beepInterval;
           if (sound.playSonarPing) sound.playSonarPing(closeness);
@@ -2246,6 +2227,32 @@ class MonochromeBunker3D {
       } else {
         this.staminaStateEl.textContent = 'SPRINT [SHIFT]';
       }
+    }
+  }
+
+  triggerSonarPulse() {
+    if (this.activeChapterId !== 'chapter2') return;
+    if (this.sonarPulseCooldown > 0) {
+      sound.playFlashlightClick(false);
+      return;
+    }
+    this.sonarPulseCooldown = 7.0;
+    sound.playSonarPulse();
+    if (this.viewModel && this.viewModel.triggerSonarPulseAnim) {
+      this.viewModel.triggerSonarPulseAnim();
+    }
+    this._tmpForward.set(0, 0, -1).applyQuaternion(this.playerCamera.quaternion);
+    this._tmpForward.y = 0;
+    if (this._tmpForward.lengthSq() > 0.001) this._tmpForward.normalize();
+
+    const repelled = this.monsterAI && this.monsterAI.repelLurkerBySonarPulse
+      ? this.monsterAI.repelLurkerBySonarPulse(this.playerPos, this._tmpForward)
+      : false;
+
+    if (repelled) {
+      this.showGameToast('[PULSE] 전방 매복자를 소나 충격파로 격퇴했습니다! (수로 크롤러가 반응합니다)', 'warn');
+    } else {
+      this.showGameToast('[PULSE] 소나 충격파 발사! (충격파 소음으로 수로 크롤러가 유인됩니다)', 'info');
     }
   }
 

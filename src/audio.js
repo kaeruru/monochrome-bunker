@@ -390,6 +390,9 @@ class AudioManager {
   playLampFlickerBuzz(volume = 0.14) {
     this.init();
     if (!this.ctx || this.isMuted || volume <= 0.005) return;
+    const now = this.ctx.currentTime;
+    if (this.lastFlickerBuzzTime && (now - this.lastFlickerBuzzTime) < 0.35) return;
+    this.lastFlickerBuzzTime = now;
     if (this.tryPlayExternal('lamp_flicker_spark', volume)) return;
 
     const t = this.ctx.currentTime;
@@ -1028,31 +1031,31 @@ class AudioManager {
       return;
     }
 
-    // 거리에 따른 텐션 수치 및 심장 박동 간격 계산
+    // 거리에 따른 텐션 수치 및 심장 박동 간격 계산 (과도한 소음 방지 및 서스펜스 리듬 밸런싱)
     let interval = 1.35;
-    let volume = 0.20;
+    let volume = 0.18;
 
     if (distToMonster < 5.0 || monsterState === 'CHASE') {
-      interval = 0.38; // 초고속 쿵쾅
-      volume = 0.58;
+      interval = 0.68; // 묵직하고 긴박한 두-근 리듬
+      volume = 0.36;
       this.tensionLevel = 1.0;
     } else if (distToMonster < 9.0 || monsterState === 'STALK_PEEK') {
-      interval = 0.54;
-      volume = 0.44;
+      interval = 0.88;
+      volume = 0.28;
       this.tensionLevel = 0.85;
     } else if (distToMonster < 15.0) {
-      interval = 0.82;
-      volume = 0.32;
+      interval = 1.15;
+      volume = 0.22;
       this.tensionLevel = 0.55;
     } else {
-      interval = 1.25;
-      volume = 0.22;
+      interval = 1.45;
+      volume = 0.16;
       this.tensionLevel = 0.30;
     }
 
     if (isVisible) {
-      interval *= 0.82;
-      volume = Math.min(0.65, volume * 1.25);
+      interval *= 0.90;
+      volume = Math.min(0.42, volume * 1.20);
     }
 
     this.heartbeatTimer -= dt;
@@ -1106,6 +1109,9 @@ class AudioManager {
   playMonsterScreech(volume = 0.35) {
     this.init();
     if (!this.ctx || this.isMuted || volume <= 0.01) return;
+    const now = this.ctx.currentTime;
+    if (this.lastMonsterScreechTime && (now - this.lastMonsterScreechTime) < 4.5) return;
+    this.lastMonsterScreechTime = now;
     if (this.tryPlayExternal('monster_screech', volume)) return;
     const t = this.ctx.currentTime;
     const dur = 0.95;
@@ -1755,8 +1761,11 @@ class AudioManager {
    */
   playCrawlerScreech(volume = 0.45) {
     this.init();
-    if (this.tryPlayExternal('ch2_crawler_screech', volume) || this.tryPlayExternal('ch2_crawler_chase', volume)) return;
     if (!this.ctx || this.isMuted) return;
+    const now = this.ctx.currentTime;
+    if (this.lastCrawlerScreechTime && (now - this.lastCrawlerScreechTime) < 4.5) return;
+    this.lastCrawlerScreechTime = now;
+    if (this.tryPlayExternal('ch2_crawler_screech', volume) || this.tryPlayExternal('ch2_crawler_chase', volume)) return;
 
     const t = this.ctx.currentTime;
     const dur = 0.82;

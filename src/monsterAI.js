@@ -62,14 +62,14 @@ export class MonsterAI {
     this.chapterId = 'chapter1';
     this.monsterType = 'stalker';
 
-    // 1. 괴물 3D 모델 인스턴스 생성 (챕터 1 스켈드 스토커 & 챕터 2 수로 삼두 괴수: 스토커/매복자/맹글)
+    // 1. 괴물 3D 모델 인스턴스 생성 (인게임에서는 monsterAI 단일 컨트롤러가 3D 사운드를 제어하므로 엔티티 자체 사운드는 false)
     this.stalkerEntity = new MonsterEntity();
-    this.stalkerEntity.enableSound = true;
+    this.stalkerEntity.enableSound = false;
     this.stalkerEntity.soundVolume = 0.0;
     this.rootGroup.add(this.stalkerEntity.root);
 
     this.crawlerEntity = new CrawlerCrocodileEntity();
-    this.crawlerEntity.enableSound = true;
+    this.crawlerEntity.enableSound = false;
     this.crawlerEntity.soundVolume = 0.0;
     this.crawlerEntity.root.visible = false;
     this.rootGroup.add(this.crawlerEntity.root);
@@ -458,11 +458,18 @@ export class MonsterAI {
   }
 
   /**
-   * 플레이어가 음파 감지기로 강력 소나 펄스(Sonar Pulse Blast)를 발사했을 때 매복자 악어 퇴치 판정
+   * 플레이어가 음파 감지기로 강력 소나 펄스(Sonar Pulse Blast)를 발사했을 때:
+   * 1) 전방/주변의 수중 매복자 악어를 수중 깊이 잠수 퇴각시킴
+   * 2) 엄청난 수중 진동 소음으로 인해 스토커 악어(#1 The Ripper)를 즉시 플레이어 위치로 호출!
    */
   repelLurkerBySonarPulse(playerPos, forwardVec) {
     if (this.chapterId !== 'chapter2') return false;
-    if (this.lurkerState !== 'LURK_WAIT') return false;
+
+    // 소나 펄스는 수로 전역에 막대한 충격파 소음을 방출하여 무조건 추격자 악어(#1)를 유인!
+    this.notifyPlayerSound(playerPos.x, playerPos.z, 38.0, '소나 펄스 충격파');
+
+    // 매복자가 이미 처형 중이거나 없으면 매복자 퇴각은 생략
+    if (this.isKillingPlayer || this.lurkerState === 'LURK_ATTACK') return false;
 
     const dx = this.lurkerPos.x - playerPos.x;
     const dz = this.lurkerPos.z - playerPos.z;
@@ -472,15 +479,14 @@ export class MonsterAI {
     const dirX = dx / Math.max(0.01, dist);
     const dirZ = dz / Math.max(0.01, dist);
     const dot = forwardVec.x * dirX + forwardVec.z * dirZ;
-    if (dot < 0.35) return false; // 플레이어 전방 시야각 이내여야 함
+    // 전방 120도 이내이거나 3.5m 초근접 시 퇴치
+    if (dot < 0.15 && dist > 3.5) return false;
 
-    // 강력 소나 펄스 충격파 피격: 매복자 급잠수 퇴각
+    // 강력 소나 펄스 충격파 직격: 매복자 급잠수 퇴각
     sound.playLurkerSubmerge();
     this.lurkerState = 'LURK_RELOCATE';
-    this.lurkerTimer = 1.1;
-
-    // 소나 펄스는 엄청난 수중 진동을 일으켜 스토커 악어(#1)를 즉시 유인!
-    this.notifyPlayerSound(playerPos.x, playerPos.z, 36.0, '소나 펄스 충격파');
+    this.lurkerTimer = 1.3;
+    this.relocateLurker(playerPos, true);
     return true;
   }
 
@@ -629,9 +635,10 @@ export class MonsterAI {
 
     const isCh2 = this.chapterId === 'chapter2';
     const inWater = this.map && this.map.isWaterAt ? this.map.isWaterAt(px, pz) : false;
+    const isSonarShockwave = soundLabel.includes('소나') || soundLabel.includes('충격파');
 
-    // 챕터 2 수로 크롤러는 물속 진동에 극도로 민감하며, 고지대(건조 구역)의 일반 발소리는 무시함
-    if (isCh2 && !inWater) {
+    // 챕터 2 수로 크롤러는 물속 진동에 극도로 민감하며, 고지대(건조 구역)의 일반 발소리는 무시함 (단, 소나 충격파는 대폭음이므로 전역 감지)
+    if (isCh2 && !inWater && !isSonarShockwave) {
       const playerFootY = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(px, pz) : 1.4;
       if (playerFootY >= 0.60) return;
     }
@@ -641,6 +648,14 @@ export class MonsterAI {
 
     const dist = Math.hypot(px - this.pos.x, pz - this.pos.z);
     if (dist > effectiveHearingRadius) return;
+
+    if (isSonarShockwave && isCh2) {
+      // 소나 펄스 충격파 발생 시: 22m 이내면 즉시 폭주 추격(CHASE)으로 플레이어 위치로 쇄도!
+      if (dist <= 22.0) {
+        this.startChase({ x: px, z: pz });
+        return;
+      }
+    }
 
     if (this.state === 'VENT_LURK') {
       // 벤트 잠복 중 소리를 들으면 소음 지점과 가장 가까운 벤트로 즉시 방향을 틀어 출현 준비!
@@ -806,8 +821,9 @@ export class MonsterAI {
     const dist = Math.hypot(dx, dz);
 
     // 안개 가시거리(10.5m)와 괴물 시야 거리를 정밀 일치시켜 보이지 않는 원거리 억까 원천 차단
+    // 챕터 2는 맵 자체가 손전등과 괴물이 무관하므로 손전등 온오프에 영향받지 않고 10.5m 기준 일정
     const maxSightDist = isCh2
-      ? (flashlightOn ? 10.5 : (isBlackout ? 3.2 : 4.5))
+      ? 10.5
       : (flashlightOn ? 15.0 : (isBlackout ? 3.5 : 5.2));
     if (dist > maxSightDist) return false;
 
@@ -819,8 +835,9 @@ export class MonsterAI {
       const dirZ = dz / dist;
       const dot = fwdX * dirX + fwdZ * dirZ;
 
-      // 손전등을 켜고 괴물 근처(9m)를 비추면 시야각이 넓어짐
-      const minDot = (flashlightOn && dist < 9.0) ? 0.35 : 0.55;
+      // 챕터 1: 손전등을 켜고 괴물 근처(9m)를 비추면 시야각이 넓어짐
+      // 챕터 2: 손전등과 무관하게 0.48 고정 시야각
+      const minDot = isCh2 ? 0.48 : ((flashlightOn && dist < 9.0) ? 0.35 : 0.55);
       if (dot < minDot) return false;
     }
 
@@ -1615,8 +1632,8 @@ export class MonsterAI {
           this.lastSeenPlayerPos.copy(playerPos);
           this.loseSightTimer = 0;
         } else {
-          // 손전등을 끄고 코너를 돌면 시야 상실 타이머가 더 빠르게 흐르도록 보너스 부여!
-          this.loseSightTimer += dt * (flashlightOn ? 1.0 : 1.55);
+          // 챕터 1: 손전등을 끄고 코너를 돌면 시야 상실 보너스, 챕터 2: 손전등과 무관
+          this.loseSightTimer += dt * (isCh2 ? 1.0 : (flashlightOn ? 1.0 : 1.55));
         }
 
         // 주기적으로 플레이어의 마지막 목격 위치로 경로 갱신
