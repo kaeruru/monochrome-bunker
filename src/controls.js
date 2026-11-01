@@ -165,8 +165,13 @@ export class FPSControls {
     this.moveForward = 0;
     this.moveRight = 0;
     const thumb = document.getElementById('joystick-thumb');
+    const base = document.getElementById('joystick-base');
     if (thumb) {
       thumb.style.transform = 'translate(0px, 0px)';
+      thumb.classList.remove('active');
+    }
+    if (base) {
+      base.classList.remove('active');
     }
   }
 
@@ -400,8 +405,13 @@ export class FPSControls {
     const thumbX = Math.cos(angle) * clampedDist;
     const thumbY = Math.sin(angle) * clampedDist;
 
+    const base = document.getElementById('joystick-base');
     if (thumbEl) {
+      thumbEl.classList.add('active');
       thumbEl.style.transform = `translate(${thumbX}px, ${thumbY}px)`;
+    }
+    if (base) {
+      base.classList.add('active');
     }
 
     const factor = clampedDist / this.maxJoystickRadius;
