@@ -1623,31 +1623,42 @@ class MonochromeBunker3D {
   applyChapterLighting(isBlackout = false) {
     const isCh2 = this.activeChapterId === 'chapter2';
     if (isCh2) {
-      // 챕터 2: 손전등 대신 직육면체 감지기의 윗면 발광 디퓨저 바가 은은하고 넓은 근거리 작업등 역할 수행
-      this.flashlightOn = true;
-      this.flashlight.color.setHex(0xffdfaa);
-      this.flashlight.distance = 21;
-      this.flashlight.angle = Math.PI / 2.25;
-      this.flashlight.penumbra = 0.88;
-      this.flashlight.intensity = isBlackout ? 10.5 : 14.5;
-      if (this.playerFillLight) this.playerFillLight.intensity = 0;
+      // 챕터 2: 차가운 암흑 침수 수로 전술 조명 & 억까 방지 반응 거리(10.5m) 안개 밸런스
+      this.flashlightOn = !isBlackout;
+      this.flashlight.color.setHex(0xeef5fc); // 차가운 청백색 전술 스포트라이트
+      this.flashlight.distance = 13.5;
+      this.flashlight.angle = Math.PI / 3.4; // 좁고 집중된 전술 빔
+      this.flashlight.penumbra = 0.75;
+      this.flashlight.intensity = isBlackout ? 0 : 22.0;
+      if (this.playerFillLight) this.playerFillLight.intensity = isBlackout ? 0 : 0.35;
+
       if (this.btnTouchFlashlight) {
         const lbl = this.btnTouchFlashlight.querySelector('.btn-label');
-        if (lbl) lbl.textContent = 'PULSE';
+        if (lbl) lbl.textContent = 'LIGHT';
         const sub = this.btnTouchFlashlight.querySelector('.btn-sub');
         if (sub) sub.textContent = '[ F ]';
-        this.btnTouchFlashlight.classList.toggle('active', this.sonarPulseCooldown <= 0);
-        this.btnTouchFlashlight.style.opacity = this.sonarPulseCooldown <= 0 ? '1.0' : '0.45';
-        this.btnTouchFlashlight.title = '음파 감지기 전방 소나 펄스 발사 (매복자 격퇴 / 쿨타임 7초)';
+        this.btnTouchFlashlight.classList.toggle('active', this.flashlightOn);
+        this.btnTouchFlashlight.style.opacity = '1.0';
+        this.btnTouchFlashlight.title = '전술 손전등 온/오프 (F키 / 은신 지원)';
       }
-      this.scene.background.setHex(isBlackout ? 0x050202 : 0x090503);
+
+      // 챕터 2에서는 CCTV 대신 소나 펄스 버튼으로 보조 터치 버튼 전환
+      if (this.btnTouchCCTV) {
+        const lbl = this.btnTouchCCTV.querySelector('.btn-label');
+        if (lbl) lbl.textContent = 'PULSE';
+        const sub = this.btnTouchCCTV.querySelector('.btn-sub');
+        if (sub) sub.textContent = '[ G ]';
+        this.btnTouchCCTV.title = '전방 소나 펄스 발사 (매복자 퇴치 / 쿨타임 7초)';
+      }
+
+      this.scene.background.setHex(isBlackout ? 0x010203 : 0x020406);
       if (this.scene.fog) {
-        this.scene.fog.color.setHex(isBlackout ? 0x050202 : 0x090503);
-        this.scene.fog.density = 0.036;
+        this.scene.fog.color.setHex(isBlackout ? 0x010203 : 0x020406);
+        this.scene.fog.density = 0.078; // 억까 방지 반응 가시거리: 약 10.5m (11m 이상 짙은 암흑 안개 차단)
       }
       if (this.ambientLight) {
-        this.ambientLight.color.setHex(isBlackout ? 0x2e1208 : 0x52321c);
-        this.ambientLight.intensity = isBlackout ? 0.45 : 0.96;
+        this.ambientLight.color.setHex(isBlackout ? 0x080f14 : 0x121d24);
+        this.ambientLight.intensity = isBlackout ? 0.05 : 0.18; // 어둡고 음산한 침수 수로 환경광
       }
     } else {
       this.flashlightOn = !isBlackout;
@@ -1861,8 +1872,25 @@ class MonochromeBunker3D {
       }
     }
 
-    // 3. 손전등 토글 / 챕터 2 소나 펄스 발사 (F키 또는 우측 하단 버튼)
+    // 3. 손전등 토글 (F키 또는 우측 하단 버튼 - 챕터 1 및 챕터 2 공통 지원)
     if (this.controls.consumeFlashlight()) {
+      this.flashlightOn = !this.flashlightOn;
+      const maxInt = this.activeChapterId === 'chapter2' ? 22.0 : this.flashlightMaxIntensity;
+      this.flashlight.intensity = this.flashlightOn ? maxInt : 0;
+      if (this.playerFillLight) {
+        this.playerFillLight.intensity = this.flashlightOn ? (this.activeChapterId === 'chapter2' ? 0.35 : 1.45) : 0;
+      }
+      sound.playFlashlightClick(this.flashlightOn);
+      if (this.viewModel) {
+        this.viewModel.triggerFlashlightAnim(this.flashlightOn);
+      }
+      if (this.btnTouchFlashlight) {
+        this.btnTouchFlashlight.classList.toggle('active', this.flashlightOn);
+      }
+    }
+
+    // 4. CCTV 단축키/버튼 또는 챕터 2 소나 펄스 발사
+    if (this.controls.consumeCCTV()) {
       if (this.activeChapterId === 'chapter2') {
         if (this.sonarPulseCooldown > 0) {
           sound.playFlashlightClick(false);
@@ -1885,29 +1913,13 @@ class MonochromeBunker3D {
           }
         }
       } else {
-        this.flashlightOn = !this.flashlightOn;
-        this.flashlight.intensity = this.flashlightOn ? this.flashlightMaxIntensity : 0;
-        if (this.playerFillLight) {
-          this.playerFillLight.intensity = this.flashlightOn ? 1.45 : 0.22;
-        }
-        sound.playFlashlightClick(this.flashlightOn);
-        if (this.viewModel) {
-          this.viewModel.triggerFlashlightAnim(this.flashlightOn);
-        }
-        if (this.btnTouchFlashlight) {
-          this.btnTouchFlashlight.classList.toggle('active', this.flashlightOn);
-        }
-      }
-    }
-
-    // 4. CCTV 단축키/버튼 요청 처리
-    if (this.controls.consumeCCTV()) {
-      if (this.nearInteractable && this.nearInteractable.type === 'console') {
-        if (this.interactionSystem && this.interactionSystem.isBlackout) {
-          this.showGameToast('[ERROR] CCTV 관제 전원이 차단되었습니다. 전기실 배전반을 먼저 복구하십시오.', 'danger');
-        } else {
-          this.cctv.open();
-          return;
+        if (this.nearInteractable && this.nearInteractable.type === 'console') {
+          if (this.interactionSystem && this.interactionSystem.isBlackout) {
+            this.showGameToast('[ERROR] CCTV 관제 전원이 차단되었습니다. 전기실 배전반을 먼저 복구하십시오.', 'danger');
+          } else {
+            this.cctv.open();
+            return;
+          }
         }
       }
     }
@@ -2021,10 +2033,13 @@ class MonochromeBunker3D {
     this.flashlightTarget.position.copy(this.playerCamera.position).addScaledVector(forward, 15);
 
     if (isCh2) {
-      // 이동 시에는 직육면체 기기 윗면 발광부가 전방을 비추어 밝기(15.5)가 올라가고,
-      // 정지 시에는 기기를 세워 레이더 화면을 확인하므로 은은한 주변광(9.5)으로 자연스럽게 전환
-      const targetSonarLight = isMoving ? 15.5 : 9.5;
-      this.flashlight.intensity = THREE.MathUtils.lerp(this.flashlight.intensity, targetSonarLight, Math.min(1, dt * 8));
+      // 챕터 2: 손전등 켰을 때 전방 집중 전술 빔 투사, 껐을 때는 칠흑 같은 암흑(은신 모드)
+      if (this.flashlightOn) {
+        const targetSonarLight = isMoving ? 22.0 : 18.0;
+        this.flashlight.intensity = THREE.MathUtils.lerp(this.flashlight.intensity, targetSonarLight, Math.min(1, dt * 8));
+      } else {
+        this.flashlight.intensity = 0;
+      }
 
       // 삼두 괴수(#1 스토커, #2 매복자, #3 맹글)와의 거리 및 상대 각도를 계산해 레이더 화면 갱신 + 접근 비프음 재생
       const mActive = Boolean(this.monsterAI && this.monsterAI.state !== 'VENT_LURK');
@@ -2075,7 +2090,7 @@ class MonochromeBunker3D {
         dt,
         this.playerPos,
         this.playerCamera,
-        isCh2 ? isMoving : this.flashlightOn,
+        this.flashlightOn,
         isActivelySprinting,
         isMoving
       );

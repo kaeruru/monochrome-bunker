@@ -1807,40 +1807,100 @@ class AudioManager {
   }
 
   /**
-   * 챕터 2 스토커 악어 처형 점프스케어 - 강철 턱 맞물림 파쇄음 및 서브베이스 충격음
+   * 챕터 2 스토커 악어 처형 점프스케어 - 고막을 찢는 5단 레이어 영화급 충격음
+   * [1] 배경음 순간 음소거(Ducking)
+   * [2] 340Hz -> 18Hz 초저역 서브우퍼 폭발 슬램
+   * [3] 불협화음 메탈릭 스크림 클러스터 (1850~3620Hz)
+   * [4] FM 변조 파충류 그로울 포효
+   * [5] 강철 턱 파쇄 및 물보라 폭발 노이즈
    */
   playCrawlerJumpscare() {
     this.init();
-    if (this.tryPlayExternal('ch2_crawler_jumpscare', 0.85)) return;
     if (!this.ctx || this.isMuted) return;
+    if (this.tryPlayExternal('ch2_crawler_jumpscare', 0.95)) return;
 
     const t = this.ctx.currentTime;
+    const dest = this.masterGain || this.ctx.destination;
 
-    const slam = this.ctx.createOscillator();
-    const slamGain = this.ctx.createGain();
-    slam.type = 'square';
-    slam.frequency.setValueAtTime(260, t);
-    slam.frequency.exponentialRampToValueAtTime(38, t + 0.3);
-    slamGain.gain.setValueAtTime(0.72, t);
-    slamGain.gain.exponentialRampToValueAtTime(0.001, t + 0.34);
-    slam.connect(slamGain);
-    slamGain.connect(this.masterGain || this.ctx.destination);
-    slam.start(t);
-    slam.stop(t + 0.35);
+    // 1. 공포감 극대화를 위한 배경 앰비언트 순간 음소거 (Ducking)
+    if (this.ambientGain) {
+      this.ambientGain.gain.setValueAtTime(0.001, t);
+      this.ambientGain.gain.linearRampToValueAtTime(0.22, t + 2.5);
+    }
+    if (this.ambientDroneGain) {
+      this.ambientDroneGain.gain.setValueAtTime(0.001, t);
+      this.ambientDroneGain.gain.linearRampToValueAtTime(0.45, t + 2.5);
+    }
 
+    // 2. 심장을 덜컥 내려앉게 만드는 극저역 서브베이스 슬램 (340Hz -> 18Hz)
     const sub = this.ctx.createOscillator();
     const subGain = this.ctx.createGain();
-    sub.type = 'sine';
-    sub.frequency.setValueAtTime(75, t);
-    sub.frequency.exponentialRampToValueAtTime(28, t + 0.65);
-    subGain.gain.setValueAtTime(0.8, t);
-    subGain.gain.exponentialRampToValueAtTime(0.001, t + 0.7);
+    sub.type = 'sawtooth';
+    sub.frequency.setValueAtTime(340, t);
+    sub.frequency.exponentialRampToValueAtTime(18, t + 0.52);
+    subGain.gain.setValueAtTime(0.95, t);
+    subGain.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
     sub.connect(subGain);
-    subGain.connect(this.masterGain || this.ctx.destination);
+    subGain.connect(dest);
     sub.start(t);
-    sub.stop(t + 0.75);
+    sub.stop(t + 0.58);
 
-    this.playCrawlerScreech(0.8);
+    // 3. 뇌를 찌르는 불협화음 고주파 금속 비명 클러스터 (Violin / Xenomorph Screech)
+    const screechFreqs = [1850, 2280, 2890, 3550];
+    for (let i = 0; i < screechFreqs.length; i++) {
+      const osc = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      osc.type = i % 2 === 0 ? 'sawtooth' : 'square';
+      osc.frequency.setValueAtTime(screechFreqs[i], t);
+      osc.frequency.linearRampToValueAtTime(screechFreqs[i] * 1.35, t + 0.65);
+      g.gain.setValueAtTime(0.32, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.75);
+      osc.connect(g);
+      g.connect(dest);
+      osc.start(t);
+      osc.stop(t + 0.78);
+    }
+
+    // 4. FM 합성 거친 파충류 그로울 포효
+    const carrier = this.ctx.createOscillator();
+    const mod = this.ctx.createOscillator();
+    const modGain = this.ctx.createGain();
+    const carrierGain = this.ctx.createGain();
+    carrier.type = 'sawtooth';
+    carrier.frequency.setValueAtTime(620, t);
+    carrier.frequency.linearRampToValueAtTime(280, t + 0.85);
+    mod.type = 'sawtooth';
+    mod.frequency.setValueAtTime(240, t);
+    modGain.gain.setValueAtTime(580, t);
+    modGain.gain.exponentialRampToValueAtTime(30, t + 0.8);
+    mod.connect(carrier.frequency);
+    carrier.connect(carrierGain);
+    carrierGain.gain.setValueAtTime(0.48, t);
+    carrierGain.gain.exponentialRampToValueAtTime(0.001, t + 0.85);
+    carrierGain.connect(dest);
+    mod.start(t);
+    carrier.start(t);
+    mod.stop(t + 0.88);
+    carrier.stop(t + 0.88);
+
+    // 5. 살점 파열 및 곰덫 파쇄 노이즈 크런치
+    if (this.noiseBuffer) {
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = this.noiseBuffer;
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.setValueAtTime(1400, t);
+      filter.frequency.exponentialRampToValueAtTime(220, t + 0.65);
+      filter.Q.setValueAtTime(3.5, t);
+      const ng = this.ctx.createGain();
+      ng.gain.setValueAtTime(0.75, t);
+      ng.gain.exponentialRampToValueAtTime(0.001, t + 0.65);
+      noise.connect(filter);
+      filter.connect(ng);
+      ng.connect(dest);
+      noise.start(t);
+      noise.stop(t + 0.7);
+    }
   }
 
   /**
@@ -2007,56 +2067,60 @@ class AudioManager {
   }
 
   /**
-   * 챕터 2 매복자 악어(#2)가 경사로/사다리 입구에서 수면을 뚫고 솟구치며 덫처럼 깨물 때
+   * 챕터 2 매복자 악어(#2)가 경사로/사다리 입구에서 수면을 뚫고 솟구치며 덫처럼 깨물 때 (강철 곰덫 파쇄 + 살점 충격음)
    */
   playLurkerBite() {
     this.init();
-    if (this.tryPlayExternal('ch2_lurker_bite', 0.65)) return;
     if (!this.ctx || this.isMuted) return;
+    if (this.tryPlayExternal('ch2_lurker_bite', 0.9)) return;
 
     const t = this.ctx.currentTime;
-    const dur = 0.55;
+    const dur = 0.65;
+    const dest = this.masterGain || this.ctx.destination;
 
-    // 1. 강철 곰덫(Bear-Trap) 맞물리는 파열음
+    // 1. 강철 곰덫(Bear-Trap) 쩌저적 쾅- 맞물리는 고중량 파열음 (Square + Sawtooth)
     const snap = this.ctx.createOscillator();
     const snapGain = this.ctx.createGain();
-    snap.type = 'square';
-    snap.frequency.setValueAtTime(280, t);
-    snap.frequency.exponentialRampToValueAtTime(42, t + 0.25);
-    snapGain.gain.setValueAtTime(0.52, t);
-    snapGain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+    snap.type = 'sawtooth';
+    snap.frequency.setValueAtTime(320, t);
+    snap.frequency.exponentialRampToValueAtTime(32, t + 0.32);
+    snapGain.gain.setValueAtTime(0.85, t);
+    snapGain.gain.exponentialRampToValueAtTime(0.001, t + 0.36);
     snap.connect(snapGain);
-    snapGain.connect(this.masterGain || this.ctx.destination);
+    snapGain.connect(dest);
     snap.start(t);
-    snap.stop(t + 0.3);
+    snap.stop(t + 0.38);
 
-    // 2. 포효 저음
-    const roar = this.ctx.createOscillator();
-    const roarGain = this.ctx.createGain();
-    roar.type = 'sawtooth';
-    roar.frequency.setValueAtTime(145, t + 0.03);
-    roar.frequency.exponentialRampToValueAtTime(55, t + dur);
-    roarGain.gain.setValueAtTime(0.38, t + 0.03);
-    roarGain.gain.exponentialRampToValueAtTime(0.001, t + dur);
-    roar.connect(roarGain);
-    roarGain.connect(this.masterGain || this.ctx.destination);
-    roar.start(t + 0.03);
-    roar.stop(t + dur);
+    // 2. 가슴을 때리는 26Hz 서브우퍼 저주파 타격음
+    const sub = this.ctx.createOscillator();
+    const subGain = this.ctx.createGain();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(110, t);
+    sub.frequency.exponentialRampToValueAtTime(24, t + 0.55);
+    subGain.gain.setValueAtTime(0.82, t);
+    subGain.gain.exponentialRampToValueAtTime(0.001, t + 0.58);
+    sub.connect(subGain);
+    subGain.connect(dest);
+    sub.start(t);
+    sub.stop(t + 0.6);
 
+    // 3. 살점 파열 및 수면 폭발 물보라 노이즈
     if (this.noiseBuffer) {
       const burst = this.ctx.createBufferSource();
       burst.buffer = this.noiseBuffer;
       const bp = this.ctx.createBiquadFilter();
       bp.type = 'bandpass';
-      bp.frequency.setValueAtTime(840, t);
+      bp.frequency.setValueAtTime(1150, t);
+      bp.frequency.exponentialRampToValueAtTime(180, t + 0.45);
+      bp.Q.setValueAtTime(3.0, t);
       const nGain = this.ctx.createGain();
-      nGain.gain.setValueAtTime(0.45, t);
-      nGain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+      nGain.gain.setValueAtTime(0.78, t);
+      nGain.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
       burst.connect(bp);
       bp.connect(nGain);
-      nGain.connect(this.masterGain || this.ctx.destination);
+      nGain.connect(dest);
       burst.start(t);
-      burst.stop(t + 0.46);
+      burst.stop(t + 0.52);
     }
   }
 

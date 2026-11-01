@@ -805,9 +805,10 @@ export class MonsterAI {
     const dz = playerPos.z - this.pos.z;
     const dist = Math.hypot(dx, dz);
 
+    // 안개 가시거리(10.5m)와 괴물 시야 거리를 정밀 일치시켜 보이지 않는 원거리 억까 원천 차단
     const maxSightDist = isCh2
-      ? (flashlightOn ? 12.5 : (isBlackout ? 5.0 : 7.2))
-      : (flashlightOn ? 17.5 : (isBlackout ? 4.2 : 6.0));
+      ? (flashlightOn ? 10.5 : (isBlackout ? 3.2 : 4.5))
+      : (flashlightOn ? 15.0 : (isBlackout ? 3.5 : 5.2));
     if (dist > maxSightDist) return false;
 
     // 초근접(2.4m 이내)이 아니면 괴물의 정면 시야각 이내여야 함
