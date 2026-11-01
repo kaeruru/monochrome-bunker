@@ -1664,10 +1664,10 @@ class MonochromeBunker3D {
   applyChapterLighting(isBlackout = false) {
     const isCh2 = this.activeChapterId === 'chapter2';
     if (isCh2) {
-      // 챕터 2: 차가운 암흑 침수 수로 전술 조명 & 뿌연 수증기 물안개 (가시거리 8.2m)
+      // 챕터 2: 차가운 암흑 침수 수로 전술 조명 & 뿌연 수증기 물안개 (가시거리 11.5m)
       this.flashlightOn = true;
       this.flashlight.color.setHex(0xeef5fc); // 차가운 청백색 전술 스포트라이트
-      this.flashlight.distance = 8.5; // 안개 한계선(8.2m)과 정밀 일치시켜 먼 벽에 빛이 닿지 않도록 도형 실루엣 완전 차단
+      this.flashlight.distance = 12.0; // 안개 한계선(11.5m)과 맞춰 저 멀리서 다가오는 악어의 붉은 코어와 실루엣이 먼저 시야에 들어오도록 설정
       this.flashlight.angle = Math.PI / 3.4; // 좁고 집중된 전술 빔
       this.flashlight.penumbra = 0.85; // 부드러운 수중 빛 번짐
       this.flashlight.intensity = isBlackout ? 0 : 22.0;
@@ -1689,11 +1689,11 @@ class MonochromeBunker3D {
       }
 
       // 선형 안개 THREE.Fog(color, near, far) 사용:
-      // near=1.6m에서 안개가 시작되어 far=8.2m에서 정확히 100% 완전 불투명 안개 차단!
-      // far 너머의 벽, 바닥, 기둥, 파이프, 괴물은 단 1픽셀의 외곽선/도형 실루엣도 남기지 않고 안개 속으로 완벽히 녹아듦!
+      // near=1.8m에서 안개가 시작되어 far=11.5m에서 정확히 100% 완전 불투명 안개 차단!
+      // 안개 너머의 원거리 실루엣은 자연스럽게 감춰지며, 11m 이내로 들어온 거대 악어가 공포스럽게 가시화됨
       const fogColor = isBlackout ? 0x010203 : 0x03060a;
       this.scene.background.setHex(fogColor);
-      this.scene.fog = new THREE.Fog(fogColor, 1.6, 8.2);
+      this.scene.fog = new THREE.Fog(fogColor, 1.8, 11.5);
 
       if (this.ambientLight) {
         this.ambientLight.color.setHex(isBlackout ? 0x04080c : 0x060f16);
@@ -1971,15 +1971,18 @@ class MonochromeBunker3D {
     }
     this.updateStaminaHUD(isActivelySprinting);
 
-    // 달리기 시 시야각(FOV) 자연스럽게 확장 (74도 -> 82도)
-    const targetFov = isActivelySprinting ? 82 : 74;
+    const inWater = this.map ? this.map.isWaterAt(this.playerPos.x, this.playerPos.z) : false;
+    const isCh2 = this.activeChapterId === 'chapter2';
+
+    // 달리기 시 시야각(FOV) 자연스럽게 확장 (챕터 1: 74도->82도, 챕터 2 침수 수로: 84도->92도로 넓은 시야각 제공)
+    const baseFov = isCh2 ? 84 : 74;
+    const sprintFov = isCh2 ? 92 : 82;
+    const targetFov = isActivelySprinting ? sprintFov : baseFov;
     if (Math.abs(this.playerCamera.fov - targetFov) > 0.05) {
       this.playerCamera.fov += (targetFov - this.playerCamera.fov) * Math.min(1, dt * 8);
       this.playerCamera.updateProjectionMatrix();
     }
 
-    const inWater = this.map ? this.map.isWaterAt(this.playerPos.x, this.playerPos.z) : false;
-    const isCh2 = this.activeChapterId === 'chapter2';
     // 챕터 2에서는 물이 허벅지까지 차올라 -35% 속도 감소 (0.65배 속도) + 매복자 기습 피격 시 추가 감속
     const slowMult = (this.lurkerSlowTimer && this.lurkerSlowTimer > 0) ? 0.55 : 1.0;
     const waterMult = (inWater ? (isCh2 ? (isActivelySprinting ? 0.70 : 0.65) : (isActivelySprinting ? 0.94 : 0.82)) : 1.0) * slowMult;

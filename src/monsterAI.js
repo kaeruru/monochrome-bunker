@@ -197,6 +197,7 @@ export class MonsterAI {
     this.path = [];
     this.pathIndex = 0;
     this.waterEdgeFrustrationTimer = 0;
+    this.chaseWindupTimer = 0;
     this.isPlayerSnared = false;
     this.snareEscapeProgress = 0;
 
@@ -820,10 +821,10 @@ export class MonsterAI {
     const dz = playerPos.z - this.pos.z;
     const dist = Math.hypot(dx, dz);
 
-    // 안개 가시거리(8.2m)와 괴물 시야 거리를 정밀 일치시켜 보이지 않는 원거리 억까 원천 차단
-    // 챕터 2는 맵 자체가 손전등과 괴물이 무관하므로 손전등 온오프에 영향받지 않고 8.2m 기준 일정
+    // 안개 가시거리(11.5m)와 괴물 시야 거리를 정밀 일치시켜 보이지 않는 원거리 억까 원천 차단
+    // 챕터 2는 맵 자체가 손전등과 괴물이 무관하므로 손전등 온오프에 영향받지 않고 11.5m 기준 일정
     const maxSightDist = isCh2
-      ? 8.2
+      ? 11.5
       : (flashlightOn ? 15.0 : (isBlackout ? 3.5 : 5.2));
     if (dist > maxSightDist) return false;
 
@@ -1583,19 +1584,35 @@ export class MonsterAI {
       }
 
       case 'CHASE': {
-        animMode = 'chase';
         const isCh2 = this.chapterId === 'chapter2';
-        const speedMult = isCh2 ? 0.80 : 1.0;
+
+        // 챕터 2: 플레이어 발각 직후 0.65초 동안 제자리에서 상체를 쳐들고 아가리를 벌려 포효하며 돌진 전조(Telegraph) 모션
+        // 플레이어에게 괴물이 다가오는 것을 시각/청각으로 인지하고 도망칠 수 있는 골든 타임 부여
+        if (isCh2 && this.chaseWindupTimer && this.chaseWindupTimer > 0) {
+          this.chaseWindupTimer -= dt;
+          animMode = 'attack';
+          this.targetYaw = Math.atan2(playerPos.x - this.pos.x, playerPos.z - this.pos.z);
+          this.yaw = THREE.MathUtils.lerp(this.yaw, this.targetYaw, dt * 10);
+          this.monster.root.rotation.y = this.yaw;
+          this.pos.y = 0.0;
+          this.monster.root.position.copy(this.pos);
+          break;
+        }
+
+        animMode = 'chase';
+        // 챕터 2 수로 크롤러 추격 속도: 5.6m/s
+        // 플레이어가 물속에서 전력 질주(6.58m/s)하면 악어보다 살짝 빠르지만, 스태미나가 소진되면 등 뒤 1m까지 바짝 쫓기는 아슬아슬한 추격전 형성
+        const chaseSpeedActual = isCh2 ? 5.6 : (this.chaseSpeed || 10.2);
         this.pos.y = isCh2 ? 0.0 : (this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0);
 
         const playerFootY = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(playerPos.x, playerPos.z) : 0;
 
         // 플레이어 포획 판정:
         // 챕터 1: 반경 1.65m 이내
-        // 챕터 2 수로 크롤러: 거대한 4m 주둥이 공격 사정거리 2.35m 이내
-        const catchRadius = isCh2 ? 2.35 : 1.65;
+        // 챕터 2 수로 크롤러: 거대한 악어 주둥이가 플레이어 바로 앞(1.55m)까지 실제로 닿아야 점프스케어 발동 (원거리 억까 방지)
+        const catchRadius = isCh2 ? 1.55 : 1.65;
         const elevDiff = Math.abs(this.pos.y - playerFootY);
-        // 플레이어가 수로에 있든, 경사로나 물가 턱에 걸쳐 있든 크롤러 2.35m 이내면 덮쳐서 처형!
+        // 플레이어가 수로에 있든, 경사로나 물가 턱에 걸쳐 있든 크롤러 사정거리 이내면 덮쳐서 처형!
         const canCatchElevation = isCh2 ? (elevDiff < 1.65) : (elevDiff < 0.95);
 
         if (distToPlayer < catchRadius && canCatchElevation) {
@@ -1605,7 +1622,7 @@ export class MonsterAI {
 
         // 챕터 2 전용: 플레이어가 고지대 깊숙이(거리 3.2m 이상, 고도 1.20m 이상) 도망쳤을 때만 물가에서 위협 후 순찰 복귀
         if (isCh2 && playerFootY >= 1.20 && distToPlayer > 3.2) {
-          const arrivedEdge = this.moveAlongPath(dt, (this.chaseSpeed || 7.6) * speedMult, false);
+          const arrivedEdge = this.moveAlongPath(dt, chaseSpeedActual, false);
           this.pos.y = 0.0;
           if (arrivedEdge || distToPlayer < 4.8) {
             animMode = 'attack'; // 물가 경계에서 고지대를 향해 악어 턱을 딱딱거리며 위협
@@ -1656,7 +1673,7 @@ export class MonsterAI {
           break;
         }
 
-        this.moveAlongPath(dt, (this.chaseSpeed || 7.6) * speedMult, !isCh2);
+        this.moveAlongPath(dt, chaseSpeedActual, !isCh2);
         this.pos.y = isCh2 ? 0.0 : (this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0);
         break;
       }
@@ -2094,8 +2111,10 @@ export class MonsterAI {
     this.setHeartCoreColor(0xff2222);
     const isCh2 = this.chapterId === 'chapter2';
     if (isCh2) {
+      this.chaseWindupTimer = 0.65; // 발각 시 0.65초 돌진 선딜레이: 아가리를 쩍 벌리고 포효하며 물살을 차는 전조
       sound.playCrawlerScreech(0.55);
     } else {
+      this.chaseWindupTimer = 0;
       sound.playMonsterScreech(0.45);
     }
     this.computePathToWorld(playerPos.x, playerPos.z, !isCh2);
