@@ -1,5 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import http from 'http';
+import os from 'os';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -9,6 +10,20 @@ const __dirname = path.dirname(__filename);
 const DIST_DIR = path.join(__dirname, 'dist');
 
 const PORT = process.env.PORT || 3001;
+
+function getLocalIpAddress() {
+  try {
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+      for (const iface of interfaces[name]) {
+        if (iface.family === 'IPv4' && !iface.internal) {
+          return iface.address;
+        }
+      }
+    }
+  } catch (_) {}
+  return 'localhost';
+}
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=UTF-8',
@@ -108,6 +123,9 @@ function broadcastToRoom(room, msgObj, excludeWs = null) {
 }
 
 wss.on('connection', (ws) => {
+  if (ws._socket && ws._socket.setNoDelay) {
+    ws._socket.setNoDelay(true);
+  }
   ws.isAlive = true;
   ws.currentRoomId = null;
   ws.playerId = `OP-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
@@ -509,10 +527,20 @@ wss.on('close', () => {
   clearInterval(interval);
 });
 
-server.listen(PORT, () => {
+// HTTP 소켓 TCP Nagle 알고리즘 비활성화 (지연 버퍼링 방지)
+server.on('connection', (socket) => {
+  if (socket && socket.setNoDelay) {
+    socket.setNoDelay(true);
+  }
+});
+
+server.listen(PORT, '0.0.0.0', () => {
+  const localIp = getLocalIpAddress();
   console.log(`=======================================================`);
   console.log(`[MONOCHROME BUNKER] Tactical Co-op Server online on port ${PORT}`);
-  console.log(`WebSocket URL: ws://localhost:${PORT}`);
+  console.log(`- Local Host:       http://localhost:${PORT} / ws://localhost:${PORT}`);
+  console.log(`- LAN (Same Wi-Fi): http://${localIp}:${PORT} / ws://${localIp}:${PORT}`);
+  console.log(`  (동일 Wi-Fi 공간에서 친구나 태블릿으로 접속 시 1~3ms 초저지연)`);
   console.log(`=======================================================`);
 });
 

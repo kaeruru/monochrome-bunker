@@ -207,8 +207,13 @@ export class NetworkManager {
         }
 
         case 'pong_ack': {
-          if (msg.clientTime) {
-            this.currentPing = Math.max(1, Date.now() - msg.clientTime);
+          if (typeof msg.clientTime === 'number') {
+            const rawPing = Math.max(1, Math.round(performance.now() - msg.clientTime));
+            if (!this.currentPing || this.currentPing <= 0) {
+              this.currentPing = rawPing;
+            } else {
+              this.currentPing = Math.round(this.currentPing * 0.6 + rawPing * 0.4);
+            }
             if (this.callbacks.onPingUpdate) {
               this.callbacks.onPingUpdate(this.currentPing);
             }
@@ -317,10 +322,10 @@ export class NetworkManager {
       if (this.isConnected && this.ws && this.ws.readyState === WebSocket.OPEN) {
         this.ws.send(JSON.stringify({
           type: 'ping_probe',
-          clientTime: Date.now()
+          clientTime: performance.now()
         }));
       }
-    }, 2000);
+    }, 1000);
   }
 
   stopPingProbe() {
@@ -378,11 +383,11 @@ export class NetworkManager {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    let pingColor = '#55ee99'; // < 60ms
-    if (ping >= 130) {
-      pingColor = '#ff5555'; // >= 130ms
-    } else if (ping >= 60) {
-      pingColor = '#eecc55'; // 60~129ms
+    let pingColor = '#55ee99'; // < 80ms (원활)
+    if (ping >= 150) {
+      pingColor = '#ff5555'; // >= 150ms (지연)
+    } else if (ping >= 80) {
+      pingColor = '#eecc55'; // 80~149ms (보통)
     }
 
     // 전술 박스 외곽선

@@ -574,9 +574,9 @@ class MonochromeBunker3D {
 
     if (this.hudPingDot) {
       this.hudPingDot.classList.remove('dot-good', 'dot-warn', 'dot-bad');
-      if (p >= 130) {
+      if (p >= 150) {
         this.hudPingDot.classList.add('dot-bad');
-      } else if (p >= 60) {
+      } else if (p >= 80) {
         this.hudPingDot.classList.add('dot-warn');
       } else {
         this.hudPingDot.classList.add('dot-good');
