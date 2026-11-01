@@ -72,9 +72,30 @@ export class Map3D {
   }
 
   clearMap() {
+    const persistentMaterials = this.materials ? Object.values(this.materials) : [];
     while (this.mapGroup.children.length > 0) {
       const obj = this.mapGroup.children[0];
+      obj.traverse((child) => {
+        if (child.geometry) {
+          try { child.geometry.dispose(); } catch (_) {}
+        }
+        if (child.material) {
+          const mats = Array.isArray(child.material) ? child.material : [child.material];
+          for (const m of mats) {
+            if (!persistentMaterials.includes(m)) {
+              if (m.map && m.map.dispose && m.map !== this.materials?.wall?.map) {
+                try { m.map.dispose(); } catch (_) {}
+              }
+              try { m.dispose(); } catch (_) {}
+            }
+          }
+        }
+      });
       this.mapGroup.remove(obj);
+    }
+    if (this.tacticalMapBoard && this.tacticalMapBoard.screenTex) {
+      try { this.tacticalMapBoard.screenTex.dispose(); } catch (_) {}
+      this.tacticalMapBoard = null;
     }
     this.doors = [];
     this.doorGrid = new Map();

@@ -217,6 +217,18 @@ class AudioManager {
   /**
    * 외부 에셋이 등록되어 있으면 재생하고 true 반환, 없으면 false 반환하여 프로시저럴 폴백 실행
    */
+  _autoDisconnect(sourceNode, ...nodes) {
+    if (!sourceNode) return;
+    sourceNode.onended = () => {
+      try { sourceNode.disconnect(); } catch (_) {}
+      for (const n of nodes) {
+        if (n) {
+          try { n.disconnect(); } catch (_) {}
+        }
+      }
+    };
+  }
+
   tryPlayExternal(key, volume = 0.5, playbackRate = 1.0) {
     if (!this.ctx || this.isMuted) return false;
     const buf = this.externalBuffers.get(key);
@@ -229,6 +241,7 @@ class AudioManager {
     gain.gain.setValueAtTime(Math.max(0.001, volume), this.ctx.currentTime);
     src.connect(gain);
     gain.connect(this.masterGain || this.ctx.destination);
+    this._autoDisconnect(src, gain);
     src.start(0);
     return true;
   }
@@ -379,6 +392,7 @@ class AudioManager {
 
     osc.connect(gain);
     gain.connect(this.ctx.destination);
+    this._autoDisconnect(osc, gain);
 
     osc.start(t);
     osc.stop(t + 0.045);
@@ -457,6 +471,7 @@ class AudioManager {
 
     osc.connect(gain);
     gain.connect(this.ctx.destination);
+    this._autoDisconnect(osc, gain);
 
     osc.start(t);
     osc.stop(t + 0.6);
@@ -543,6 +558,7 @@ class AudioManager {
       oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
       osc.connect(oscGain);
       oscGain.connect(this.masterGain || this.ctx.destination);
+      this._autoDisconnect(osc, oscGain);
       osc.start(t);
       osc.stop(t + 0.12);
 

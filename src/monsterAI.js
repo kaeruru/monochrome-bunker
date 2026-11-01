@@ -1247,9 +1247,10 @@ export class MonsterAI {
     if (!this.bioSignEl) {
       this.bioSignEl = document.getElementById('obj-monster-status');
     }
-    if (!this.bioSignEl) return;
+    if (!this.bioSignEl || this._bioSignHidden) return;
     this.bioSignEl.textContent = '';
     this.bioSignEl.style.display = 'none';
+    this._bioSignHidden = true;
   }
 
   /**
@@ -1277,7 +1278,8 @@ export class MonsterAI {
       return;
     }
 
-    const frameStartPos = this.pos.clone();
+    const frameStartX = this.pos.x;
+    const frameStartZ = this.pos.z;
 
     if (this.stunCooldown > 0) this.stunCooldown -= dt;
     if (this.sabotageCooldown > 0) this.sabotageCooldown -= dt;
@@ -1785,7 +1787,7 @@ export class MonsterAI {
     while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
     this.yaw += angleDiff * Math.min(1, dt * 10);
 
-    const actualDist = Math.hypot(this.pos.x - frameStartPos.x, this.pos.z - frameStartPos.z);
+    const actualDist = Math.hypot(this.pos.x - frameStartX, this.pos.z - frameStartZ);
     this.monster.root.position.copy(this.pos);
     this.monster.root.rotation.y = this.yaw;
     this.monster.update(dt, animMode, actualDist);

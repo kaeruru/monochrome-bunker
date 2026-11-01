@@ -2224,7 +2224,7 @@ class MonochromeBunker3D {
         posArr[i * 3 + 1] += this._mistSpeeds[i] * dt * 0.4;
         const dx = posArr[i * 3 + 0] - pCam.x;
         const dz = posArr[i * 3 + 2] - pCam.z;
-        if (Math.hypot(dx, dz) > 7.5 || posArr[i * 3 + 1] > pCam.y + 1.8) {
+        if ((dx * dx + dz * dz > 56.25) || posArr[i * 3 + 1] > pCam.y + 1.8) {
           posArr[i * 3 + 0] = pCam.x + (Math.random() - 0.5) * 11.0;
           posArr[i * 3 + 1] = Math.max(0.1, pCam.y - 1.2 + Math.random() * 0.4);
           posArr[i * 3 + 2] = pCam.z + (Math.random() - 0.5) * 11.0;
@@ -2375,25 +2375,33 @@ class MonochromeBunker3D {
     const t = worldToTile(this.playerPos.x, this.playerPos.z);
     const ch = this.map.getTileChar(t.col, t.row);
     const zoneName = getZoneName(t.col, t.row, ch, this.activeChapterId);
-    this.locationTextEl.textContent = `위치: ${zoneName}`;
+    if (this._lastZoneName !== zoneName) {
+      this._lastZoneName = zoneName;
+      this.locationTextEl.textContent = '위치: ' + zoneName;
+    }
   }
 
   updateStaminaHUD(isSprinting) {
     const pct = Math.round(this.stamina);
-    if (this.staminaFillEl) {
-      this.staminaFillEl.style.width = `${pct}%`;
-      this.staminaFillEl.classList.toggle('exhausted', this.staminaExhausted);
-    }
-    if (this.staminaPctEl) {
-      this.staminaPctEl.textContent = `${pct}%`;
+    const isExhausted = this.staminaExhausted;
+    if (this._lastStaminaPct !== pct || this._lastStaminaExhausted !== isExhausted) {
+      this._lastStaminaPct = pct;
+      this._lastStaminaExhausted = isExhausted;
+      if (this.staminaFillEl) {
+        this.staminaFillEl.style.width = pct + '%';
+        this.staminaFillEl.classList.toggle('exhausted', isExhausted);
+      }
+      if (this.staminaPctEl) {
+        this.staminaPctEl.textContent = pct + '%';
+      }
     }
     if (this.staminaStateEl) {
-      if (this.staminaExhausted) {
-        this.staminaStateEl.textContent = '[EXHAUSTED] 호흡 회복 중';
-      } else if (isSprinting) {
-        this.staminaStateEl.textContent = '[SPRINT] 전력 질주 중';
-      } else {
-        this.staminaStateEl.textContent = 'SPRINT [SHIFT]';
+      const stateText = isExhausted
+        ? '[EXHAUSTED] 호흡 회복 중'
+        : (isSprinting ? '[SPRINT] 전력 질주' : 'SPRINT [SHIFT]');
+      if (this._lastStaminaStateText !== stateText) {
+        this._lastStaminaStateText = stateText;
+        this.staminaStateEl.textContent = stateText;
       }
     }
   }
@@ -2428,7 +2436,7 @@ class MonochromeBunker3D {
     this.nearInteractable = null;
     let bestDist = 2.85; // 최대 상호작용 거리 (m)
 
-    // 1) 아이템, 캐비닛, 전기실 차단기, 중앙 코어, 탈출 게이트 등 탐색
+    // 1) 아이템, 캐비닛, 전기 배전반, 중앙 코어, 탈출 게이트 등 탐색
     if (this.interactionSystem) {
       const found = this.interactionSystem.findNearestInteractable(this.playerPos, bestDist);
       if (found.item) {
@@ -2437,40 +2445,61 @@ class MonochromeBunker3D {
       }
     }
 
-    // 2) CCTV 관제 콘솔 거리 체크
+    let bestDistSq = bestDist * bestDist;
+    const px = this.playerPos.x;
+    const pz = this.playerPos.z;
+
+    // 2) CCTV 관제 콘솔 거리 체크 (거리 제곱 비교)
     if (this.map.consolePos) {
-      const dx = this.playerPos.x - this.map.consolePos.x;
-      const dz = this.playerPos.z - this.map.consolePos.z;
-      const dist = Math.hypot(dx, dz);
-      if (dist < bestDist) {
-        bestDist = dist;
-        this.nearInteractable = { type: 'console' };
+      const dx = px - this.map.consolePos.x;
+      const dz = pz - this.map.consolePos.z;
+      const dSq = dx * dx + dz * dz;
+      if (dSq < bestDistSq) {
+        bestDistSq = dSq;
+        bestDist = Math.sqrt(dSq);
+        if (!this._cachedConsoleInteractable) {
+          this._cachedConsoleInteractable = { type: 'console' };
+        }
+        this.nearInteractable = this._cachedConsoleInteractable;
       }
     }
 
-    // 3) 각 1칸 상하 방호문(D) 거리 체크
-    for (const door of this.map.doors) {
-      const dx = this.playerPos.x - door.x;
-      const dz = this.playerPos.z - door.z;
-      const dist = Math.hypot(dx, dz);
-      if (dist < bestDist) {
-        bestDist = dist;
-        this.nearInteractable = { type: 'door', door };
+    // 3) 방화문(D) 거리 체크 (거리 제곱 비교)
+    if (this.map.doors) {
+      for (let i = 0; i < this.map.doors.length; i++) {
+        const door = this.map.doors[i];
+        const dx = px - door.x;
+        const dz = pz - door.z;
+        const dSq = dx * dx + dz * dz;
+        if (dSq < bestDistSq) {
+          bestDistSq = dSq;
+          bestDist = Math.sqrt(dSq);
+          if (!this._cachedDoorInteractable) {
+            this._cachedDoorInteractable = { type: 'door', door: null };
+          }
+          this._cachedDoorInteractable.door = door;
+          this.nearInteractable = this._cachedDoorInteractable;
+        }
       }
     }
 
-    // 4) 메인 벙커 상시 전술 지도판(tacticalMapBoard) 거리 체크
+    // 4) 벙커 작전 지도판(tacticalMapBoard) 거리 체크
     if (this.map && this.map.tacticalMapBoard) {
-      const dx = this.playerPos.x - this.map.tacticalMapBoard.x;
-      const dz = this.playerPos.z - this.map.tacticalMapBoard.z;
-      const dist = Math.hypot(dx, dz);
-      if (dist < 3.2 && dist < bestDist) {
-        bestDist = dist;
-        this.nearInteractable = {
-          type: 'map_board',
-          keyText: '[ E / MAP ]',
-          descText: '시설 종합 작전 전술 지도 확인'
-        };
+      const dx = px - this.map.tacticalMapBoard.x;
+      const dz = pz - this.map.tacticalMapBoard.z;
+      const dSq = dx * dx + dz * dz;
+      const mapBoardMaxSq = 3.2 * 3.2;
+      if (dSq < mapBoardMaxSq && dSq < bestDistSq) {
+        bestDistSq = dSq;
+        bestDist = Math.sqrt(dSq);
+        if (!this._cachedMapBoardInteractable) {
+          this._cachedMapBoardInteractable = {
+            type: 'map_board',
+            keyText: '[ E / MAP ]',
+            descText: '시설 종합 작전 지도 확인'
+          };
+        }
+        this.nearInteractable = this._cachedMapBoardInteractable;
       }
     }
 
@@ -2522,15 +2551,24 @@ class MonochromeBunker3D {
 
   showPrompt(keyText, descText) {
     if (!this.promptEl) return;
+    if (this._lastPromptKey === keyText && this._lastPromptDesc === descText && !this.promptEl.classList.contains('hidden')) {
+      return;
+    }
+    this._lastPromptKey = keyText;
+    this._lastPromptDesc = descText;
     this.promptEl.classList.remove('hidden');
-    const keyEl = this.promptEl.querySelector('.prompt-key');
-    if (keyEl) keyEl.textContent = keyText;
+    if (!this._promptKeyEl) {
+      this._promptKeyEl = this.promptEl.querySelector('.prompt-key');
+    }
+    if (this._promptKeyEl) this._promptKeyEl.textContent = keyText;
     if (this.promptDescEl) this.promptDescEl.textContent = descText;
   }
 
   hidePrompt() {
-    if (this.promptEl) {
+    if (this.promptEl && !this.promptEl.classList.contains('hidden')) {
       this.promptEl.classList.add('hidden');
+      this._lastPromptKey = null;
+      this._lastPromptDesc = null;
     }
   }
 

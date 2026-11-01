@@ -129,6 +129,14 @@ export class InteractionAndEscapeSystem {
     this.blackoutCount = 0;
 
     this.time = 0;
+    this._interactableCache = {
+      type: '',
+      keyText: '',
+      descText: '',
+      item: null,
+      locker: null
+    };
+    this._findResult = { item: null, dist: 0 };
     this.initSharedMaterials();
     this.setupNewMatch();
   }
@@ -173,7 +181,19 @@ export class InteractionAndEscapeSystem {
     }
 
     while (this.group.children.length > 0) {
-      this.group.remove(this.group.children[0]);
+      const childObj = this.group.children[0];
+      childObj.traverse((c) => {
+        if (c.geometry) {
+          try { c.geometry.dispose(); } catch (_) {}
+        }
+        if (c.material) {
+          const mats = Array.isArray(c.material) ? c.material : [c.material];
+          for (const m of mats) {
+            try { m.dispose(); } catch (_) {}
+          }
+        }
+      });
+      this.group.remove(childObj);
     }
 
     this.inventory = [null, null, null];
@@ -978,101 +998,137 @@ export class InteractionAndEscapeSystem {
    * 플레이어 주변에서 가장 가까운 상호작용 대상 탐색
    */
   findNearestInteractable(playerPos, maxDist = 2.85) {
-    let best = null;
-    let bestDist = maxDist;
+    let bestDistSq = maxDist * maxDist;
+    let foundType = null;
+    let foundItem = null;
+    let foundLocker = null;
+    let keyText = '[ E / USE ]';
+    let descText = '';
 
-    // 1. 월드 바닥/선반 아이템
-    for (const item of this.worldItems) {
-      const d = Math.hypot(playerPos.x - item.x, playerPos.z - item.z);
-      if (d < Math.min(bestDist, 2.35)) {
-        bestDist = d;
+    const px = playerPos.x;
+    const pz = playerPos.z;
+
+    // 1. 월드 바닥/선반 아이템 (최대 2.35m)
+    const itemMaxSq = Math.min(bestDistSq, 2.35 * 2.35);
+    for (let i = 0; i < this.worldItems.length; i++) {
+      const item = this.worldItems[i];
+      const dx = px - item.x;
+      const dz = pz - item.z;
+      const dSq = dx * dx + dz * dz;
+      if (dSq < bestDistSq && dSq < itemMaxSq) {
+        bestDistSq = dSq;
+        foundType = 'world_item';
+        foundItem = item;
+        foundLocker = null;
         const meta = ITEM_METADATA[item.type];
-        best = {
-          type: 'world_item',
-          item,
-          keyText: '[ E / PICKUP ]',
-          descText: `${meta.name} 획득`
-        };
+        keyText = '[ E / PICKUP ]';
+        descText = meta.name + ' 획득';
       }
     }
 
-    // 2. 전술 보관함(Locker) 문 열기
-    for (const locker of this.lockers) {
+    // 2. 락커(Locker) 수색
+    for (let i = 0; i < this.lockers.length; i++) {
+      const locker = this.lockers[i];
       if (locker.isOpen) continue;
-      const d = Math.hypot(playerPos.x - locker.x, playerPos.z - locker.z);
-      if (d < bestDist) {
-        bestDist = d;
-        best = {
-          type: 'locker',
-          locker,
-          keyText: '[ E / INSPECT ]',
-          descText: `${locker.zoneName} 개방 및 내부 조사`
-        };
+      const dx = px - locker.x;
+      const dz = pz - locker.z;
+      const dSq = dx * dx + dz * dz;
+      if (dSq < bestDistSq) {
+        bestDistSq = dSq;
+        foundType = 'locker';
+        foundItem = null;
+        foundLocker = locker;
+        keyText = '[ E / INSPECT ]';
+        descText = locker.zoneName + ' 수납 캐비닛 수색';
       }
     }
 
-    // 3. 전기실 주 배전반
+    // 3. 전기 배전반
     if (this.breakerState) {
-      const d = Math.hypot(playerPos.x - this.breakerState.x, playerPos.z - this.breakerState.z);
-      if (d < bestDist) {
-        bestDist = d;
-        best = {
-          type: 'breaker',
-          keyText: '[ E / OVERRIDE ]',
-          descText: this.isBlackout
-            ? `비상 배전반 차단기 레버 복구 (${this.breakerState.leversPulled}/3)`
-            : '전기실 주 배전반 (전력 정상 가동 중)'
-        };
+      const dx = px - this.breakerState.x;
+      const dz = pz - this.breakerState.z;
+      const dSq = dx * dx + dz * dz;
+      if (dSq < bestDistSq) {
+        bestDistSq = dSq;
+        foundType = 'breaker';
+        foundItem = null;
+        foundLocker = null;
+        keyText = '[ E / OVERRIDE ]';
+        descText = this.isBlackout
+          ? ('전력 복구 차단기 레버 조작 (' + this.breakerState.leversPulled + '/3)')
+          : '전력 배전반 (전원 공급 안정)';
       }
     }
 
-    // 4. 중앙 발전기 코어
+    // 4. 중앙 제어코어
     if (this.corePos) {
-      const d = Math.hypot(playerPos.x - this.corePos.x, playerPos.z - this.corePos.z);
-      if (d < bestDist + 0.35) {
-        bestDist = d;
+      const dx = px - this.corePos.x;
+      const dz = pz - this.corePos.z;
+      const dSq = dx * dx + dz * dz;
+      const coreMax = (maxDist + 0.35);
+      if (dSq < bestDistSq && dSq < coreMax * coreMax) {
+        bestDistSq = dSq;
+        foundType = 'central_core';
+        foundItem = null;
+        foundLocker = null;
         const held = this.getHeldItem();
         const heldMeta = held ? ITEM_METADATA[held] : null;
         const desc = (heldMeta && heldMeta.isCorePart)
-          ? `중앙 코어에 [${heldMeta.name}] 결합 (${this.coreState.totalInstalled}/${this.coreState.maxTotal})`
-          : `중앙 코어 조립 콘솔 (${this.coreState.totalInstalled}/${this.coreState.maxTotal} 결합됨)`;
-        best = {
-          type: 'central_core',
-          keyText: '[ E / INSTALL ]',
-          descText: desc
-        };
+          ? ('중앙 코어에 [' + heldMeta.name + '] 결합 (' + this.coreState.totalInstalled + '/' + this.coreState.maxTotal + ')')
+          : ('중앙 코어 제어 콘솔 (' + this.coreState.totalInstalled + '/' + this.coreState.maxTotal + ' 가동)');
+        keyText = '[ E / INSTALL ]';
+        descText = desc;
       }
     }
 
     // 5. 벙커 부품 위치 스캔 단말기
     if (this.scannerTerminal) {
-      const d = Math.hypot(playerPos.x - this.scannerTerminal.x, playerPos.z - this.scannerTerminal.z);
-      if (d < bestDist) {
-        bestDist = d;
-        best = {
-          type: 'scanner_terminal',
-          keyText: '[ E / SCAN ]',
-          descText: '부품 위치 추적 스캐너 가동'
-        };
+      const dx = px - this.scannerTerminal.x;
+      const dz = pz - this.scannerTerminal.z;
+      const dSq = dx * dx + dz * dz;
+      if (dSq < bestDistSq) {
+        bestDistSq = dSq;
+        foundType = 'scanner_terminal';
+        foundItem = null;
+        foundLocker = null;
+        keyText = '[ E / SCAN ]';
+        descText = '부품 위치 전술 스캔 가동';
       }
     }
 
-    // 6. 비상 탈출 게이트
+    // 6. 비상 탈출구 게이트
     if (this.escapeGate) {
-      const d = Math.hypot(playerPos.x - this.escapeGate.x, playerPos.z - this.escapeGate.z);
-      if (d < bestDist) {
-        bestDist = d;
-        best = {
-          type: 'escape_gate',
-          keyText: '[ E / ESCAPE ]',
-          descText: this.isEscapeOpen
-            ? '비상 탈출 게이트 진입 (탈출 완료)'
-            : `비상 탈출 게이트 잠김 (코어 부품 ${this.coreState.totalInstalled}/${this.coreState.maxTotal} 필요)`
-        };
+      const dx = px - this.escapeGate.x;
+      const dz = pz - this.escapeGate.z;
+      const dSq = dx * dx + dz * dz;
+      if (dSq < bestDistSq) {
+        bestDistSq = dSq;
+        foundType = 'escape_gate';
+        foundItem = null;
+        foundLocker = null;
+        keyText = '[ E / ESCAPE ]';
+        descText = this.isEscapeOpen
+          ? '비상 탈출 게이트 진입 (탈출 완료)'
+          : ('비상 탈출 게이트 잠김 (코어 부품 ' + this.coreState.totalInstalled + '/' + this.coreState.maxTotal + ' 필요)');
       }
     }
 
-    return { item: best, dist: bestDist };
+    if (!foundType) {
+      this._findResult.item = null;
+      this._findResult.dist = maxDist;
+      return this._findResult;
+    }
+
+    const c = this._interactableCache;
+    c.type = foundType;
+    c.item = foundItem;
+    c.locker = foundLocker;
+    c.keyText = keyText;
+    c.descText = descText;
+
+    this._findResult.item = c;
+    this._findResult.dist = Math.sqrt(bestDistSq);
+    return this._findResult;
   }
 
   /**
