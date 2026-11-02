@@ -422,7 +422,7 @@ export function createIndustrialMaterials() {
   // [제3장: 심연의 지열 갱도 전용 아날로그 텍스처]
   // 1. 붉은 현무암 지열 암반 벽 (Geothermal Basalt Rock Wall)
   // ============================================================================
-  const rockWallTex = createProceduralTexture((ctx, s) => {
+  const rockWallTex = makePhotoTexture((ctx, s) => {
     ctx.fillStyle = '#22110c';
     ctx.fillRect(0, 0, s, s);
 
@@ -455,7 +455,7 @@ export function createIndustrialMaterials() {
   }, 512);
 
   // 2. 침목과 두 줄의 철제 광차 레일 바닥 (Mine Cart Rail Track)
-  const mineRailTex = createProceduralTexture((ctx, s) => {
+  const mineRailTex = makePhotoTexture((ctx, s) => {
     // 자갈 쇄석 베이스
     ctx.fillStyle = '#1c1715';
     ctx.fillRect(0, 0, s, s);
@@ -503,7 +503,7 @@ export function createIndustrialMaterials() {
   }, 512);
 
   // 3. 거친 채굴 암반 및 분쇄석 바닥 (Excavated Ore Bed Floor)
-  const mineStoneTex = createProceduralTexture((ctx, s) => {
+  const mineStoneTex = makePhotoTexture((ctx, s) => {
     ctx.fillStyle = '#201612';
     ctx.fillRect(0, 0, s, s);
 
@@ -527,7 +527,7 @@ export function createIndustrialMaterials() {
   }, 512);
 
   // 4. 거친 갱도 암반 천장 (Mine Rock Ceiling)
-  const mineCeilingTex = createProceduralTexture((ctx, s) => {
+  const mineCeilingTex = makePhotoTexture((ctx, s) => {
     ctx.fillStyle = '#180e0a';
     ctx.fillRect(0, 0, s, s);
 
