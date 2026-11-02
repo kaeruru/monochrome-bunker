@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { SUIT_COLORS } from './models.js';
 
 /**
  * 월드 배치용 & 1인칭 손 파지용 공용 고디테일 3D 아이템 메쉬 생성기
@@ -308,6 +309,16 @@ export class FirstPersonViewModel {
       roughness: 0.25
     });
     this.lensMat = new THREE.MeshBasicMaterial({ color: 0xf4faff });
+  }
+
+  setSuitColor(suitColorKey) {
+    const preset = SUIT_COLORS[suitColorKey] || SUIT_COLORS.steel;
+    if (this.sleeveMat && preset) {
+      this.sleeveMat.color.setHex(preset.tintHex || 0x222629);
+      if (preset.tintHex === 0xffffff) {
+        this.sleeveMat.color.setHex(0x282e34);
+      }
+    }
   }
 
   buildLeftArmFlashlight() {

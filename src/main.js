@@ -78,6 +78,7 @@ class MonochromeBunker3D {
 
     // 5-1. 1인칭 뷰모델 (왼손 손전등/PDA + 오른손 파밍 아이템 파지 및 애니메이션)
     this.viewModel = new FirstPersonViewModel(this.playerCamera);
+    this.viewModel.setSuitColor(this.suitColor || 'steel');
 
     // 6. 기본 환경광 (어두운 심연 분위기는 살리되 손전등 없이도 윤곽이 보이도록 최적화)
     this.ambientLight = new THREE.AmbientLight(0x282c32, 0.58);
@@ -1456,11 +1457,14 @@ class MonochromeBunker3D {
     });
 
     // 수트 컬러 프리셋 버튼
-    document.querySelectorAll('.preset-btn').forEach(btn => {
+    document.querySelectorAll('.suit-preset-grid .preset-btn').forEach(btn => {
       btn.addEventListener('click', () => {
-        document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.suit-preset-grid .preset-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         this.suitColor = btn.dataset.suit || 'steel';
+        if (this.viewModel) {
+          this.viewModel.setSuitColor(this.suitColor);
+        }
       });
     });
 

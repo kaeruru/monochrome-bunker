@@ -89,6 +89,18 @@ export class ModelShowcaseViewer {
           <button class="tool-btn mv-anim-btn" data-anim="attack">처형 / 결박 (ATTACK)</button>
           <button class="tool-btn mv-anim-btn" data-anim="jumpscare">점프스케어 (JUMPSCARE)</button>
         </div>
+
+        <div class="mv-tool-group" id="mv-suit-group" style="display: none;">
+          <span class="mv-label">슈트 컬러:</span>
+          <button class="tool-btn mv-suit-btn active" data-suit="hazmat">오렌지 하즈맷</button>
+          <button class="tool-btn mv-suit-btn" data-suit="steel">스틸 그레이</button>
+          <button class="tool-btn mv-suit-btn" data-suit="red">크림슨 레드</button>
+          <button class="tool-btn mv-suit-btn" data-suit="blue">코발트 블루</button>
+          <button class="tool-btn mv-suit-btn" data-suit="green">올리브 그린</button>
+          <button class="tool-btn mv-suit-btn" data-suit="violet">특수 바이올렛</button>
+          <button class="tool-btn mv-suit-btn" data-suit="black">미드나잇 블랙</button>
+          <button class="tool-btn mv-suit-btn" data-suit="khaki">사막 카키</button>
+        </div>
       </div>
     `;
 
@@ -272,6 +284,33 @@ export class ModelShowcaseViewer {
           '좌측: 제노-엔도스켈레톤 원본 스토커(2.65m) | 우측: SCP-096 샤이 가이(2.45m). 하단의 [대기], [순찰], [추격], [공격], [점프스케어] 버튼으로 두 괴물의 비율, 모션, 위압감을 직접 비교해보세요.';
       }
     }
+
+    const suitGroup = document.getElementById('mv-suit-group');
+    if (suitGroup) {
+      suitGroup.style.display = (target === 'player') ? 'flex' : 'none';
+    }
+
+    const animLabels = {
+      player: {
+        idle: '전술 대기 (IDLE)',
+        stalk: '전술 이동 (WALK)',
+        chase: '전력 질주 (SPRINT)',
+        attack: '돌격 질주 (SPRINT)',
+        jumpscare: '대원 다운 (FALLEN)'
+      },
+      monster: {
+        idle: '대기 / 잠복 (IDLE)',
+        stalk: '순찰 / 활보 (STALK)',
+        chase: '광폭 추격 / 돌출 (CHASE)',
+        attack: '처형 / 결박 (ATTACK)',
+        jumpscare: '점프스케어 (JUMPSCARE)'
+      }
+    };
+    const labels = (target === 'player') ? animLabels.player : animLabels.monster;
+    this.modalEl.querySelectorAll('.mv-anim-btn').forEach(btn => {
+      const a = btn.dataset.anim;
+      if (labels[a]) btn.textContent = labels[a];
+    });
   }
 
   toggleLightingMode() {
@@ -305,6 +344,16 @@ export class ModelShowcaseViewer {
         this.modalEl.querySelectorAll('.mv-anim-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         this.animState = btn.dataset.anim;
+      });
+    });
+
+    this.modalEl.querySelectorAll('.mv-suit-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.modalEl.querySelectorAll('.mv-suit-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        if (this.playerModel) {
+          this.playerModel.setSuitColor(btn.dataset.suit);
+        }
       });
     });
 
@@ -463,7 +512,16 @@ export class ModelShowcaseViewer {
       this.snare.update(dt, this.animState);
     }
     if (this.playerModel && this.playerModel.root.visible) {
-      const playerMode = (this.animState === 'stalk' || this.animState === 'chase') ? 'walk' : 'look';
+      let playerMode = 'idle';
+      if (this.animState === 'chase' || this.animState === 'attack') {
+        playerMode = 'sprint';
+      } else if (this.animState === 'stalk') {
+        playerMode = 'walk';
+      } else if (this.animState === 'jumpscare') {
+        playerMode = 'fallen';
+      } else {
+        playerMode = 'idle';
+      }
       this.playerModel.update(dt, playerMode);
     }
 
