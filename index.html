@@ -337,6 +337,7 @@
             <button type="button" class="menu-nav-item" data-target="achievements">업적</button>
             <button type="button" class="menu-nav-item" data-target="settings">설정</button>
             <button type="button" class="menu-nav-item" data-target="showcase">3D 쇼케이스</button>
+            <button type="button" class="menu-nav-item" data-target="cinematics">시네마틱</button>
           </nav>
 
           <div class="menu-footer-meta">
@@ -600,6 +601,22 @@
               </div>
             </div>
 
+            <button type="button" class="btn-minimal-back" data-back-to="campaign">뒤로</button>
+          </div>
+          <!-- 5. 시네마틱 연출 뷰어 카드 -->
+          <div class="menu-card hidden" id="card-cinematics">
+            <div class="card-title">시네마틱 연출 뷰어</div>
+            <div class="card-viewport-frame" style="padding: 24px; display: flex; flex-direction: column; gap: 18px;">
+              <div style="background: rgba(10, 16, 24, 0.7); border: 1px solid rgba(255, 110, 64, 0.35); border-radius: 6px; padding: 16px;">
+                <div style="font-size: 14px; font-weight: 700; color: #ffab40; margin-bottom: 6px;">[ 제3장 // 심연 갱도 엘리베이터 추락 연출 ]</div>
+                <div style="font-size: 12px; color: #a0aec0; line-height: 1.5; margin-bottom: 14px;">
+                  수직 25층 도넛 갱도 하강 브리핑과 호이스트 와이어 파단 추락 및 곤돌라 재가동 모니터 시네마틱 연출을 감상합니다. (감상 중 언제든 SPACE / 클릭으로 건너뛸 수 있습니다)
+                </div>
+                <button type="button" id="btn-play-ch3-intro" class="btn-minimal-submit" style="width: 100%; padding: 12px; font-size: 13px; font-weight: 700; background: linear-gradient(135deg, rgba(255, 82, 82, 0.8), rgba(255, 110, 64, 0.9)); color: #fff; border: 1px solid rgba(255, 138, 101, 0.6); cursor: pointer;">
+                  제3장 엘리베이터 추락 연출 재생
+                </button>
+              </div>
+            </div>
             <button type="button" class="btn-minimal-back" data-back-to="campaign">뒤로</button>
           </div>
         </div>

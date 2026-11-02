@@ -111,6 +111,7 @@ export class Map3D {
     this.genLight = null;
     this.consoleLight = null;
     this.gondolaMonitor = null;
+    this.gondolaCage = null;
     this.introElevatorGroup = null;
     this.isIntroPlaying = false;
     this.isBlackout = false;
@@ -187,11 +188,12 @@ export class Map3D {
     if (this.chapterId === 'chapter3') {
       const ch0 = this.getTileChar(c0, r0);
       const ch1 = this.getTileChar(c1, r1);
-      if (ch0 === '#' || ch0 === ' ' || ch1 === '#' || ch1 === ' ') return false;
+      // 챕터 3에서는 허공(' ')이나 벽('#')으로 떨어지는 것만 차단
+      if (ch0 === ' ' || ch1 === ' ' || ch0 === '#' || ch1 === '#') return false;
       const y0 = this.getCh3ElevationByTileFloat(c0, r0);
       const y1 = this.getCh3ElevationByTileFloat(c1, r1);
-      // 계단/경사로가 아닌 층간 절벽(1.85m 이상 단차)은 직접 가로지를 수 없음
-      return Math.abs(y0 - y1) <= 1.85;
+      // 계단 경사로(타일당 약 1.3~1.6m)는 통과 허용하고, 단차 2.45m 이상의 직접 수직 절벽만 차단
+      return Math.abs(y0 - y1) <= 2.45;
     }
     if (this.chapterId !== 'chapter2') return true;
     const l0 = this.getTileLevel(c0, r0);
@@ -208,44 +210,55 @@ export class Map3D {
    * 월드 (x, z) 좌표에서의 실제 바닥 높이(Y) 계산 (무할당 인라인 스칼라 최적화)
    */
   getCh3ElevationByTileFloat(fc, fr) {
-    if (fr <= 7.5) {
-      if (fc >= 16.5 && fc <= 31.5) return 12.0; // 25F 최상층 곤돌라 플랫폼
-      if (fc > 11.5 && fc < 16.5) return 9.0 + ((fc - 11.5) / 5.0) * 3.0; // 25F-24F 서측 계단
-      if (fc > 31.5 && fc < 36.5) return 9.0 + ((36.5 - fc) / 5.0) * 3.0; // 25F-24F 동측 계단
+    // 1. 25F 최상층 북측 곤돌라 플랫폼 (fr <= 7.0)
+    if (fr <= 7.0) {
+      if (fc >= 15.5 && fc <= 32.5) return 12.0; // 25F 플랫폼
+      if (fc > 10.5 && fc < 15.5) return 9.0 + ((fc - 10.5) / 5.0) * 3.0; // 25F-24F 서측 계단
+      if (fc > 32.5 && fc < 37.5) return 9.0 + ((37.5 - fc) / 5.0) * 3.0; // 25F-24F 동측 계단
       return 9.0; // 24F
     }
-    if (fr <= 11.5) {
-      if (fc >= 18.0 && fc <= 30.0) {
-        if (fr <= 10.5) return 12.0 - ((fr - 7.5) / 3.0) * 6.0; // 25F-23F 북측 현수교 계단
-        return 6.0; // 23F 중앙 기둥 링
+
+    // 2. 25F(12m) -> 23F(6m) 북측 중앙 대계단 및 24F 플랫폼 (fr > 7.0 && fr < 11.5)
+    if (fr < 11.5) {
+      if (fc >= 20.5 && fc <= 27.5) {
+        // 중앙 현수교 대계단: fr 7.0 (12m) -> fr 11.5 (6m) 완만한 하강
+        const prog = Math.max(0, Math.min(1, (fr - 7.0) / 4.5));
+        return 12.0 - prog * 6.0;
       }
+      if (fc > 10.5 && fc < 15.5 && fr <= 7.5) return 9.0 + ((fc - 10.5) / 5.0) * 3.0;
+      if (fc > 32.5 && fc < 37.5 && fr <= 7.5) return 9.0 + ((37.5 - fc) / 5.0) * 3.0;
       return 9.0; // 24F 동/서 플랫폼
     }
+
+    // 3. 24F(9m) -> 23F(6m) 남북 계단 및 23F 상부 링 (fr >= 11.5 && fr < 14.5)
     if (fr < 14.5) {
-      if (fc >= 18.5 && fc <= 29.5) return 6.0; // 23F 중앙 기둥 링
-      return 9.0 - ((fr - 11.5) / 3.0) * 3.0; // 24F-23F 남북 계단
+      if (fc >= 17.5 && fc <= 30.5) return 6.0; // 23F 중앙 기둥 링
+      return 9.0 - ((fr - 11.5) / 3.0) * 3.0; // 24F-23F 동/서 남북 계단
     }
-    if (fr <= 17.5) {
-      return 6.0; // 23F 중단 전체 및 동서 브릿지
+
+    // 4. 23F 중단 전체 (fr 14.5 ~ 18.5)
+    if (fr <= 18.5) {
+      return 6.0; // 23F 중앙 링 및 동/서 플랫폼
     }
-    if (fr < 20.5) {
-      if (fc >= 18.5 && fc <= 29.5) {
-        if (fr <= 19.5) return 6.0;
-        return 6.0 - ((fr - 19.5) / 3.0) * 6.0; // 23F-21F 남측 현수교 계단 상부
+
+    // 5. 23F(6m) -> 21F(0m) 남측 중앙 대계단 및 23F->22F 남북 계단 (fr > 18.5 && fr < 23.0)
+    if (fr < 23.0) {
+      if (fc >= 20.5 && fc <= 27.5) {
+        // 남측 중앙 대계단: fr 18.5 (6m) -> fr 23.0 (0m) 완만한 하강
+        const prog = Math.max(0, Math.min(1, (fr - 18.5) / 4.5));
+        return 6.0 - prog * 6.0;
       }
-      return 6.0 - ((fr - 17.5) / 3.0) * 3.0; // 23F-22F 남북 계단
-    }
-    if (fr < 22.5) {
-      if (fc >= 18.0 && fc <= 30.0) {
-        return Math.max(0.0, 6.0 - ((fr - 19.5) / 3.0) * 6.0); // 23F-21F 남측 현수교 계단 하부
+      if (fc < 16.5 || fc > 31.5) {
+        return Math.max(3.0, 6.0 - ((fr - 18.5) / 2.5) * 3.0); // 23F-22F 동/서 계단
       }
-      return 3.0; // 22F 동/서 플랫폼
+      return 6.0;
     }
-    // fr >= 22.5 (남측 하단)
-    if (fc >= 16.5 && fc <= 31.5) return 0.0; // 21F 최하층 대플랫폼
-    if (fc > 12.5 && fc < 16.5) return ((16.5 - fc) / 4.0) * 3.0; // 22F-21F 남서 계단
-    if (fc > 31.5 && fc < 35.5) return ((fc - 31.5) / 4.0) * 3.0; // 22F-21F 남동 계단
-    return 3.0; // 22F
+
+    // 6. 21F 최하층 대플랫폼 및 22F-21F 동/서 계단 (fr >= 23.0)
+    if (fc >= 15.5 && fc <= 32.5) return 0.0; // 21F 최하층 대플랫폼
+    if (fc > 11.5 && fc < 15.5) return ((15.5 - fc) / 4.0) * 3.0; // 22F-21F 남서 계단
+    if (fc > 32.5 && fc < 36.5) return ((fc - 32.5) / 4.0) * 3.0; // 22F-21F 남동 계단
+    return 3.0; // 22F 동/서 플랫폼
   }
 
   getFloorHeightAt(x, z) {
@@ -1478,42 +1491,39 @@ export class Map3D {
 
   buildCCTVConsole(x, z, baseY = 0) {
     if (this.chapterId === 'chapter3') {
-      // [챕터 3 전용] 상호작용(E) 없이도 멀리서 실시간 재가동 퍼센트(%)가 한눈에 보이는 초대형 디지털 모니터 타워
-      const group = new THREE.Group();
-      group.position.set(x, baseY, z);
+      // [챕터 3 전용] 25층 북쪽 최상층 비상 탈출 곤돌라 승강장 및 실시간 대형 디지털 모니터 타워 구축
+      // 모니터 타워: 곤돌라 좌측(서쪽, x - 2.5m)
+      const monitorGroup = new THREE.Group();
+      monitorGroup.position.set(x - 2.5, baseY, z);
 
-      // 하단 중장비 제어 기단
       const basePedestal = new THREE.Mesh(
-        new THREE.BoxGeometry(2.6, 1.15, 0.95),
+        new THREE.BoxGeometry(2.4, 1.15, 0.95),
         this.materials.doorFrame
       );
       basePedestal.position.y = 0.575;
-      group.add(basePedestal);
+      monitorGroup.add(basePedestal);
 
-      // 상단 대형 전광판 하우징 (가로 2.8m x 세로 1.75m)
       const housing = new THREE.Mesh(
-        new THREE.BoxGeometry(2.85, 1.80, 0.36),
+        new THREE.BoxGeometry(2.65, 1.80, 0.36),
         this.materials.wall
       );
       housing.position.set(0, 2.02, -0.05);
-      group.add(housing);
+      monitorGroup.add(housing);
 
-      // 실시간 CanvasTexture 생성
       const canvas = document.createElement('canvas');
       canvas.width = 640;
       canvas.height = 400;
       const tex = new THREE.CanvasTexture(canvas);
       const screenMat = new THREE.MeshBasicMaterial({ map: tex });
 
-      // 앞면(+Z)과 뒷면(-Z) 양면 스크린 배치로 어디서든 퍼센트 확인 가능
-      const frontScreen = new THREE.Mesh(new THREE.PlaneGeometry(2.66, 1.62), screenMat);
+      const frontScreen = new THREE.Mesh(new THREE.PlaneGeometry(2.48, 1.62), screenMat);
       frontScreen.position.set(0, 2.02, 0.14);
-      group.add(frontScreen);
+      monitorGroup.add(frontScreen);
 
-      const backScreen = new THREE.Mesh(new THREE.PlaneGeometry(2.66, 1.62), screenMat);
+      const backScreen = new THREE.Mesh(new THREE.PlaneGeometry(2.48, 1.62), screenMat);
       backScreen.position.set(0, 2.02, -0.24);
       backScreen.rotation.y = Math.PI;
-      group.add(backScreen);
+      monitorGroup.add(backScreen);
 
       this.gondolaMonitor = {
         canvas,
@@ -1523,9 +1533,81 @@ export class Map3D {
         lastReady: null
       };
       this.updateGondolaMonitor(0, 0, false);
+      this.mapGroup.add(monitorGroup);
+      this.propColliders.push({ x: x - 2.5, z, r: 1.05 });
 
-      this.mapGroup.add(group);
-      this.propColliders.push({ x, z, r: 1.05 });
+      // ★ [25층 비상 탈출 곤돌라 케이지] (중앙 x, z - 1.1m)
+      const gondolaGroup = new THREE.Group();
+      const cageZ = z - 1.1;
+      gondolaGroup.position.set(x, baseY, cageZ);
+
+      // 바닥 및 천장 프레임
+      const gFloor = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.16, 2.6), this.materials.doorFrame);
+      gFloor.position.y = 0.08;
+      gondolaGroup.add(gFloor);
+
+      const gRoof = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.20, 2.6), this.materials.doorFrame);
+      gRoof.position.y = 2.85;
+      gondolaGroup.add(gRoof);
+
+      // 네 모서리 강철 프레임 기둥
+      for (const gx of [-1.32, 1.32]) {
+        for (const gz of [-1.22, 1.22]) {
+          const col = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.85, 0.12), this.materials.hazardRailing || this.materials.doorFrame);
+          col.position.set(gx, 1.425, gz);
+          gondolaGroup.add(col);
+        }
+        // 좌/우 측면 창살
+        for (const bz of [-0.75, -0.25, 0.25, 0.75]) {
+          const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 2.7, 6), this.materials.doorFrame);
+          bar.position.set(gx, 1.425, bz);
+          gondolaGroup.add(bar);
+        }
+      }
+
+      // 후면(-Z) 보호 창살
+      for (const bx of [-0.9, -0.45, 0, 0.45, 0.9]) {
+        const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 2.7, 6), this.materials.doorFrame);
+        bar.position.set(bx, 1.425, -1.22);
+        gondolaGroup.add(bar);
+      }
+
+      // 상단 수직 강철 호이스트 케이블 (지상 천장으로 뻗음)
+      for (const cx of [-0.65, 0.65]) {
+        const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 36, 6), this.materials.doorFrame);
+        cable.position.set(cx, 19.0, 0);
+        gondolaGroup.add(cable);
+      }
+
+      // 상단 상태 표시등 바
+      const statusLed = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.14, 0.08), this.materials.socketEmptyMat || this.materials.ledRed);
+      statusLed.position.set(0, 2.72, 1.25);
+      gondolaGroup.add(statusLed);
+
+      const beaconLight = new THREE.PointLight(0xff3322, 1.2, 8, 1.8);
+      beaconLight.position.set(0, 2.75, 1.6);
+      gondolaGroup.add(beaconLight);
+
+      // 전면(+Z) 개폐식 블라스트 셔터 도어
+      const shutterGeo = new THREE.BoxGeometry(2.35, 2.65, 0.14);
+      const doorMesh = new THREE.Mesh(shutterGeo, this.materials.doorPanel);
+      doorMesh.position.set(0, 1.35, 1.22);
+      gondolaGroup.add(doorMesh);
+
+      this.gondolaCage = {
+        group: gondolaGroup,
+        doorMesh,
+        statusLed,
+        beaconLight,
+        baseY,
+        x,
+        z: cageZ,
+        isOpen: false,
+        isAscending: false,
+        ascendSpeed: 0
+      };
+
+      this.mapGroup.add(gondolaGroup);
       return;
     }
 
@@ -1642,6 +1724,28 @@ export class Map3D {
     }
 
     tex.needsUpdate = true;
+
+    // 곤돌라 케이지 탑승문 및 상태등 연동
+    if (this.gondolaCage) {
+      this.gondolaCage.isOpen = isReady;
+      if (isReady) {
+        if (this.gondolaCage.statusLed) {
+          this.gondolaCage.statusLed.material = this.materials.socketFilledMat || this.materials.ledGreen;
+        }
+        if (this.gondolaCage.beaconLight) {
+          this.gondolaCage.beaconLight.color.setHex(0x33ff88);
+          this.gondolaCage.beaconLight.intensity = 2.4;
+        }
+      } else {
+        if (this.gondolaCage.statusLed) {
+          this.gondolaCage.statusLed.material = this.materials.socketEmptyMat || this.materials.ledRed;
+        }
+        if (this.gondolaCage.beaconLight) {
+          this.gondolaCage.beaconLight.color.setHex(0xff3322);
+          this.gondolaCage.beaconLight.intensity = 1.2;
+        }
+      }
+    }
   }
 
   /**
@@ -2009,6 +2113,27 @@ export class Map3D {
       const currentH = door.clearHeight * scaleY;
       door.shutter.scale.y = scaleY;
       door.shutter.position.y = door.clearHeight - currentH / 2;
+    }
+
+    // 챕터 3: 25층 비상 탈출 곤돌라 개폐 셔터 및 탈출 상승 애니메이션
+    if (this.gondolaCage) {
+      if (this.gondolaCage.doorMesh) {
+        const targetScaleY = this.gondolaCage.isOpen ? 0.08 : 1.0;
+        this.gondolaCage.doorMesh.scale.y = THREE.MathUtils.lerp(
+          this.gondolaCage.doorMesh.scale.y,
+          targetScaleY,
+          dt * 5.0
+        );
+        this.gondolaCage.doorMesh.position.y = THREE.MathUtils.lerp(
+          this.gondolaCage.doorMesh.position.y,
+          this.gondolaCage.isOpen ? 2.65 : 1.35,
+          dt * 5.0
+        );
+      }
+      if (this.gondolaCage.isAscending) {
+        this.gondolaCage.ascendSpeed = Math.min(24.0, (this.gondolaCage.ascendSpeed || 0) + dt * 18.0);
+        this.gondolaCage.group.position.y += this.gondolaCage.ascendSpeed * dt;
+      }
     }
 
     // 동료 대원 애니메이션 업데이트

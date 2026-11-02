@@ -687,11 +687,11 @@ class MonochromeBunker3D {
       this.cctv.updateDoorButtons(this.map.doors);
     }
     this.missionStartTime = performance.now();
+    this.controls.setDisabled(false);
+    this.controls.requestPointerLock();
     if (this.activeChapterId === 'chapter3') {
-      this.startChapter3IntroSequence();
+      this.showGameToast('[DEPLOYED] 제3장 심연 갱도 작전을 개시합니다. 곤돌라 100% 충전까지 생존하십시오.', 'warn');
     } else {
-      this.controls.setDisabled(false);
-      this.controls.requestPointerLock();
       this.showGameToast('[REDEPLOY] 벙커 재투입 완료. 새로운 무작위 배치로 작전을 개시합니다.', 'success');
     }
   }
@@ -1147,6 +1147,15 @@ class MonochromeBunker3D {
     bindShowcaseOpen(this.btnOpenModelViewer);
     bindShowcaseOpen(this.btnOpenShowcaseHud);
 
+    const playCh3IntroBtn = document.getElementById('btn-play-ch3-intro');
+    if (playCh3IntroBtn) {
+      playCh3IntroBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+      playCh3IntroBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.playChapter3IntroPreview();
+      });
+    }
+
     if (this.btnFullscreen) {
       this.btnFullscreen.addEventListener('pointerdown', (e) => e.stopPropagation());
       this.btnFullscreen.addEventListener('click', (e) => {
@@ -1220,6 +1229,13 @@ class MonochromeBunker3D {
         }
       } else if (target === 'showcase') {
         this.openModelViewer();
+      } else if (target === 'cinematics') {
+        const c = document.getElementById('card-cinematics');
+        if (c) c.classList.remove('hidden');
+        if (menuCategoryTitle) menuCategoryTitle.textContent = '시네마틱 연출';
+        if (menuCategoryDesc) {
+          menuCategoryDesc.textContent = '챕터별 시작 시네마틱 및 주요 컷씬 연출을 단독 감상합니다.';
+        }
       }
     };
 
@@ -1759,12 +1775,12 @@ class MonochromeBunker3D {
           if (this.monsterAI) {
             this.monsterAI.setDifficulty(this.difficulty);
           }
+          this.controls.setDisabled(false);
+          this.controls.requestPointerLock();
+          sound.playDoorSound(true);
           if (targetChapter === 'chapter3') {
-            this.startChapter3IntroSequence();
+            this.showGameToast(`[DEPLOYED] 대원 [${this.callsign}] 제3장 심연 갱도 투입 완료. 곤돌라 재가동을 방어하십시오.`, 'warn');
           } else {
-            this.controls.setDisabled(false);
-            this.controls.requestPointerLock();
-            sound.playDoorSound(true);
             this.showGameToast(`[DEPLOYED] 대원 [${this.callsign}] 작전 투입 완료.`, 'success');
           }
 
@@ -2221,11 +2237,28 @@ class MonochromeBunker3D {
       overlay.style.display = 'none';
     }
 
+    if (this.isCinematicPreview) {
+      this.isCinematicPreview = false;
+      this.returnToLobby();
+      return;
+    }
+
     if (!silent) {
       this.controls.setDisabled(false);
       this.controls.requestPointerLock();
       this.showGameToast('[HOLD UNTIL 100%] 25층 곤돌라 옆 퍼센트 모니터가 100%가 될 때까지 심연의 괴물로부터 버티십시오!', 'warn');
     }
+  }
+
+  /**
+   * 메인 메뉴 시네마틱 탭에서 제3장 엘리베이터 추락 연출 단독 감상
+   */
+  playChapter3IntroPreview() {
+    if (this.gameSetupModalEl) this.gameSetupModalEl.classList.add('hidden');
+    this.showGameplayUI();
+    this.loadChapter('chapter3');
+    this.isCinematicPreview = true;
+    this.startChapter3IntroSequence();
   }
 
   toggleSettingsModal() {
@@ -2456,14 +2489,19 @@ class MonochromeBunker3D {
     }
 
     // 경사로('M') 및 벽면 철제 사다리('H' - 사다리 앞으로 전진 시 자동 등반)에 따른 플레이어 고도(Y) 부드럽게 보간
-    const targetFootY = this.map ? this.map.getFloorHeightAt(this.playerPos.x, this.playerPos.z) : 0;
-    this.playerFootY = THREE.MathUtils.lerp(
-      this.playerFootY !== undefined ? this.playerFootY : targetFootY,
-      targetFootY,
-      Math.min(1, dt * 14)
-    );
-    const targetEyeH = this.playerFootY + ((inWater && isCh2) ? this.playerEyeHeight - 0.26 : this.playerEyeHeight);
-    this.playerPos.y = targetEyeH;
+    if (this.isGameCleared && this.activeChapterId === 'chapter3' && this.map && this.map.gondolaCage && this.map.gondolaCage.isAscending) {
+      this.playerPos.y = this.map.gondolaCage.group.position.y + this.playerEyeHeight;
+      this.playerCamera.position.y = this.playerPos.y;
+    } else {
+      const targetFootY = this.map ? this.map.getFloorHeightAt(this.playerPos.x, this.playerPos.z) : 0;
+      this.playerFootY = THREE.MathUtils.lerp(
+        this.playerFootY !== undefined ? this.playerFootY : targetFootY,
+        targetFootY,
+        Math.min(1, dt * 14)
+      );
+      const targetEyeH = this.playerFootY + ((inWater && isCh2) ? this.playerEyeHeight - 0.26 : this.playerEyeHeight);
+      this.playerPos.y = targetEyeH;
+    }
 
     if (isMoving) {
       const bobFreq = isActivelySprinting ? 15.5 : 10.0;
@@ -2955,6 +2993,28 @@ class MonochromeBunker3D {
 
   handleEscapeSuccess() {
     this.controls.setDisabled(true);
+    this.isGameCleared = true;
+
+    if (this.activeChapterId === 'chapter3') {
+      if (this.map && this.map.gondolaCage) {
+        this.map.gondolaCage.isOpen = false;
+        this.map.gondolaCage.isAscending = true;
+        this.playerPos.set(this.map.gondolaCage.x, this.map.gondolaCage.baseY + this.playerEyeHeight, this.map.gondolaCage.z);
+        this.playerCamera.position.copy(this.playerPos);
+      }
+      sound.playDoorSound(false);
+      if (sound && typeof sound.playPowerRestored === 'function') sound.playPowerRestored();
+      this.showGameToast('[EVACUATING] 곤돌라 탑승 완료! 심연 갱도를 탈출하여 지상으로 급상승합니다...', 'success');
+      setTimeout(() => {
+        if (this.escapeModalEl) {
+          const statsEl = document.getElementById('escape-stats-text');
+          if (statsEl) statsEl.textContent = '제3장 작전 성공 // 곤돌라 100% 재가동 및 심연 갱도 수직 탈출 완료';
+          this.escapeModalEl.classList.remove('hidden');
+        }
+      }, 2500);
+      return;
+    }
+
     if (this.escapeModalEl) {
       this.escapeModalEl.classList.remove('hidden');
     }

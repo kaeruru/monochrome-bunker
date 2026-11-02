@@ -2903,26 +2903,47 @@ export function preloadSoldierAssets() {
 
   const fbxLoader = new FBXLoader();
 
-  const loadFbx = (url, secondaryFallback = null) => new Promise((resolve) => {
-    fbxLoader.load(
-      url,
-      (fbx) => resolve(fbx),
-      undefined,
-      (err) => {
-        console.warn("[Model] Primary load failed for " + url + ", trying fallback:", err);
-        const fallbackUrl = secondaryFallback || (url.startsWith('/') ? url.slice(1) : '/' + url);
-        fbxLoader.load(
-          fallbackUrl,
-          (fbx2) => resolve(fbx2),
-          undefined,
-          (err2) => {
-            console.error("[Model] Both load attempts failed for " + url + ":", err2);
-            resolve(null);
-          }
-        );
+  const loadFbx = async (url, secondaryFallback = null) => {
+    const urlsToTry = [url];
+    if (secondaryFallback) urlsToTry.push(secondaryFallback);
+    if (url.startsWith('/')) urlsToTry.push(url.slice(1));
+    else urlsToTry.push('/' + url);
+
+    for (const rawUrl of urlsToTry) {
+      try {
+        const fullUrl = rawUrl + (rawUrl.includes('?') ? '&' : '?') + 'v=20261102_1';
+        const res = await fetch(fullUrl);
+        if (!res.ok) {
+          console.warn('[Model] HTTP ' + res.status + ' for ' + fullUrl);
+          continue;
+        }
+        const contentType = (res.headers.get('content-type') || '').toLowerCase();
+        if (contentType.includes('text/html')) {
+          console.warn('[Model] Server returned HTML instead of FBX for ' + fullUrl);
+          continue;
+        }
+        const arrayBuf = await res.arrayBuffer();
+        if (arrayBuf.byteLength < 50) {
+          console.warn('[Model] File too small (' + arrayBuf.byteLength + ' bytes) for ' + fullUrl);
+          continue;
+        }
+        const header = new Uint8Array(arrayBuf.slice(0, 18));
+        const headerStr = String.fromCharCode(...header);
+        if (!headerStr.startsWith('Kaydara FBX Binary')) {
+          console.warn('[Model] Invalid FBX header for ' + fullUrl + ': ' + headerStr);
+          continue;
+        }
+        const parsed = fbxLoader.parse(arrayBuf, rawUrl);
+        if (parsed) {
+          return parsed;
+        }
+      } catch (err) {
+        console.warn('[Model] Load/Parse attempt failed for ' + rawUrl + ':', err);
       }
-    );
-  });
+    }
+    console.error('[Model] All load attempts failed for ' + url);
+    return null;
+  };
 
   soldierAssetsPromise = Promise.all([
     loadFbx('/models/ps1low_poly_gas_mask_soldier_character_model.fbx'),
@@ -3097,7 +3118,11 @@ export class PlayerCharacterEntity {
       this.isModelReady = true;
 
       // 초기 애니메이션 재생
-      this.playAnim(this.animMode || 'idle', 0.1);
+      if (this.animMode === 'die') {
+        this.setFallenPose();
+      } else {
+        this.playAnim(this.animMode || 'idle', 0.1);
+      }
     });
   }
 
@@ -3237,7 +3262,12 @@ export class PlayerCharacterEntity {
 
   setFallenPose() {
     this.animMode = 'die';
-    this.playAnim('die', 0.1);
+    if (this.actions['die']) {
+      this.playAnim('die', 0.1);
+    } else if (this.soldierRoot) {
+      this.soldierRoot.rotation.x = -Math.PI / 2;
+      this.soldierRoot.position.y = 0.22;
+    }
   }
 
   update(dt, mode = this.animMode) {

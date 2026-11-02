@@ -252,11 +252,21 @@ export class InteractionAndEscapeSystem {
     // 1. 중앙 코어 부품 장착 슬롯 4개 생성 (챕터 3는 23층 중앙 기둥 링 (24,12), 챕터 2는 (24,14), 챕터 1은 (24,6))
     this.buildCentralCoreReceptors(24, isCh3 ? 12 : (isCh2 ? 14 : 6));
 
-    // 2. 북쪽 벽 비상 탈출 엘리베이터/곤돌라 게이트 생성
-    this.buildEscapeGate(21, isCh2 ? 11 : 3);
-
-    // 3. 북동쪽 부품 위치 스캔 단말기 생성
-    this.buildScannerTerminal(27, isCh2 ? 11 : 3);
+    if (isCh3) {
+      // 챕터 3: 벽 탈출문 대신 25층 북쪽의 비상 탈출 곤돌라 케이지를 직접 탈출구로 등록!
+      const gPos = tileToWorld(24, 3);
+      const baseY = this.map.getFloorHeightAt(gPos.x, gPos.z);
+      this.escapeGate = {
+        x: gPos.x,
+        y: baseY,
+        z: gPos.z - 1.1,
+        isGondola: true
+      };
+    } else {
+      // 챕터 1 & 2: 북쪽 벽 비상 탈출 게이트 및 부품 스캔 단말기 생성
+      this.buildEscapeGate(21, isCh2 ? 11 : 3);
+      this.buildScannerTerminal(27, isCh2 ? 11 : 3);
+    }
 
     // 4. 주 배전반(차단기 레버 3개) 생성 (챕터 1: 전기실 (16,20), 챕터 3: 21층 최하층 대플랫폼 (24,27))
     if (isCh3) {
@@ -1029,16 +1039,26 @@ export class InteractionAndEscapeSystem {
     sound.playEscapeSiren();
 
     if (this.escapeGate) {
-      this.escapeGate.statusBar.material = this.socketFilledMat.clone();
-      this.escapeGate.gateLight.color.setHex(0x66ffaa);
-      this.escapeGate.gateLight.intensity = 4.5;
-      this.escapeGate.interiorGlow.material.color.setHex(0xd8ffee);
+      if (this.escapeGate.statusBar) this.escapeGate.statusBar.material = this.socketFilledMat.clone();
+      if (this.escapeGate.gateLight) {
+        this.escapeGate.gateLight.color.setHex(0x66ffaa);
+        this.escapeGate.gateLight.intensity = 4.5;
+      }
+      if (this.escapeGate.interiorGlow) this.escapeGate.interiorGlow.material.color.setHex(0xd8ffee);
     }
 
-    this.notifyToast(
-      '[CRITICAL] 중앙 코어 가동 완료. 벙커 북쪽 벽의 비상 탈출 게이트가 개방되었습니다. 즉시 탈출하십시오.',
-      'success'
-    );
+    const isCh3 = this.map.chapterId === 'chapter3';
+    if (isCh3) {
+      this.notifyToast(
+        '[EVACUATION READY] 곤돌라 재가동 100% 완료! 25층 북쪽 비상 곤돌라에 즉시 탑승하십시오!',
+        'success'
+      );
+    } else {
+      this.notifyToast(
+        '[CRITICAL] 중앙 코어 가동 완료. 벙커 북쪽 벽의 비상 탈출 게이트가 개방되었습니다. 즉시 탈출하십시오.',
+        'success'
+      );
+    }
     this.updateObjectiveHUD();
   }
 
