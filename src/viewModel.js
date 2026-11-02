@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { SUIT_COLORS } from './models.js';
+import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { SUIT_COLORS, preloadSoldierAssets, getTintedSoldierTexture } from './models.js';
 
 /**
  * 월드 배치용 & 1인칭 손 파지용 공용 고디테일 3D 아이템 메쉬 생성기
@@ -266,6 +267,15 @@ export class FirstPersonViewModel {
     this.chapterId = 'chapter1';
     this.currentItemType = null;
     this.currentItemUpdater = null;
+    this.suitColor = 'steel';
+
+    // 실제 3D 솔저 모델 손/팔 뷰모델 바인딩 상태
+    this.isRealHandsReady = false;
+    this.realSoldierRig = null;
+    this.realSoldierMesh = null;
+    this.realBones = {};
+    this.realLeftHandAnchor = null;
+    this.realRightHandAnchor = null;
 
     // 애니메이션 상태값
     this.equipProgress = 1.0;    // 0 -> 1 (아이템 들기 모션)
@@ -284,6 +294,9 @@ export class FirstPersonViewModel {
     this.initMaterials();
     this.buildLeftArmFlashlight();
     this.buildRightArmItemHolder();
+
+    // 실제 FBX 솔저 모델을 1인칭 손/팔로 비동기 로딩 및 리패런팅
+    this.loadRealHandsModel();
   }
 
   initMaterials() {
@@ -312,12 +325,19 @@ export class FirstPersonViewModel {
   }
 
   setSuitColor(suitColorKey) {
+    this.suitColor = suitColorKey;
     const preset = SUIT_COLORS[suitColorKey] || SUIT_COLORS.steel;
     if (this.sleeveMat && preset) {
       this.sleeveMat.color.setHex(preset.tintHex || 0x222629);
       if (preset.tintHex === 0xffffff) {
         this.sleeveMat.color.setHex(0x282e34);
       }
+    }
+    if (this.realSoldierMesh && this.realSoldierMesh.material) {
+      const tex = getTintedSoldierTexture(suitColorKey);
+      this.realSoldierMesh.material.map = tex;
+      this.realSoldierMesh.material.color.setHex(0xffffff);
+      this.realSoldierMesh.material.needsUpdate = true;
     }
   }
 
@@ -327,7 +347,7 @@ export class FirstPersonViewModel {
     this.leftArmGroup.position.set(-0.26, -0.23, -0.42);
     this.root.add(this.leftArmGroup);
 
-    // 1. 전술 전투복 전완근 소매
+    // 1. 임시 플레이스홀더 소매/손 (실제 모델 로딩 완료 시 숨김)
     const forearm = new THREE.Mesh(
       new THREE.CylinderGeometry(0.042, 0.052, 0.28, 12),
       this.sleeveMat
@@ -336,6 +356,7 @@ export class FirstPersonViewModel {
     forearm.rotation.z = -0.22;
     forearm.position.set(-0.04, -0.06, 0.11);
     this.leftArmGroup.add(forearm);
+    this.leftForearmMesh = forearm;
 
     // 2. 왼손 손목 전술 단말기(PDA)
     const pdaBody = new THREE.Mesh(
@@ -346,6 +367,7 @@ export class FirstPersonViewModel {
     pdaBody.rotation.z = -0.35;
     pdaBody.rotation.x = 0.2;
     this.leftArmGroup.add(pdaBody);
+    this.pdaBody = pdaBody;
 
     const pdaScreen = new THREE.Mesh(
       new THREE.PlaneGeometry(0.05, 0.068),
@@ -362,6 +384,7 @@ export class FirstPersonViewModel {
     );
     hand.position.set(0.01, 0.005, -0.04);
     this.leftArmGroup.add(hand);
+    this.leftHandMesh = hand;
 
     const knuckleGuard = new THREE.Mesh(
       new THREE.BoxGeometry(0.068, 0.015, 0.055),
@@ -369,6 +392,7 @@ export class FirstPersonViewModel {
     );
     knuckleGuard.position.set(0.01, 0.03, -0.04);
     this.leftArmGroup.add(knuckleGuard);
+    this.leftKnuckleMesh = knuckleGuard;
 
     // 4. 전술 손전등 본체 (챕터 1 / 챕터 3 전용)
     this.torchGroup = new THREE.Group();
@@ -398,20 +422,18 @@ export class FirstPersonViewModel {
     this.torchLens.position.z = -0.129;
     this.torchGroup.add(this.torchLens);
 
-    // 5. 챕터 2 전용: 직육면체 수중 음파 레이더 감지기 + 상단 발광 작업등 (Cuboid Sonar Tracker & Top Worklight)
+    // 5. 챕터 2 전용: 직육면체 수중 음파 레이더 감지기 + 상단 발광 작업등
     this.sonarDeviceGroup = new THREE.Group();
     this.sonarDeviceGroup.position.set(0.032, 0.042, -0.075);
     this.sonarDeviceGroup.visible = false;
     this.leftArmGroup.add(this.sonarDeviceGroup);
 
-    // 직육면체 본체 하우징
     const sonarBody = new THREE.Mesh(
       new THREE.BoxGeometry(0.092, 0.142, 0.044),
       this.armorPlateMat
     );
     this.sonarDeviceGroup.add(sonarBody);
 
-    // 상/하단 충격 흡수 고무 범퍼
     for (const by of [-0.066, 0.066]) {
       const bumper = new THREE.Mesh(
         new THREE.BoxGeometry(0.098, 0.018, 0.048),
@@ -421,7 +443,6 @@ export class FirstPersonViewModel {
       this.sonarDeviceGroup.add(bumper);
     }
 
-    // 기기 윗면(+Y) 발광 디퓨저 작업등 바 (이동 시 기기를 앞으로 기울여 약한 손전등 역할 수행)
     const topHousing = new THREE.Mesh(
       new THREE.BoxGeometry(0.084, 0.014, 0.038),
       this.armorPlateMat
@@ -437,7 +458,6 @@ export class FirstPersonViewModel {
     topDiffuserBar.position.set(0, 0.083, 0);
     this.sonarDeviceGroup.add(topDiffuserBar);
 
-    // 우측 상단 음파 수신 안테나
     const sonarAntenna = new THREE.Mesh(
       new THREE.CylinderGeometry(0.005, 0.007, 0.055, 8),
       this.armorPlateMat
@@ -445,7 +465,6 @@ export class FirstPersonViewModel {
     sonarAntenna.position.set(0.036, 0.095, -0.01);
     this.sonarDeviceGroup.add(sonarAntenna);
 
-    // 전면(+Z, 정지 시 플레이어를 향하는 면) 실시간 음파 레이더 디스플레이 캔버스
     this.radarCanvas = document.createElement('canvas');
     this.radarCanvas.width = 128;
     this.radarCanvas.height = 128;
@@ -460,7 +479,6 @@ export class FirstPersonViewModel {
     radarScreenMesh.position.set(0, 0.012, 0.0235);
     this.sonarDeviceGroup.add(radarScreenMesh);
 
-    // 전면 하단 조작 버튼 3개
     for (let bi = -1; bi <= 1; bi++) {
       const btn = new THREE.Mesh(
         new THREE.BoxGeometry(0.018, 0.012, 0.006),
@@ -475,11 +493,10 @@ export class FirstPersonViewModel {
 
   buildRightArmItemHolder() {
     this.rightArmGroup = new THREE.Group();
-    // 화면 우하단 배치 (아이템 파지 손)
     this.rightArmGroup.position.set(0.27, -0.24, -0.44);
     this.root.add(this.rightArmGroup);
 
-    // 1. 오른팔 전완근 소매
+    // 1. 임시 플레이스홀더 소매/손
     const forearm = new THREE.Mesh(
       new THREE.CylinderGeometry(0.044, 0.054, 0.3, 12),
       this.sleeveMat
@@ -488,8 +505,8 @@ export class FirstPersonViewModel {
     forearm.rotation.z = 0.25;
     forearm.position.set(0.055, -0.075, 0.13);
     this.rightArmGroup.add(forearm);
+    this.rightForearmMesh = forearm;
 
-    // 2. 오른손 전술 글러브 + 손가락 디테일
     const palm = new THREE.Mesh(
       new THREE.BoxGeometry(0.07, 0.052, 0.09),
       this.gloveMat
@@ -497,6 +514,7 @@ export class FirstPersonViewModel {
     palm.position.set(0, -0.01, -0.02);
     palm.rotation.z = 0.22;
     this.rightArmGroup.add(palm);
+    this.rightPalmMesh = palm;
 
     const armorBack = new THREE.Mesh(
       new THREE.BoxGeometry(0.068, 0.016, 0.06),
@@ -505,15 +523,18 @@ export class FirstPersonViewModel {
     armorBack.position.set(0.008, 0.022, -0.02);
     armorBack.rotation.z = 0.22;
     this.rightArmGroup.add(armorBack);
+    this.rightArmorBackMesh = armorBack;
 
-    // 엄지 및 파지 손가락 마디
+    this.rightFingersGroup = new THREE.Group();
+    this.rightArmGroup.add(this.rightFingersGroup);
+
     const thumb = new THREE.Mesh(
       new THREE.BoxGeometry(0.024, 0.024, 0.055),
       this.gloveMat
     );
     thumb.position.set(-0.036, 0.015, -0.045);
     thumb.rotation.y = -0.35;
-    this.rightArmGroup.add(thumb);
+    this.rightFingersGroup.add(thumb);
 
     for (let i = 0; i < 4; i++) {
       const finger = new THREE.Mesh(
@@ -522,15 +543,14 @@ export class FirstPersonViewModel {
       );
       finger.position.set(-0.022 + i * 0.016, -0.012, -0.072);
       finger.rotation.x = 0.35;
-      this.rightArmGroup.add(finger);
+      this.rightFingersGroup.add(finger);
     }
 
-    // 3. 들고 있는 3D 아이템이 장착되는 앵커 및 사전 생성(Pool)
+    // 3. 아이템 장착 앵커
     this.heldItemAnchor = new THREE.Group();
     this.heldItemAnchor.position.set(-0.015, 0.075, -0.065);
     this.rightArmGroup.add(this.heldItemAnchor);
 
-    // 아이템 습득 시 WebGL 셰이더 실시간 컴파일 멈춤(렉)을 방지하기 위해 4종류 아이템을 시작 시 사전 생성
     this.itemPool = {};
     const itemTypes = ['energy_cell', 'security_keycard', 'coolant_valve', 'flare'];
     for (const type of itemTypes) {
@@ -559,6 +579,111 @@ export class FirstPersonViewModel {
   }
 
   /**
+   * 실제 FBX 3D 솔저 모델을 1인칭 카메라 하위로 복제하여 진짜 손과 소매를 바인딩합니다.
+   */
+  loadRealHandsModel() {
+    preloadSoldierAssets().then((assets) => {
+      if (!assets || !assets.modelFbx) return;
+
+      const cloned = SkeletonUtils.clone(assets.modelFbx);
+      const targetHeight = 1.76;
+      const modelScale = targetHeight / 3.34;
+      cloned.scale.setScalar(modelScale);
+      cloned.position.set(0, -1.34, -0.08);
+
+      this.realBones = {};
+      cloned.traverse((child) => {
+        if (child.isBone) {
+          this.realBones[child.name] = child;
+          const clean = child.name.replace(/^mixamorig[:_]?/i, '');
+          this.realBones[clean] = child;
+          this.realBones[clean.toLowerCase()] = child;
+        }
+        if (child.isMesh) {
+          child.castShadow = false;
+          child.receiveShadow = false;
+          child.frustumCulled = false;
+          this.realSoldierMesh = child;
+          const tintedTex = getTintedSoldierTexture(this.suitColor);
+          child.material = new THREE.MeshStandardMaterial({
+            map: tintedTex,
+            roughness: 0.72,
+            metalness: 0.28,
+            side: THREE.FrontSide,
+            color: 0xffffff
+          });
+        }
+      });
+
+      // 시야를 가리는 머리와 목 본 축소
+      if (this.realBones['Head']) this.realBones['Head'].scale.set(0.001, 0.001, 0.001);
+      if (this.realBones['Neck']) this.realBones['Neck'].scale.set(0.001, 0.001, 0.001);
+
+      // 왼손 본에 장비(손전등, 소나, PDA) 부착
+      const leftHand = this.realBones['LeftHand'];
+      if (leftHand) {
+        if (this.leftForearmMesh) this.leftForearmMesh.visible = false;
+        if (this.leftHandMesh) this.leftHandMesh.visible = false;
+        if (this.leftKnuckleMesh) this.leftKnuckleMesh.visible = false;
+
+        this.realLeftHandAnchor = new THREE.Group();
+        this.realLeftHandAnchor.position.set(0, 0.085, 0.02);
+        this.realLeftHandAnchor.rotation.set(-Math.PI / 2, 0, Math.PI / 2);
+        leftHand.add(this.realLeftHandAnchor);
+
+        if (this.torchGroup) this.realLeftHandAnchor.add(this.torchGroup);
+        if (this.sonarDeviceGroup) this.realLeftHandAnchor.add(this.sonarDeviceGroup);
+        if (this.pdaBody) this.realLeftHandAnchor.add(this.pdaBody);
+      }
+
+      // 오른손 본에 아이템 홀더 부착
+      const rightHand = this.realBones['RightHand'];
+      if (rightHand) {
+        if (this.rightForearmMesh) this.rightForearmMesh.visible = false;
+        if (this.rightPalmMesh) this.rightPalmMesh.visible = false;
+        if (this.rightArmorBackMesh) this.rightArmorBackMesh.visible = false;
+        if (this.rightFingersGroup) this.rightFingersGroup.visible = false;
+
+        this.realRightHandAnchor = new THREE.Group();
+        this.realRightHandAnchor.position.set(0, 0.09, 0.01);
+        this.realRightHandAnchor.rotation.set(-Math.PI / 2, 0, -Math.PI / 2);
+        rightHand.add(this.realRightHandAnchor);
+
+        if (this.heldItemAnchor) {
+          this.realRightHandAnchor.add(this.heldItemAnchor);
+          this.heldItemAnchor.position.set(0, 0, 0);
+        }
+      }
+
+      // 손가락 그립 포즈
+      this.applyHandGripPoses();
+
+      this.root.add(cloned);
+      this.realSoldierRig = cloned;
+      this.isRealHandsReady = true;
+
+      this.setChapterMode(this.chapterId);
+    });
+  }
+
+  applyHandGripPoses() {
+    const b = this.realBones;
+    ['mixamorigLeftHandIndex1', 'mixamorigLeftHandIndex2', 'mixamorigLeftHandIndex3'].forEach(name => {
+      if (b[name]) b[name].rotation.z = -0.45;
+    });
+    ['mixamorigLeftHandThumb1', 'mixamorigLeftHandThumb2'].forEach(name => {
+      if (b[name]) b[name].rotation.x = 0.35;
+    });
+
+    ['mixamorigRightHandIndex1', 'mixamorigRightHandIndex2', 'mixamorigRightHandIndex3'].forEach(name => {
+      if (b[name]) b[name].rotation.z = 0.45;
+    });
+    ['mixamorigRightHandThumb1', 'mixamorigRightHandThumb2'].forEach(name => {
+      if (b[name]) b[name].rotation.x = 0.35;
+    });
+  }
+
+  /**
    * 챕터별 좌측 손 장비 전환:
    * - 챕터 2: 손전등 비활성화 -> 직육면체 음파 레이더 감지기 + 상단 발광 작업등 장착
    * - 챕터 1 / 3: 기존 전술 손전등 장착
@@ -572,11 +697,7 @@ export class FirstPersonViewModel {
   }
 
   /**
-   * 챕터 2 직육면체 감지기 전면 레이더 디스플레이 캔버스 갱신 (갤럭시 탭 S9 FE 최적화: 15FPS 스로틀링)
-   * @param {number} dt
-   * @param {number} distToMonster
-   * @param {number} relAngle 플레이어 시선 기준 괴물의 상대 방위각 (라디안, 0 = 정면)
-   * @param {boolean} monsterActive
+   * 챕터 2 직육면체 감지기 전면 레이더 디스플레이 캔버스 갱신
    */
   updateSonarRadar(dt, distToMonster = 99, relAngle = 0, monsterActive = false, extraBlips = null) {
     if (!this.radarCtx) return;
@@ -629,8 +750,7 @@ export class FirstPersonViewModel {
     ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
     ctx.fill();
 
-    // 5. 수중 괴수 음파 타겟 블립 표시 (28m 이내 감지)
-    // 맹글 악어(#3)는 수중이 아니라 배수관 천장에 매달려 있으므로 수중 음파 레이더에 절대 감지되지 않습니다!
+    // 5. 수중 괴수 음파 타겟 블립 표시
     const blips = (Array.isArray(extraBlips) && extraBlips.length > 0
       ? extraBlips
       : (monsterActive ? [{ dist: distToMonster, relAngle, role: 'ripper' }] : [])
@@ -665,7 +785,7 @@ export class FirstPersonViewModel {
 
     const isDanger = monsterActive && closestDist < 28;
 
-    // 6. 하단 디지털 상태창 (거리 및 경고 표시)
+    // 6. 하단 디지털 상태창
     ctx.fillStyle = '#1a0e06';
     ctx.fillRect(6, 106, 116, 18);
     ctx.strokeStyle = 'rgba(255, 148, 42, 0.48)';
@@ -684,9 +804,6 @@ export class FirstPersonViewModel {
     this.radarTex.needsUpdate = true;
   }
 
-  /**
-   * 소나 펄스(Sonar Pulse Blast) 발사 시 1인칭 감지기 반동 및 발광 애니메이션
-   */
   triggerSonarPulseAnim() {
     this.sonarPulseRecoil = 0.28;
     if (this.sonarTopLightMat) {
@@ -697,11 +814,6 @@ export class FirstPersonViewModel {
     }
   }
 
-  /**
-   * 우측 손에 들고 있을 아이템을 교체하고 장착 애니메이션을 재생합니다.
-   * - 이미 사전 생성된 메쉬의 visible만 토글하므로 런타임 멈춤이 전혀 발생하지 않습니다.
-   * @param {string|null} itemType
-   */
   setHeldItem(itemType) {
     if (this.currentItemType === itemType) return;
     this.currentItemType = itemType;
@@ -713,16 +825,10 @@ export class FirstPersonViewModel {
     this.currentItemUpdater = itemType && this.itemPool[itemType] ? this.itemPool[itemType].updateItemAnim : null;
   }
 
-  /**
-   * 상호작용(E키) 시 오른손을 앞으로 뻗는 액션 모션 트리거
-   */
   triggerInteractAnim() {
     this.actionTimer = 0.36;
   }
 
-  /**
-   * 손전등 토글(F키) 시 왼손 클릭 반동 모션 트리거
-   */
   triggerFlashlightAnim(isOn) {
     this.flashlightClickTimer = 0.22;
     if (this.torchLens) {
@@ -730,13 +836,10 @@ export class FirstPersonViewModel {
     }
   }
 
-  /**
-   * 매 프레임 1인칭 손 & 아이템 애니메이션 업데이트
-   */
   update(dt, { isMoving, isSprinting, walkCycle, yaw, pitch }) {
     this.time += dt;
 
-    // 1. 시선 회전 관성(Mouse/Touch Look Sway)
+    // 1. 시선 회전 관성(Sway)
     const dYaw = yaw - this.lastYaw;
     const dPitch = pitch - this.lastPitch;
     this.lastYaw = yaw;
@@ -745,7 +848,7 @@ export class FirstPersonViewModel {
     this.swayX = THREE.MathUtils.lerp(this.swayX, THREE.MathUtils.clamp(-dYaw * 0.45, -0.045, 0.045), Math.min(1, dt * 10));
     this.swayY = THREE.MathUtils.lerp(this.swayY, THREE.MathUtils.clamp(dPitch * 0.45, -0.045, 0.045), Math.min(1, dt * 10));
 
-    // 2. 호흡(Idle Breathing) + 보행/질주 흔들림(Walk/Sprint Bobbing)
+    // 2. 호흡 + 보행 흔들림
     const breathY = Math.sin(this.time * 2.2) * 0.0045;
     const breathX = Math.cos(this.time * 1.1) * 0.0025;
 
@@ -761,13 +864,12 @@ export class FirstPersonViewModel {
       bobX = Math.cos(walkCycle * 0.5) * ampX;
       bobY = Math.abs(Math.sin(walkCycle)) * ampY;
       if (isSprinting) {
-        sprintTilt = 0.28; // 전력 질주 시 상체 전방 숙임
-        sprintDropY = -0.055; // 손을 살짝 내려 시야 확보 및 로우-레디
-        sprintArmPump = Math.sin(walkCycle * 0.5) * 0.045; // 보폭에 맞춘 격렬한 팔 펌핑
+        sprintTilt = 0.28;
+        sprintDropY = -0.055;
+        sprintArmPump = Math.sin(walkCycle * 0.5) * 0.045;
       }
     }
 
-    // 3. 왼손(손전등 or 챕터 2 직육면체 감지기) 위치/각도 애니메이션
     let torchClickOffset = 0;
     if (this.flashlightClickTimer > 0) {
       this.flashlightClickTimer = Math.max(0, this.flashlightClickTimer - dt);
@@ -779,8 +881,6 @@ export class FirstPersonViewModel {
     }
 
     const isCh2 = this.chapterId === 'chapter2';
-    // 챕터 2: 멈추면(isMoving=false) 기기를 세워 들어(sonarInspectRatio -> 1) 레이더 화면을 보여주고,
-    // 움직이면(isMoving=true) 기기를 앞으로 눕혀(sonarInspectRatio -> 0) 기기 윗면 발광부가 전방을 비추게 함!
     const targetInspect = (isCh2 && !isMoving) ? 1.0 : 0.0;
     this.sonarInspectRatio = THREE.MathUtils.lerp(
       this.sonarInspectRatio,
@@ -792,35 +892,11 @@ export class FirstPersonViewModel {
     const inspectRaiseY = isCh2 ? this.sonarInspectRatio * 0.078 : 0;
     const inspectPullZ = isCh2 ? this.sonarInspectRatio * 0.055 : 0;
 
-    this.leftArmGroup.position.set(
-      -0.26 + inspectRaiseX + breathX + bobX * 0.9 + this.swayX,
-      -0.23 + inspectRaiseY + sprintDropY + breathY - bobY * 1.1 + this.swayY - torchClickOffset * 0.5,
-      -0.42 + inspectPullZ + torchClickOffset + sprintArmPump
-    );
-    this.leftArmGroup.rotation.set(
-      -sprintTilt * 0.6 + this.swayY * 1.4,
-      this.swayX * 1.5,
-      bobX * 1.5 - (isSprinting ? 0.12 : 0)
-    );
-
-    if (isCh2 && this.sonarDeviceGroup) {
-      // 이동 시(ratio=0): 상단 LED 작업등(+Y)이 전방(-Z)을 향하도록 -1.18 rad 기울임
-      // 정지 시(ratio=1): 전면 레이더 스크린(+Z)이 플레이어 시선을 정면으로 향하도록 -0.12 rad 세움
-      const devicePitch = THREE.MathUtils.lerp(-1.18, -0.12, this.sonarInspectRatio);
-      const deviceYaw = THREE.MathUtils.lerp(0.08, 0.26, this.sonarInspectRatio);
-      const deviceRoll = THREE.MathUtils.lerp(0.0, -0.08, this.sonarInspectRatio);
-      this.sonarDeviceGroup.rotation.set(devicePitch, deviceYaw, deviceRoll);
-    }
-
-    // 4. 오른손(아이템 파지 손) 장착 & 액션 & 아이들 모션
     if (this.equipProgress < 1.0) {
       this.equipProgress = Math.min(1.0, this.equipProgress + dt * 3.8);
     }
     const easeEquip = 1 - Math.pow(1 - this.equipProgress, 3);
-
-    // 아이템이 없으면 오른손을 살짝 아래로 내려 시야를 넓히고, 아이템이 있으면 화면 우하단으로 들어 올림
     const hasItem = Boolean(this.currentItemType);
-    const baseRightY = hasItem ? -0.21 : -0.31;
     const equipDropY = (1 - easeEquip) * -0.18;
     const equipRollZ = (1 - easeEquip) * 0.45;
 
@@ -835,21 +911,84 @@ export class FirstPersonViewModel {
       actionPitchX = -wave * 0.28;
     }
 
-    this.rightArmGroup.position.set(
-      0.26 - breathX + bobX + this.swayX,
-      baseRightY + sprintDropY + breathY - bobY * 1.1 + this.swayY + equipDropY + actionReachY,
-      -0.43 + actionReachZ - sprintArmPump
-    );
-    this.rightArmGroup.rotation.set(
-      actionPitchX - sprintTilt * 0.75 + Math.sin(this.time * 1.8) * 0.025,
-      this.swayX * 1.6,
-      equipRollZ - bobX * 1.6 + (isSprinting ? 0.14 : 0)
-    );
+    // A. 실제 3D 솔저 모델 손/팔 뼈대 애니메이션 (진짜 손 모델 활성화 시)
+    if (this.isRealHandsReady && this.realBones) {
+      const b = this.realBones;
 
-    // 들고 있는 아이템 자체의 발광/스캔 애니메이션 업데이트
+      // 1) 왼팔 (손전등 / 음파 감지기 파지)
+      if (b['LeftArm']) {
+        b['LeftArm'].rotation.x = 1.34 - sprintTilt * 0.45 + breathY * 2.5 - bobY * 1.5 + this.swayY * 0.6;
+        b['LeftArm'].rotation.z = -0.32 + inspectRaiseX * 1.2 - bobX * 0.8;
+        b['LeftArm'].rotation.y = -0.15 + this.swayX * 0.6;
+      }
+      if (b['LeftForeArm']) {
+        b['LeftForeArm'].rotation.z = -0.76 - inspectRaiseY * 1.5 - torchClickOffset * 0.6;
+        b['LeftForeArm'].rotation.x = 0.25 + inspectPullZ * 0.8;
+      }
+      if (b['LeftHand']) {
+        b['LeftHand'].rotation.x = isCh2 ? (this.sonarInspectRatio * 0.45) : 0;
+        b['LeftHand'].rotation.z = isCh2 ? (-this.sonarInspectRatio * 0.35) : 0;
+      }
+
+      // 2) 오른팔 (아이템 파지 & 조작)
+      if (b['RightArm']) {
+        const rightDrop = hasItem ? 0 : 0.18;
+        b['RightArm'].rotation.x = 1.32 - rightDrop - sprintTilt * 0.5 + actionPitchX * 0.8 + breathY * 2.5 - bobY * 1.5 + this.swayY * 0.6;
+        b['RightArm'].rotation.z = 0.32 + equipRollZ * 0.6 + bobX * 0.8;
+        b['RightArm'].rotation.y = 0.15 + this.swayX * 0.6;
+      }
+      if (b['RightForeArm']) {
+        b['RightForeArm'].rotation.z = 0.76 + actionReachZ * 0.5;
+        b['RightForeArm'].rotation.x = 0.25;
+      }
+      if (b['RightHand']) {
+        b['RightHand'].rotation.y = equipRollZ * 0.4;
+      }
+
+      // 뷰모델 신체 전체 흔들림 (시선 Sway 및 보행 반동)
+      if (this.realSoldierRig) {
+        this.realSoldierRig.position.set(
+          this.swayX * 0.3,
+          -1.34 + breathY * 0.5 - bobY * 0.5 + this.swayY * 0.3,
+          -0.08 + (isSprinting ? 0.03 : 0)
+        );
+      }
+    } else {
+      // B. 로딩 중 임시 플레이스홀더 팔 흔들림 (Fallback)
+      this.leftArmGroup.position.set(
+        -0.26 + inspectRaiseX + breathX + bobX * 0.9 + this.swayX,
+        -0.23 + inspectRaiseY + sprintDropY + breathY - bobY * 1.1 + this.swayY - torchClickOffset * 0.5,
+        -0.42 + inspectPullZ + torchClickOffset + sprintArmPump
+      );
+      this.leftArmGroup.rotation.set(
+        -sprintTilt * 0.6 + this.swayY * 1.4,
+        this.swayX * 1.5,
+        bobX * 1.5 - (isSprinting ? 0.12 : 0)
+      );
+
+      const baseRightY = hasItem ? -0.21 : -0.31;
+      this.rightArmGroup.position.set(
+        0.26 - breathX + bobX + this.swayX,
+        baseRightY + sprintDropY + breathY - bobY * 1.1 + this.swayY + equipDropY + actionReachY,
+        -0.43 + actionReachZ - sprintArmPump
+      );
+      this.rightArmGroup.rotation.set(
+        actionPitchX - sprintTilt * 0.75 + Math.sin(this.time * 1.8) * 0.025,
+        this.swayX * 1.6,
+        equipRollZ - bobX * 1.6 + (isSprinting ? 0.14 : 0)
+      );
+    }
+
+    if (isCh2 && this.sonarDeviceGroup) {
+      const devicePitch = THREE.MathUtils.lerp(-1.18, -0.12, this.sonarInspectRatio);
+      const deviceYaw = THREE.MathUtils.lerp(0.08, 0.26, this.sonarInspectRatio);
+      const deviceRoll = THREE.MathUtils.lerp(0.0, -0.08, this.sonarInspectRatio);
+      this.sonarDeviceGroup.rotation.set(devicePitch, deviceYaw, deviceRoll);
+    }
+
+    // 들고 있는 아이템 자체 애니메이션 업데이트
     if (this.currentItemUpdater) {
       this.currentItemUpdater(this.time);
     }
   }
 }
-
