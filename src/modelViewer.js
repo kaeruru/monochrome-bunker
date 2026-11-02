@@ -136,7 +136,7 @@ export class ModelShowcaseViewer {
     this.crawler = new CrawlerCrocodileEntity();
     this.lurker = new LurkerCrocodileEntity();
     this.snare = new SnareMangleEntity();
-    this.playerModel = new PlayerCharacterEntity('동료 대원 #02', false);
+    this.playerModel = new PlayerCharacterEntity('동료 대원 #02', false, 'hazmat');
 
     this.scene.add(this.monster.root);
     this.scene.add(this.scp096.root);
@@ -251,10 +251,10 @@ export class ModelShowcaseViewer {
       this.playerModel.root.position.set(0, 0, 0);
       this.orbitDist = 2.45;
       this.orbitCenterY = 0.98;
-      if (titleEl) titleEl.textContent = '[OPERATIVE] 특수 방호 기동대원 (Adult CBRN Tactical Operative)';
+      if (titleEl) titleEl.textContent = '[OPERATIVE] 전술 방독면 기동대원 (PS1 Low-Poly Gas Mask Soldier)';
       if (descEl) {
         descEl.textContent =
-          '성인 7.5등신 비율(1.82m), 각진 방탄 헬멧 및 다크 고글, M50 군용 양구 방독면, MOLLE 방탄 조끼(무전기·탄입대·케미라이트), 전술 부츠로 리모델링했습니다.';
+          'PS1 감성 로우폴리 방독면 솔저 3D 모델(373KB). 표준 Mixamo 본 리깅과 역동적인 스켈레톤 애니메이션([대기(idle)], [전술 걷기(walk)], [전력 질주(sprint)], [사망(fallen)]) 연동. 멀티플레이어 식별용 8종 슈트 컬러 틴트 및 네온 암밴드·비콘 라이트를 지원합니다.';
       }
     } else {
       // compare: 제1장 원본 스토커 vs SCP-096 나란히 비교

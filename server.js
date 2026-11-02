@@ -232,10 +232,11 @@ function handleMessage(ws, msg) {
         return;
       }
 
+      const defaultSuits = ['steel', 'hazmat', 'blue', 'red', 'green', 'khaki', 'violet', 'black'];
       const playerInfo = {
         id: ws.playerId,
         callsign: msg.callsign || `OPERATIVE-${room.players.size + 1}`,
-        suitColor: msg.suitColor || 'steel',
+        suitColor: msg.suitColor || defaultSuits[room.players.size % defaultSuits.length],
         isHost: false,
         x: 0,
         y: 1.72,

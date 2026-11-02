@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PlayerCharacterEntity } from './models.js';
+import { PlayerCharacterEntity, SUIT_COLORS } from './models.js';
 
 export class NetworkManager {
   constructor(scene, callbacks = {}) {
@@ -354,15 +354,19 @@ export class NetworkManager {
   spawnRemotePlayer(playerData) {
     if (this.remotePlayers.has(playerData.id)) return;
 
-    const entity = new PlayerCharacterEntity(playerData.callsign || '동료 대원', false);
+    const colorKeys = Object.keys(SUIT_COLORS);
+    const fallbackColor = colorKeys[this.remotePlayers.size % colorKeys.length];
+    const suitColor = playerData.suitColor || fallbackColor;
+
+    const entity = new PlayerCharacterEntity(playerData.callsign || '동료 대원', false, suitColor);
     entity.root.position.set(playerData.x || 0, 0, playerData.z || -2);
     this.scene.add(entity.root);
 
     const initialFlashlight = playerData.flashlightOn !== false;
     entity.setFlashlight(initialFlashlight);
 
-    // 머리 위 3D 빌보드 네임태그 생성 (이모지 없이 전술 폰트 및 실시간 핑 표시)
-    const nameplate = this.createNameplateSprite(playerData.callsign || 'OPERATIVE', playerData.ping || 0);
+    // 머리 위 3D 빌보드 네임태그 생성 (대원 슈트 식별 컬러 테두리 반영)
+    const nameplate = this.createNameplateSprite(playerData.callsign || 'OPERATIVE', playerData.ping || 0, suitColor);
     nameplate.sprite.position.set(0, 2.18, 0);
     entity.root.add(nameplate.sprite);
 
@@ -370,6 +374,7 @@ export class NetworkManager {
       entity,
       nametag: nameplate.sprite,
       nameplateData: nameplate,
+      suitColor,
       targetPos: new THREE.Vector3(playerData.x || 0, 0, playerData.z || -2),
       targetYaw: playerData.yaw || 0,
       isMoving: false,
@@ -380,7 +385,7 @@ export class NetworkManager {
     });
   }
 
-  createNameplateSprite(text, ping = 0) {
+  createNameplateSprite(text, ping = 0, suitColor = 'steel') {
     const canvas = document.createElement('canvas');
     canvas.width = 300;
     canvas.height = 72;
@@ -390,26 +395,29 @@ export class NetworkManager {
     sprite.scale.set(1.65, 0.40, 1);
     sprite.renderOrder = 999;
 
-    const nameplate = { sprite, canvas, texture, callsign: text, ping };
-    this.renderNameplateCanvas(canvas, texture, text, ping);
+    const nameplate = { sprite, canvas, texture, callsign: text, ping, suitColor };
+    this.renderNameplateCanvas(canvas, texture, text, ping, suitColor);
     return nameplate;
   }
 
-  renderNameplateCanvas(canvas, texture, text, ping) {
+  renderNameplateCanvas(canvas, texture, text, ping, suitColor = 'steel') {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    let pingColor = '#55ee99'; // < 80ms (원활)
+    const preset = SUIT_COLORS[suitColor] || SUIT_COLORS.steel;
+    const accentHexStr = '#' + preset.accentHex.toString(16).padStart(6, '0');
+
+    let pingColor = '#55ee99';
     if (ping >= 150) {
-      pingColor = '#ff5555'; // >= 150ms (지연)
+      pingColor = '#ff5555';
     } else if (ping >= 80) {
-      pingColor = '#eecc55'; // 80~149ms (보통)
+      pingColor = '#eecc55';
     }
 
-    // 전술 박스 외곽선
-    ctx.fillStyle = 'rgba(8, 12, 16, 0.88)';
-    ctx.strokeStyle = pingColor;
-    ctx.lineWidth = 2.5;
+    // 전술 박스 외곽선 (팀 고유 컬러 반영)
+    ctx.fillStyle = 'rgba(8, 12, 16, 0.90)';
+    ctx.strokeStyle = accentHexStr;
+    ctx.lineWidth = 3.0;
     ctx.beginPath();
     if (ctx.roundRect) {
       ctx.roundRect(8, 8, canvas.width - 16, canvas.height - 16, 4);
@@ -419,14 +427,18 @@ export class NetworkManager {
     ctx.fill();
     ctx.stroke();
 
-    // 대원 콜사인 (한국어 시스템 폰트 체인)
+    // 팀 컬러 좌측 태그 바
+    ctx.fillStyle = accentHexStr;
+    ctx.fillRect(8, 8, 8, canvas.height - 16);
+
+    // 대원 콜사인
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 20px "Pretendard", "Noto Sans KR", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
+    ctx.font = 'bold 20px "Pretendard", "Noto Sans KR", "Malgun Gothic", sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText(`[ ${text} ]`, 22, canvas.height / 2);
+    ctx.fillText(`[ ${text} ]`, 26, canvas.height / 2);
 
-    // 핑 밀리초 (이모지 일체 배제, 순수 텍스트)
+    // 핑 밀리초
     ctx.fillStyle = pingColor;
     ctx.font = 'bold 16px "Share Tech Mono", monospace, sans-serif';
     ctx.textAlign = 'right';
@@ -442,7 +454,8 @@ export class NetworkManager {
       rp.nameplateData.canvas,
       rp.nameplateData.texture,
       rp.nameplateData.callsign,
-      rp.ping || 0
+      rp.ping || 0,
+      rp.suitColor || 'steel'
     );
   }
 

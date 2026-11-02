@@ -764,7 +764,7 @@ class MonochromeBunker3D {
     const floorY = this.map ? this.map.getFloorHeightAt(this.playerPos.x, this.playerPos.z) : 0.0;
 
     if (!this.fallenOperative) {
-      this.fallenOperative = new PlayerCharacterEntity(this.callsign || 'OPERATIVE', false);
+      this.fallenOperative = new PlayerCharacterEntity(this.callsign || 'OPERATIVE', false, this.suitColor || 'steel');
       this.scene.add(this.fallenOperative.root);
     }
     this.fallenOperative.root.visible = true;

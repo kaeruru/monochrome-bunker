@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { sound } from './audio.js';
 
@@ -2616,11 +2617,97 @@ function createCurvedTube(points, radius = 0.04, tubularSegments = 16, radialSeg
   return mesh;
 }
 
+// ============================================================================
+// 전술 방독면 솔저 (PS1 Low-Poly Gas Mask Soldier) 아바타 & 리깅 애니메이션
+// ============================================================================
+
+export const SUIT_COLORS = {
+  steel: {
+    name: '스틸 그레이',
+    colorHex: 0x727b87,
+    accentHex: 0x55ffaa,
+    label: '기본 보급'
+  },
+  black: {
+    name: '미드나잇 블랙',
+    colorHex: 0x22262a,
+    accentHex: 0x38ef7d,
+    label: '야간 잠입'
+  },
+  khaki: {
+    name: '사막 카키',
+    colorHex: 0x9e8c68,
+    accentHex: 0xffcc44,
+    label: '사막 작전'
+  },
+  hazmat: {
+    name: '하즈마트 오렌지',
+    colorHex: 0xff7711,
+    accentHex: 0xff9900,
+    label: '화학 방호'
+  },
+  red: {
+    name: '크림슨 레드',
+    colorHex: 0xd32f2f,
+    accentHex: 0xff4444,
+    label: '비상 타격'
+  },
+  blue: {
+    name: '코발트 블루',
+    colorHex: 0x1976d2,
+    accentHex: 0x40c4ff,
+    label: '심해 수색'
+  },
+  green: {
+    name: '올리브 그린',
+    colorHex: 0x388e3c,
+    accentHex: 0x69f0ae,
+    label: '전술 위장'
+  },
+  violet: {
+    name: '특수 바이올렛',
+    colorHex: 0x7b1fa2,
+    accentHex: 0xe040fb,
+    label: '전자 정찰'
+  }
+};
+
+let soldierFbxPromise = null;
+export function preloadSoldierModel() {
+  if (!soldierFbxPromise) {
+    const loader = new FBXLoader();
+    soldierFbxPromise = new Promise((resolve) => {
+      loader.load(
+        '/models/ps1low_poly_gas_mask_soldier_character_model.fbx',
+        (fbx) => resolve(fbx),
+        undefined,
+        (err) => {
+          console.warn('[Model] Primary soldier FBX load failed, trying relative path:', err);
+          loader.load(
+            'models/ps1low_poly_gas_mask_soldier_character_model.fbx',
+            (fbx) => resolve(fbx),
+            undefined,
+            (err2) => {
+              console.error('[Model] Failed to load soldier FBX model:', err2);
+              resolve(null);
+            }
+          );
+        }
+      );
+    });
+  }
+  return soldierFbxPromise;
+}
+
+if (typeof window !== 'undefined') {
+  preloadSoldierModel();
+}
+
 export class PlayerCharacterEntity {
-  constructor(name = '기동대원 #02', enableLight = true) {
-    this.mats = getMaterials();
+  constructor(name = '기동대원 #02', enableLight = true, suitColor = 'steel') {
     this.name = name;
     this.enableLight = enableLight;
+    this.suitColor = suitColor;
     this.root = new THREE.Group();
     this.time = Math.random() * 5;
     this.animMode = 'idle';
@@ -2630,575 +2717,229 @@ export class PlayerCharacterEntity {
     this.torchSpot = null;
     this.torchLens = null;
 
-    this.buildAdultTacticalOperative();
+    this.modelGroup = new THREE.Group();
+    this.root.add(this.modelGroup);
+
+    this.bones = {};
+    this.initialBoneRotations = {};
+    this.initialBonePositions = {};
+    this.baseHipsY = 0;
+    this.isModelReady = false;
+
+    // 로딩 중 몇 밀리초 동안 표시할 임시 플레이스홀더
+    this.buildTemporaryPlaceholder();
+
+    // 실제 리깅 솔저 3D 모델 비동기 로딩 및 인스턴스화
+    this.loadSoldierModel();
   }
 
-  buildAdultTacticalOperative() {
-    // 1. 성인 비율 골반 & 전술 워벨트 (높이 0.98m - 긴 다리 비율)
-    this.hipsGroup = new THREE.Group();
-    this.hipsGroup.position.set(0, 0.98, 0);
-    this.root.add(this.hipsGroup);
+  buildTemporaryPlaceholder() {
+    this.placeholderGroup = new THREE.Group();
+    const preset = SUIT_COLORS[this.suitColor] || SUIT_COLORS.steel;
+    const mat = new THREE.MeshLambertMaterial({ color: preset.colorHex });
 
-    const pelvisGeo = deformGeometry(new THREE.CylinderGeometry(0.165, 0.155, 0.18, 14), (v) => {
-      v.z *= 0.72;
-    });
-    const pelvis = new THREE.Mesh(pelvisGeo, this.mats.suitFabric);
-    pelvis.castShadow = true;
-    this.hipsGroup.add(pelvis);
+    // 몸체 캡슐
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.16, 0.95, 10), mat);
+    body.position.y = 0.95;
+    this.placeholderGroup.add(body);
 
-    // 전술 워벨트 & 덤프 파우치
-    const belt = new THREE.Mesh(
-      new THREE.BoxGeometry(0.35, 0.065, 0.25),
-      this.mats.suitWebbing
-    );
-    belt.position.y = 0.04;
-    this.hipsGroup.add(belt);
+    // 머리
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), mat);
+    head.position.y = 1.58;
+    this.placeholderGroup.add(head);
 
-    for (let side of [-1, 1]) {
-      const sidePouch = new THREE.Mesh(
-        new THREE.BoxGeometry(0.06, 0.12, 0.11),
-        this.mats.suitArmor
-      );
-      sidePouch.position.set(side * 0.19, 0.02, 0.01);
-      this.hipsGroup.add(sidePouch);
-    }
-
-    // 2. 성인 역삼각형 상체 & MOLLE 방탄 플레이트 캐리어 조끼
-    this.torsoGroup = new THREE.Group();
-    this.torsoGroup.position.set(0, 0.08, 0);
-    this.hipsGroup.add(this.torsoGroup);
-
-    // 성인 흉부/복부 (허리는 날렵하고 어깨/가슴은 탄탄한 V-Taper 조형)
-    const torsoMesh = createSculptedBioLimb(
-      [
-        [0, 0, 0],
-        [0, 0.25, 0.01],
-        [0, 0.5, 0]
-      ],
-      0.155,
-      0.205,
-      { segments: 16, radialSegs: 16, flutes: 6, fluteDepth: 0.04, ribFreq: 10, ribAmp: 0.03, bulge: 0.06, mat: this.mats.suitFabric }
-    );
-    torsoMesh.scale.z = 0.68;
-    this.torsoGroup.add(torsoMesh);
-
-    // 전면/후면 각진 방탄 플레이트 캐리어 (Plate Carrier Vest)
-    const frontPlate = new THREE.Mesh(
-      new THREE.BoxGeometry(0.31, 0.34, 0.06),
-      this.mats.suitArmor
-    );
-    frontPlate.position.set(0, 0.28, 0.12);
-    frontPlate.castShadow = true;
-    this.torsoGroup.add(frontPlate);
-
-    // 가슴 전면 탄입대/배터리 파우치 3연장
-    for (let i = -1; i <= 1; i++) {
-      const magPouch = new THREE.Mesh(
-        new THREE.BoxGeometry(0.075, 0.13, 0.045),
-        this.mats.suitWebbing
-      );
-      magPouch.position.set(i * 0.09, 0.2, 0.16);
-      this.torsoGroup.add(magPouch);
-    }
-
-    // 가슴 상단 전술 무전기(좌) & 발광 케미라이트 스틱(우)
-    const radioBox = new THREE.Mesh(
-      new THREE.BoxGeometry(0.065, 0.11, 0.04),
-      this.mats.suitWebbing
-    );
-    radioBox.position.set(-0.1, 0.38, 0.155);
-    this.torsoGroup.add(radioBox);
-
-    const antenna = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.004, 0.002, 0.28, 6),
-      this.mats.suitMetal
-    );
-    antenna.position.set(-0.12, 0.54, 0.15);
-    this.torsoGroup.add(antenna);
-
-    const chemLight = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.01, 0.01, 0.1, 8),
-      this.mats.visorHudSlit
-    );
-    chemLight.rotation.z = Math.PI / 3;
-    chemLight.position.set(0.08, 0.37, 0.16);
-    this.torsoGroup.add(chemLight);
-
-    // 방탄 조끼 어깨 패드 스트랩
-    for (let side of [-1, 1]) {
-      const shoulderStrap = new THREE.Mesh(
-        new THREE.BoxGeometry(0.075, 0.06, 0.28),
-        this.mats.suitArmor
-      );
-      shoulderStrap.position.set(side * 0.13, 0.49, 0);
-      this.torsoGroup.add(shoulderStrap);
-    }
-
-    // 3. 등 뒤의 군용 CBRN 공기 정화 팩 & 트윈 산소 실린더
-    this.backpackGroup = new THREE.Group();
-    this.backpackGroup.position.set(0, 0.28, -0.15);
-    this.torsoGroup.add(this.backpackGroup);
-
-    const backPlate = new THREE.Mesh(
-      new THREE.BoxGeometry(0.28, 0.36, 0.09),
-      this.mats.suitArmor
-    );
-    backPlate.castShadow = true;
-    this.backpackGroup.add(backPlate);
-
-    for (let side of [-1, 1]) {
-      const cylinder = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.058, 0.058, 0.34, 14),
-        this.mats.suitMetal
-      );
-      cylinder.position.set(side * 0.085, -0.01, -0.065);
-      cylinder.castShadow = true;
-      this.backpackGroup.add(cylinder);
-
-      const valve = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.025, 0.03, 0.05, 8),
-        this.mats.suitWebbing
-      );
-      valve.position.set(side * 0.085, 0.18, -0.065);
-      this.backpackGroup.add(valve);
-    }
-
-    // 백팩 상태 표시 슬릿 LED
-    const statusSlit = new THREE.Mesh(
-      new THREE.BoxGeometry(0.018, 0.16, 0.015),
-      this.mats.visorHudSlit
-    );
-    statusSlit.position.set(0, 0.02, -0.115);
-    this.backpackGroup.add(statusSlit);
-
-    // 4. 성인 비율 전술 방탄 헬멧(Fast-MT) + 다크 발리스틱 바이저 + 군용 양구 방독면 (유아틱함 제로!)
-    this.headGroup = new THREE.Group();
-    this.headGroup.position.set(0, 0.52, 0);
-    this.torsoGroup.add(this.headGroup);
-
-    // 목 방호 카라(Neck Gaiter)
-    const neck = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.075, 0.09, 0.1, 12),
-      this.mats.suitWebbing
-    );
-    neck.position.y = 0.04;
-    this.headGroup.add(neck);
-
-    // 각진 전술 방탄 헬멧 쉘 (성인 머리 크기에 맞춘 컴팩트한 비율)
-    const helmetGeo = deformGeometry(new THREE.SphereGeometry(0.135, 18, 16), (v) => {
-      v.x *= 0.92;
-      v.y *= 1.05;
-      v.z *= 1.12;
-      // 헬멧 하단 귀 부위 컷아웃 및 후면 각진 실루엣
-      if (v.y < -0.04 && v.z > 0.02) {
-        v.y = -0.04;
-      }
-    });
-    const helmetShell = new THREE.Mesh(helmetGeo, this.mats.suitArmor);
-    helmetShell.position.set(0, 0.16, -0.01);
-    helmetShell.castShadow = true;
-    this.headGroup.add(helmetShell);
-
-    // 헬멧 이마 NVG 야간투시경 마운트 슈라우드
-    const nvgMount = new THREE.Mesh(
-      new THREE.BoxGeometry(0.065, 0.055, 0.03),
-      this.mats.suitMetal
-    );
-    nvgMount.position.set(0, 0.22, 0.13);
-    nvgMount.rotation.x = -0.2;
-    this.headGroup.add(nvgMount);
-
-    // 헬멧 좌우 전술 레일 & 헤드셋(Peltor 스타일)
-    for (let side of [-1, 1]) {
-      const earCup = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.045, 0.045, 0.035, 10),
-        this.mats.suitWebbing
-      );
-      earCup.rotation.z = Math.PI / 2;
-      earCup.position.set(side * 0.125, 0.13, 0.0);
-      this.headGroup.add(earCup);
-    }
-
-    // 각진 파노라마 다크 방탄 고글/바이저 + 날카로운 수평 전술 HUD 광학 슬릿 (귀여운 네모 눈 완전 삭제!)
-    const goggleFrame = new THREE.Mesh(
-      new THREE.BoxGeometry(0.21, 0.075, 0.09),
-      this.mats.suitWebbing
-    );
-    goggleFrame.position.set(0, 0.155, 0.095);
-    this.headGroup.add(goggleFrame);
-
-    const goggleLens = new THREE.Mesh(
-      new THREE.BoxGeometry(0.19, 0.055, 0.02),
-      this.mats.visorGlass
-    );
-    goggleLens.position.set(0, 0.155, 0.135);
-    this.headGroup.add(goggleLens);
-
-    // 고글 내부에 비치는 날카롭고 진지한 한 줄의 택티컬 HUD 바이저 라인
-    for (let side of [-1, 1]) {
-      const opticSlit = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.052, 0.012),
-        this.mats.visorHudSlit
-      );
-      opticSlit.position.set(side * 0.045, 0.155, 0.146);
-      this.headGroup.add(opticSlit);
-    }
-
-    // 하단 각진 M50 스타일 군용 방독면 & 양측 정화통 필터 (Dual Canister Respirator)
-    const maskFacepiece = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.048, 0.065, 0.1, 6),
-      this.mats.suitWebbing
-    );
-    maskFacepiece.rotation.x = Math.PI / 2 + 0.35;
-    maskFacepiece.position.set(0, 0.085, 0.115);
-    this.headGroup.add(maskFacepiece);
-
-    for (let side of [-1, 1]) {
-      const filterCanister = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.036, 0.036, 0.065, 10),
-        this.mats.suitArmor
-      );
-      filterCanister.rotation.z = side * 0.65;
-      filterCanister.rotation.x = Math.PI / 2;
-      filterCanister.position.set(side * 0.068, 0.075, 0.11);
-      this.headGroup.add(filterCanister);
-
-      // 방독면에서 등 뒤 정화 팩으로 이어지는 굵은 주름 호스
-      const hose = createCurvedTube(
-        [
-          [side * 0.07, 0.065, 0.11],
-          [side * 0.14, 0.02, 0.06],
-          [side * 0.16, -0.06, -0.04],
-          [side * 0.09, -0.1, -0.18]
-        ],
-        0.018,
-        14,
-        8,
-        this.mats.suitWebbing
-      );
-      this.headGroup.add(hose);
-    }
-
-    // 5. 성인 비율 다관절 팔 & 전술 손전등
-    this.leftArm = this.buildTacticalArm(-1, false);
-    this.rightArm = this.buildTacticalArm(1, true);
-    this.torsoGroup.add(this.leftArm.shoulderGroup);
-    this.torsoGroup.add(this.rightArm.shoulderGroup);
-
-    // 6. 성인 비율 긴 다리 & 각진 하드쉘 무릎 보호대 & 컴뱃 부츠
-    this.leftLeg = this.buildTacticalLeg(-1);
-    this.rightLeg = this.buildTacticalLeg(1);
-    this.hipsGroup.add(this.leftLeg.hipGroup);
-    this.hipsGroup.add(this.rightLeg.hipGroup);
+    this.modelGroup.add(this.placeholderGroup);
   }
 
-  buildTacticalArm(side, hasFlashlight) {
-    const shoulderGroup = new THREE.Group();
-    shoulderGroup.position.set(side * 0.23, 0.45, 0);
+  loadSoldierModel() {
+    preloadSoldierModel().then((templateFbx) => {
+      if (!templateFbx) return;
 
-    // 각진 전술 견갑 패드 (Pauldron)
-    const shoulderArmor = new THREE.Mesh(
-      new THREE.BoxGeometry(0.095, 0.12, 0.13),
-      this.mats.suitArmor
-    );
-    shoulderArmor.position.set(side * 0.015, -0.02, 0);
-    shoulderArmor.rotation.z = side * 0.15;
-    shoulderGroup.add(shoulderArmor);
+      // SkeletonUtils.clone으로 각 대원별 독립 스켈레톤 및 본 복제
+      const cloned = SkeletonUtils.clone(templateFbx);
 
-    // 상완 (옷주름이 조각된 전투복 소매)
-    const upperArm = createSculptedBioLimb(
-      [[0, 0, 0], [0, -0.15, 0], [0, -0.3, 0]],
-      0.058,
-      0.048,
-      { segments: 12, flutes: 5, fluteDepth: 0.05, ribFreq: 10, ribAmp: 0.04, bulge: 0.1, mat: this.mats.suitFabric }
-    );
-    shoulderGroup.add(upperArm);
+      // 모델 크기 정밀 보정: 원본 높이 3.34m -> 게임 내 성인 신장 1.76m (스케일 0.528)
+      const targetHeight = 1.76;
+      const modelScale = targetHeight / 3.34;
+      cloned.scale.setScalar(modelScale);
+      cloned.position.set(0, 0, 0);
 
-    const elbowGroup = new THREE.Group();
-    elbowGroup.position.set(0, -0.3, 0);
-    shoulderGroup.add(elbowGroup);
+      // 본 맵핑 및 캐싱
+      cloned.traverse((child) => {
+        if (child.isBone) {
+          const rawName = child.name;
+          this.bones[rawName] = child;
+          const cleanName = rawName.replace(/^mixamorig:/i, '');
+          this.bones[cleanName] = child;
+          this.initialBoneRotations[cleanName] = child.rotation.clone();
+          this.initialBonePositions[cleanName] = child.position.clone();
+        }
 
-    const elbowPad = new THREE.Mesh(
-      new THREE.BoxGeometry(0.065, 0.08, 0.065),
-      this.mats.suitWebbing
-    );
-    elbowPad.position.set(0, 0, -0.015);
-    elbowGroup.add(elbowPad);
-
-    const forearm = createSculptedBioLimb(
-      [[0, 0, 0], [0, -0.14, 0.01], [0, -0.27, 0.02]],
-      0.048,
-      0.038,
-      { segments: 12, flutes: 5, fluteDepth: 0.04, ribFreq: 8, ribAmp: 0.03, bulge: 0.08, mat: this.mats.suitFabric }
-    );
-    elbowGroup.add(forearm);
-
-    // 왼쪽 손목 전술 PDA/단말기
-    if (side < 0) {
-      const wristPda = new THREE.Mesh(
-        new THREE.BoxGeometry(0.045, 0.065, 0.02),
-        this.mats.suitArmor
-      );
-      wristPda.position.set(-0.025, -0.21, 0.035);
-      elbowGroup.add(wristPda);
-
-      const pdaScreen = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.032, 0.048),
-        this.mats.visorHudSlit
-      );
-      pdaScreen.position.set(-0.025, -0.21, 0.046);
-      elbowGroup.add(pdaScreen);
-    }
-
-    // 전술 장갑 손
-    const glove = new THREE.Mesh(
-      new THREE.BoxGeometry(0.048, 0.085, 0.065),
-      this.mats.suitWebbing
-    );
-    glove.position.set(0, -0.3, 0.02);
-    elbowGroup.add(glove);
-
-    if (hasFlashlight) {
-      const torchGroup = new THREE.Group();
-      torchGroup.position.set(0, -0.3, 0.06);
-      elbowGroup.add(torchGroup);
-      this.torchGroup = torchGroup;
-
-      const body = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.022, 0.019, 0.2, 10),
-        this.mats.suitArmor
-      );
-      body.rotation.x = Math.PI / 2;
-      torchGroup.add(body);
-
-      const head = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.034, 0.024, 0.055, 10),
-        this.mats.suitMetal
-      );
-      head.rotation.x = Math.PI / 2;
-      head.position.z = 0.11;
-      torchGroup.add(head);
-
-      const lens = new THREE.Mesh(
-        new THREE.CircleGeometry(0.03, 10),
-        this.mats.visorHudSlit
-      );
-      lens.position.z = 0.139;
-      torchGroup.add(lens);
-      this.torchLens = lens;
-
-      const beamConeGeo = new THREE.ConeGeometry(0.38, 1.9, 14, 1, true);
-      beamConeGeo.translate(0, -0.95, 0);
-      beamConeGeo.rotateX(-Math.PI / 2);
-      const beamConeMat = new THREE.MeshBasicMaterial({
-        color: 0xffffff,
-        transparent: true,
-        opacity: 0.08,
-        side: THREE.DoubleSide,
-        depthWrite: false
+        if (child.isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+          // 대원별 고유 슈트 컬러 틴트 적용
+          if (child.material) {
+            const mats = Array.isArray(child.material) ? child.material : [child.material];
+            const newMats = mats.map((m) => {
+              const clonedMat = m.clone();
+              this.applySuitColorToMaterial(clonedMat, this.suitColor);
+              return clonedMat;
+            });
+            child.material = Array.isArray(child.material) ? newMats : newMats[0];
+          }
+        }
       });
-      const beamCone = new THREE.Mesh(beamConeGeo, beamConeMat);
-      beamCone.position.z = 0.14;
-      torchGroup.add(beamCone);
-      this.torchBeamCone = beamCone;
 
-      if (this.enableLight) {
-        const spot = new THREE.SpotLight(0xffffff, 6, 12, Math.PI / 5.5, 0.55, 1.5);
-        spot.position.set(0, 0, 0.14);
-        const target = new THREE.Object3D();
-        target.position.set(0, 0, 5);
-        torchGroup.add(spot);
-        torchGroup.add(target);
-        spot.target = target;
-        this.torchSpot = spot;
+      if (this.bones['Hips']) {
+        this.baseHipsY = this.bones['Hips'].position.y;
       }
-    }
 
-    return { shoulderGroup, elbowGroup };
+      // 플레이어 식별용 전술 네온 암밴드 & 가슴/등 비콘 LED 부착
+      this.attachTacticalSuitAccents();
+
+      // 오른손에 전술 손전등 & 조명 콘 장착
+      this.attachFlashlightToRightHand();
+
+      // 임시 플레이스홀더 제거 후 3D 솔저 모델 배치
+      while (this.modelGroup.children.length > 0) {
+        this.modelGroup.remove(this.modelGroup.children[0]);
+      }
+      this.modelGroup.add(cloned);
+      this.soldierRoot = cloned;
+      this.isModelReady = true;
+
+      // 초기 대기 자세 적용
+      this.applyTacticalPose(0, this.animMode || 'idle');
+    });
   }
 
-  buildTacticalLeg(side) {
-    const hipGroup = new THREE.Group();
-    hipGroup.position.set(side * 0.1, -0.02, 0);
+  applySuitColorToMaterial(material, suitColorKey) {
+    const preset = SUIT_COLORS[suitColorKey] || SUIT_COLORS.steel;
+    if (material.color) {
+      material.color.setHex(preset.colorHex);
+    }
+    if (material.emissive) {
+      material.emissive.setHex(preset.colorHex);
+      material.emissiveIntensity = 0.15;
+    }
+  }
 
-    // 성인 비율 허벅지 (길이 0.46m)
-    const thigh = createSculptedBioLimb(
-      [[0, 0, 0], [0, -0.23, 0.01], [0, -0.46, 0]],
-      0.082,
-      0.065,
-      { segments: 14, flutes: 6, fluteDepth: 0.05, ribFreq: 10, ribAmp: 0.04, bulge: 0.12, mat: this.mats.suitFabric }
-    );
-    hipGroup.add(thigh);
+  setSuitColor(suitColorKey) {
+    this.suitColor = suitColorKey;
+    if (this.soldierRoot) {
+      this.soldierRoot.traverse((child) => {
+        if (child.isMesh && child.material) {
+          const mats = Array.isArray(child.material) ? child.material : [child.material];
+          mats.forEach(m => this.applySuitColorToMaterial(m, suitColorKey));
+        }
+      });
+    }
+  }
 
-    // 우측 허벅지 전술 레그 홀스터 & 스트랩
-    if (side > 0) {
-      const holster = new THREE.Mesh(
-        new THREE.BoxGeometry(0.05, 0.16, 0.095),
-        this.mats.suitWebbing
+  attachTacticalSuitAccents() {
+    const preset = SUIT_COLORS[this.suitColor] || SUIT_COLORS.steel;
+    const accentMat = new THREE.MeshStandardMaterial({
+      color: preset.accentHex,
+      emissive: preset.accentHex,
+      emissiveIntensity: 1.6,
+      roughness: 0.25,
+      metalness: 0.4
+    });
+
+    // 1. 왼팔/오른팔 상박 전술 식별 암밴드 (고유 팀 컬러 네온 밴드)
+    const bandGeo = new THREE.CylinderGeometry(0.064, 0.060, 0.09, 12);
+    if (this.bones['LeftArm']) {
+      const leftBand = new THREE.Mesh(bandGeo, accentMat);
+      leftBand.position.set(0, 0.12, 0);
+      this.bones['LeftArm'].add(leftBand);
+    }
+    if (this.bones['RightArm']) {
+      const rightBand = new THREE.Mesh(bandGeo, accentMat);
+      rightBand.position.set(0, 0.12, 0);
+      this.bones['RightArm'].add(rightBand);
+    }
+
+    // 2. 가슴 & 등판 식별 비콘 라이트
+    const spineBone = this.bones['Spine2'] || this.bones['Spine1'] || this.bones['Spine'];
+    if (spineBone) {
+      const chestBeacon = new THREE.Mesh(
+        new THREE.BoxGeometry(0.05, 0.035, 0.035),
+        accentMat
       );
-      holster.position.set(0.075, -0.22, 0.01);
-      hipGroup.add(holster);
-    }
+      chestBeacon.position.set(0, 0.16, 0.15);
+      spineBone.add(chestBeacon);
 
-    const kneeGroup = new THREE.Group();
-    kneeGroup.position.set(0, -0.46, 0);
-    hipGroup.add(kneeGroup);
-
-    // 각진 하드쉘 전술 무릎 보호대
-    const kneePad = new THREE.Mesh(
-      new THREE.BoxGeometry(0.095, 0.11, 0.05),
-      this.mats.suitArmor
-    );
-    kneePad.position.set(0, 0, 0.055);
-    kneeGroup.add(kneePad);
-
-    // 정강이 (길이 0.42m)
-    const shin = createSculptedBioLimb(
-      [[0, 0, 0], [0, -0.21, -0.01], [0, -0.42, 0]],
-      0.064,
-      0.052,
-      { segments: 14, flutes: 5, fluteDepth: 0.04, ribFreq: 8, ribAmp: 0.03, bulge: 0.08, mat: this.mats.suitFabric }
-    );
-    kneeGroup.add(shin);
-
-    // 군용 전술 컴뱃 부츠 (발목 가드 + 밑창 아웃솔)
-    const ankleBoot = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.054, 0.058, 0.1, 10),
-      this.mats.suitWebbing
-    );
-    ankleBoot.position.set(0, -0.41, 0);
-    kneeGroup.add(ankleBoot);
-
-    const bootFoot = new THREE.Mesh(
-      new THREE.BoxGeometry(0.105, 0.085, 0.23),
-      this.mats.suitWebbing
-    );
-    bootFoot.position.set(0, -0.455, 0.045);
-    bootFoot.castShadow = true;
-    kneeGroup.add(bootFoot);
-
-    return { hipGroup, kneeGroup };
-  }
-
-  /**
-   * 사망 시 복도 바닥에 자연스럽게 쓰러진 자세 (Fallen Ragdoll Posture)
-   */
-  setFallenPose() {
-    this.animMode = 'fallen';
-    this.root.position.y = 0.14;
-    this.root.rotation.set(-Math.PI / 2, 0, (Math.random() - 0.5) * 0.45);
-
-    this.hipsGroup.position.set(0, 0.1, 0);
-    this.torsoGroup.rotation.set(0.08, 0.22, 0.05);
-    this.headGroup.rotation.set(-0.25, 0.55, -0.15);
-
-    if (this.leftArm) {
-      this.leftArm.shoulderGroup.rotation.set(0.42, 0.35, 0.2);
-      this.leftArm.elbowGroup.rotation.set(-0.15, 0, 0);
-    }
-    if (this.rightArm) {
-      this.rightArm.shoulderGroup.rotation.set(0.75, -0.38, -0.22);
-      this.rightArm.elbowGroup.rotation.set(-0.35, 0, 0);
-    }
-    if (this.leftLeg) {
-      this.leftLeg.hipGroup.rotation.set(0.22, 0.28, 0.1);
-      this.leftLeg.kneeGroup.rotation.set(0.35, 0, 0);
-    }
-    if (this.rightLeg) {
-      this.rightLeg.hipGroup.rotation.set(-0.18, -0.2, -0.1);
-      this.rightLeg.kneeGroup.rotation.set(0.15, 0, 0);
+      const backBeacon = new THREE.Mesh(
+        new THREE.BoxGeometry(0.05, 0.035, 0.035),
+        accentMat
+      );
+      backBeacon.position.set(0, 0.16, -0.15);
+      spineBone.add(backBeacon);
     }
   }
 
-  update(dt, mode = this.animMode) {
-    if (mode === 'fallen' || this.animMode === 'fallen') {
-      return;
-    }
-    this.animMode = mode;
-    this.time += dt;
-    const t = this.time;
+  attachFlashlightToRightHand() {
+    const handBone = this.bones['RightHand'] || this.bones['RightForeArm'];
+    if (!handBone) return;
 
-    if (mode === 'sprint') {
-      const freq = 8.6;
-      const phase = t * freq;
-      const s = Math.sin(phase);
+    const torchGroup = new THREE.Group();
+    torchGroup.position.set(0, 0.06, 0.04);
+    torchGroup.rotation.set(0, 0, -Math.PI / 2);
+    handBone.add(torchGroup);
+    this.torchGroup = torchGroup;
 
-      // 전술 전력 질주: 상체를 20도 가량 숙이고 격렬한 보폭 펌핑
-      this.hipsGroup.position.y = 0.98 + Math.abs(Math.cos(phase)) * 0.058;
-      this.torsoGroup.rotation.y = -s * 0.16;
-      this.torsoGroup.rotation.x = 0.22;
+    const darkMetal = new THREE.MeshStandardMaterial({
+      color: 0x1f2327,
+      roughness: 0.4,
+      metalness: 0.8
+    });
 
-      this.leftLeg.hipGroup.rotation.x = s * 0.88;
-      this.leftLeg.kneeGroup.rotation.x = Math.max(0, -Math.cos(phase)) * 0.95;
+    const body = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.022, 0.018, 0.18, 10),
+      darkMetal
+    );
+    body.rotation.x = Math.PI / 2;
+    torchGroup.add(body);
 
-      this.rightLeg.hipGroup.rotation.x = -s * 0.88;
-      this.rightLeg.kneeGroup.rotation.x = Math.max(0, Math.cos(phase)) * 0.95;
+    const head = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.032, 0.022, 0.05, 10),
+      darkMetal
+    );
+    head.rotation.x = Math.PI / 2;
+    head.position.z = 0.10;
+    torchGroup.add(head);
 
-      this.leftArm.shoulderGroup.rotation.x = -s * 0.72;
-      this.leftArm.elbowGroup.rotation.x = -0.75;
+    const lensMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const lens = new THREE.Mesh(new THREE.CircleGeometry(0.028, 10), lensMat);
+    lens.position.z = 0.126;
+    torchGroup.add(lens);
+    this.torchLens = lens;
 
-      this.rightArm.shoulderGroup.rotation.x = -0.42 + s * 0.62;
-      this.rightArm.elbowGroup.rotation.x = -1.22;
+    const beamGeo = new THREE.ConeGeometry(0.36, 1.8, 14, 1, true);
+    beamGeo.translate(0, -0.9, 0);
+    beamGeo.rotateX(-Math.PI / 2);
+    const beamMat = new THREE.MeshBasicMaterial({
+      color: 0xfff4e0,
+      transparent: true,
+      opacity: 0.12,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    });
+    const beamCone = new THREE.Mesh(beamGeo, beamMat);
+    beamCone.position.z = 0.13;
+    torchGroup.add(beamCone);
+    this.torchBeamCone = beamCone;
 
-      this.headGroup.rotation.y = Math.sin(t * 1.5) * 0.08;
-      this.headGroup.rotation.x = -0.12 + Math.abs(Math.sin(phase)) * 0.04;
-    } else if (mode === 'walk') {
-      const freq = 4.8;
-      const phase = t * freq;
-      const s = Math.sin(phase);
-
-      this.hipsGroup.position.y = 0.98 + Math.abs(Math.cos(phase)) * 0.035;
-      this.torsoGroup.rotation.y = -s * 0.07;
-      this.torsoGroup.rotation.x = 0.06;
-
-      this.leftLeg.hipGroup.rotation.x = s * 0.48;
-      this.leftLeg.kneeGroup.rotation.x = Math.max(0, -Math.cos(phase)) * 0.55;
-
-      this.rightLeg.hipGroup.rotation.x = -s * 0.48;
-      this.rightLeg.kneeGroup.rotation.x = Math.max(0, Math.cos(phase)) * 0.55;
-
-      this.leftArm.shoulderGroup.rotation.x = -s * 0.36;
-      this.leftArm.elbowGroup.rotation.x = -0.32;
-
-      // 오른팔은 전술 로우-레디 자세로 손전등을 정면에 유지
-      this.rightArm.shoulderGroup.rotation.x = -0.32 + Math.sin(phase * 0.5) * 0.06;
-      this.rightArm.elbowGroup.rotation.x = -1.18;
-
-      this.headGroup.rotation.y = Math.sin(t * 1.2) * 0.15;
-    } else if (mode === 'look') {
-      this.hipsGroup.position.y = 0.98 + Math.sin(t * 2.0) * 0.01;
-      const sweep = Math.sin(t * 1.1);
-      this.torsoGroup.rotation.y = sweep * 0.22;
-      this.headGroup.rotation.y = sweep * 0.32;
-      this.headGroup.rotation.x = Math.sin(t * 1.8) * 0.06;
-
-      this.rightArm.shoulderGroup.rotation.x = -0.38 + Math.sin(t * 1.8) * 0.1;
-      this.rightArm.shoulderGroup.rotation.y = sweep * 0.18;
-      this.rightArm.elbowGroup.rotation.x = -1.15;
-
-      this.leftArm.shoulderGroup.rotation.x = Math.sin(t * 1.6) * 0.05;
-      this.leftArm.elbowGroup.rotation.x = -0.28;
-      this.leftLeg.hipGroup.rotation.x = 0;
-      this.rightLeg.hipGroup.rotation.x = 0;
-    } else {
-      this.hipsGroup.position.y = 0.98 + Math.sin(t * 2.0) * 0.01;
-      this.torsoGroup.rotation.y = Math.sin(t * 0.7) * 0.05;
-      this.torsoGroup.rotation.x = 0.02;
-
-      this.headGroup.rotation.y = Math.sin(t * 1.0) * 0.12;
-      this.headGroup.rotation.x = Math.sin(t * 1.5) * 0.03;
-
-      this.leftArm.shoulderGroup.rotation.x = Math.sin(t * 1.6) * 0.04;
-      this.leftArm.elbowGroup.rotation.x = -0.28;
-
-      this.rightArm.shoulderGroup.rotation.x = -0.3;
-      this.rightArm.shoulderGroup.rotation.y = 0;
-      this.rightArm.elbowGroup.rotation.x = -1.15 + Math.sin(t * 2.0) * 0.03;
-
-      this.leftLeg.hipGroup.rotation.x = 0;
-      this.leftLeg.kneeGroup.rotation.x = 0;
-      this.rightLeg.hipGroup.rotation.x = 0;
-      this.rightLeg.kneeGroup.rotation.x = 0;
+    if (this.enableLight) {
+      const spot = new THREE.SpotLight(0xfff0d6, 5.8, 14, Math.PI / 5.5, 0.5, 1.4);
+      spot.position.set(0, 0, 0.13);
+      const target = new THREE.Object3D();
+      target.position.set(0, 0, 6);
+      torchGroup.add(spot);
+      torchGroup.add(target);
+      spot.target = target;
+      this.torchSpot = spot;
     }
   }
 
@@ -3207,5 +2948,203 @@ export class PlayerCharacterEntity {
     if (this.torchBeamCone) this.torchBeamCone.visible = this.flashlightOn;
     if (this.torchSpot) this.torchSpot.visible = this.flashlightOn;
     if (this.torchLens) this.torchLens.visible = this.flashlightOn;
+  }
+
+  setFallenPose() {
+    this.animMode = 'fallen';
+    this.root.position.y = 0.14;
+    this.root.rotation.set(-Math.PI / 2, 0, (Math.random() - 0.5) * 0.45);
+
+    if (this.bones['Hips']) this.bones['Hips'].position.y = 0.08;
+    if (this.bones['Spine']) this.bones['Spine'].rotation.set(0.12, 0.25, 0.05);
+    if (this.bones['Head']) this.bones['Head'].rotation.set(-0.25, 0.5, -0.15);
+    if (this.bones['LeftArm']) this.bones['LeftArm'].rotation.set(0.4, 0.3, -0.6);
+    if (this.bones['RightArm']) this.bones['RightArm'].rotation.set(0.7, -0.4, 0.5);
+    if (this.bones['LeftUpLeg']) this.bones['LeftUpLeg'].rotation.set(0.2, 0.3, 0.1);
+    if (this.bones['RightUpLeg']) this.bones['RightUpLeg'].rotation.set(-0.2, -0.2, -0.1);
+  }
+
+  applyTacticalPose(t, mode) {
+    if (mode === 'fallen') {
+      return;
+    }
+
+    if (mode === 'sprint') {
+      // 1. 전술 전력 질주 (Sprint)
+      const freq = 9.2;
+      const phase = t * freq;
+      const sinP = Math.sin(phase);
+      const cosP = Math.cos(phase);
+
+      if (this.bones['Hips']) {
+        this.bones['Hips'].position.y = this.baseHipsY + Math.abs(sinP) * 0.06;
+        this.bones['Hips'].rotation.y = sinP * 0.14;
+      }
+      if (this.bones['Spine']) {
+        this.bones['Spine'].rotation.x = 0.26 + Math.abs(sinP) * 0.04;
+        this.bones['Spine'].rotation.y = -sinP * 0.16;
+      }
+      if (this.bones['Spine1']) {
+        this.bones['Spine1'].rotation.x = 0.12;
+      }
+
+      if (this.bones['LeftUpLeg']) {
+        this.bones['LeftUpLeg'].rotation.x = sinP * 0.85;
+      }
+      if (this.bones['LeftLeg']) {
+        this.bones['LeftLeg'].rotation.x = Math.max(0, -cosP) * 1.10;
+      }
+      if (this.bones['LeftFoot']) {
+        this.bones['LeftFoot'].rotation.x = -sinP * 0.3;
+      }
+
+      if (this.bones['RightUpLeg']) {
+        this.bones['RightUpLeg'].rotation.x = -sinP * 0.85;
+      }
+      if (this.bones['RightLeg']) {
+        this.bones['RightLeg'].rotation.x = Math.max(0, cosP) * 1.10;
+      }
+      if (this.bones['RightFoot']) {
+        this.bones['RightFoot'].rotation.x = sinP * 0.3;
+      }
+
+      // 왼팔 역동적인 질주 펌핑
+      if (this.bones['LeftArm']) {
+        this.bones['LeftArm'].rotation.z = -1.0;
+        this.bones['LeftArm'].rotation.x = -sinP * 0.85;
+        this.bones['LeftArm'].rotation.y = 0.2;
+      }
+      if (this.bones['LeftForeArm']) {
+        this.bones['LeftForeArm'].rotation.x = 0.8 + Math.abs(cosP) * 0.4;
+      }
+
+      // 오른팔 손전등 전방 유지 펌핑
+      if (this.bones['RightArm']) {
+        this.bones['RightArm'].rotation.z = 0.9;
+        this.bones['RightArm'].rotation.x = 0.45 + sinP * 0.35;
+      }
+      if (this.bones['RightForeArm']) {
+        this.bones['RightForeArm'].rotation.x = 0.75 + Math.abs(sinP) * 0.15;
+      }
+
+      if (this.bones['Head']) {
+        this.bones['Head'].rotation.x = -0.15;
+        this.bones['Head'].rotation.y = Math.sin(t * 1.5) * 0.08;
+      }
+    } else if (mode === 'walk') {
+      // 2. 전술 이동 / 걷기 (Walk)
+      const freq = 5.2;
+      const phase = t * freq;
+      const sinP = Math.sin(phase);
+      const cosP = Math.cos(phase);
+
+      if (this.bones['Hips']) {
+        this.bones['Hips'].position.y = this.baseHipsY + Math.abs(sinP) * 0.035;
+        this.bones['Hips'].rotation.y = sinP * 0.07;
+      }
+      if (this.bones['Spine']) {
+        this.bones['Spine'].rotation.x = 0.08 + Math.abs(sinP) * 0.02;
+        this.bones['Spine'].rotation.y = -sinP * 0.08;
+      }
+      if (this.bones['Spine1']) {
+        this.bones['Spine1'].rotation.x = 0.04;
+      }
+
+      if (this.bones['LeftUpLeg']) {
+        this.bones['LeftUpLeg'].rotation.x = sinP * 0.48;
+      }
+      if (this.bones['LeftLeg']) {
+        this.bones['LeftLeg'].rotation.x = Math.max(0, -cosP) * 0.62;
+      }
+      if (this.bones['LeftFoot']) {
+        this.bones['LeftFoot'].rotation.x = -sinP * 0.18;
+      }
+
+      if (this.bones['RightUpLeg']) {
+        this.bones['RightUpLeg'].rotation.x = -sinP * 0.48;
+      }
+      if (this.bones['RightLeg']) {
+        this.bones['RightLeg'].rotation.x = Math.max(0, cosP) * 0.62;
+      }
+      if (this.bones['RightFoot']) {
+        this.bones['RightFoot'].rotation.x = sinP * 0.18;
+      }
+
+      // 왼팔 자연스러운 보행 스윙
+      if (this.bones['LeftArm']) {
+        this.bones['LeftArm'].rotation.z = -1.2;
+        this.bones['LeftArm'].rotation.x = -sinP * 0.42;
+        this.bones['LeftArm'].rotation.y = 0.15;
+      }
+      if (this.bones['LeftForeArm']) {
+        this.bones['LeftForeArm'].rotation.x = 0.45;
+      }
+
+      // 오른팔 손전등 정면 로우-레디 지향
+      if (this.bones['RightArm']) {
+        this.bones['RightArm'].rotation.z = 1.05;
+        this.bones['RightArm'].rotation.x = 0.38 + Math.sin(phase * 0.5) * 0.06;
+      }
+      if (this.bones['RightForeArm']) {
+        this.bones['RightForeArm'].rotation.x = 0.65;
+      }
+
+      if (this.bones['Head']) {
+        this.bones['Head'].rotation.x = 0;
+        this.bones['Head'].rotation.y = Math.sin(t * 1.2) * 0.12;
+      }
+    } else {
+      // 3. 대기 / 정지 경계 (Idle)
+      const breath = Math.sin(t * 1.8);
+
+      if (this.bones['Hips']) {
+        this.bones['Hips'].position.y = this.baseHipsY + breath * 0.008;
+        this.bones['Hips'].rotation.y = 0;
+      }
+      if (this.bones['Spine']) {
+        this.bones['Spine'].rotation.x = 0.04 + breath * 0.02;
+        this.bones['Spine'].rotation.y = Math.sin(t * 0.7) * 0.04;
+      }
+
+      if (this.bones['LeftUpLeg']) this.bones['LeftUpLeg'].rotation.x = 0;
+      if (this.bones['LeftLeg']) this.bones['LeftLeg'].rotation.x = 0;
+      if (this.bones['RightUpLeg']) this.bones['RightUpLeg'].rotation.x = 0;
+      if (this.bones['RightLeg']) this.bones['RightLeg'].rotation.x = 0;
+
+      if (this.bones['LeftArm']) {
+        this.bones['LeftArm'].rotation.z = -1.25;
+        this.bones['LeftArm'].rotation.x = 0.05 + breath * 0.02;
+        this.bones['LeftArm'].rotation.y = 0.15;
+      }
+      if (this.bones['LeftForeArm']) {
+        this.bones['LeftForeArm'].rotation.x = 0.35;
+      }
+
+      if (this.bones['RightArm']) {
+        this.bones['RightArm'].rotation.z = 1.05;
+        this.bones['RightArm'].rotation.x = 0.35 + breath * 0.02;
+      }
+      if (this.bones['RightForeArm']) {
+        this.bones['RightForeArm'].rotation.x = 0.65;
+      }
+
+      if (this.bones['Head']) {
+        this.bones['Head'].rotation.y = Math.sin(t * 0.9) * 0.22;
+        this.bones['Head'].rotation.x = Math.sin(t * 1.4) * 0.04;
+      }
+    }
+  }
+
+  update(dt, mode = this.animMode) {
+    if (mode === 'fallen' || this.animMode === 'fallen') {
+      this.setFallenPose();
+      return;
+    }
+    this.animMode = mode;
+    this.time += dt;
+
+    if (!this.isModelReady) return;
+
+    this.applyTacticalPose(this.time, mode);
   }
 }
