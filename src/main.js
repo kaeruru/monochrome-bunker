@@ -2354,6 +2354,7 @@ class MonochromeBunker3D {
     // 9. 멀티플레이어 위치/동작 및 괴물 동기화 브로드캐스트
     if (this.networkManager && this.networkManager.roomId) {
       const heldType = this.interactionSystem ? this.interactionSystem.getHeldItemType() : null;
+      const isMovingBackward = Boolean(this.controls && this.controls.isMovingBackward && this.controls.isMovingBackward());
       this.networkManager.sendPlayerSync(
         this.playerPos,
         this.controls.yaw,
@@ -2361,7 +2362,8 @@ class MonochromeBunker3D {
         isMoving,
         isActivelySprinting,
         heldType,
-        this.flashlightOn
+        this.flashlightOn,
+        isMovingBackward
       );
       if (this.networkManager.isHost && this.monsterAI) {
         this.networkManager.sendMonsterSync(
@@ -2376,6 +2378,9 @@ class MonochromeBunker3D {
     }
     if (this.networkManager) {
       this.networkManager.update(dt);
+    }
+    if (this.fallenOperative && this.fallenOperative.root.visible) {
+      this.fallenOperative.update(dt, 'die');
     }
 
     // 모바일 터치 DROP 버튼 상태 및 라벨 동적 갱신

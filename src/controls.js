@@ -643,6 +643,47 @@ export class FPSControls {
     return Boolean(this.keys['ShiftLeft'] || this.keys['ShiftRight'] || this.touchSprintActive);
   }
 
+  isMoving() {
+    if (this.disabled) return false;
+    let fwd = 0;
+    let right = 0;
+    if (this.keys['KeyW'] || this.keys['ArrowUp']) fwd += 1;
+    if (this.keys['KeyS'] || this.keys['ArrowDown']) fwd -= 1;
+    if (this.keys['KeyA'] || this.keys['ArrowLeft']) right -= 1;
+    if (this.keys['KeyD'] || this.keys['ArrowRight']) right += 1;
+
+    if (fwd === 0 && right === 0) {
+      fwd = this.moveForward;
+      right = this.moveRight;
+    }
+    return (fwd * fwd + right * right) > 0.04;
+  }
+
+  isMovingBackward() {
+    if (this.disabled) return false;
+    let fwd = 0;
+    if (this.keys['KeyW'] || this.keys['ArrowUp']) fwd += 1;
+    if (this.keys['KeyS'] || this.keys['ArrowDown']) fwd -= 1;
+
+    if (fwd === 0 && this.moveForward !== 0) {
+      fwd = this.moveForward;
+    }
+    // 후방 이동: 키보드 S / 화살표 아래 (fwd < 0) 또는 모바일 조이스틱 후방 당김 (moveForward < -0.15)
+    return fwd < -0.15;
+  }
+
+  isMovingForward() {
+    if (this.disabled) return false;
+    let fwd = 0;
+    if (this.keys['KeyW'] || this.keys['ArrowUp']) fwd += 1;
+    if (this.keys['KeyS'] || this.keys['ArrowDown']) fwd -= 1;
+
+    if (fwd === 0 && this.moveForward !== 0) {
+      fwd = this.moveForward;
+    }
+    return fwd > 0.15;
+  }
+
   consumeInteract() {
     const val = this.interactRequested;
     this.interactRequested = false;

@@ -2688,62 +2688,269 @@ export const SUIT_COLORS = {
   }
 };
 
-let soldierTexture = null;
-export function getSoldierTexture() {
-  if (!soldierTexture && typeof window !== 'undefined') {
-    const texLoader = new THREE.TextureLoader();
-    soldierTexture = texLoader.load(
-      '/models/Trooper.png',
-      (tex) => {
-        tex.colorSpace = THREE.SRGBColorSpace;
-        tex.magFilter = THREE.NearestFilter;
-        tex.minFilter = THREE.NearestMipmapLinearFilter;
-        tex.generateMipmaps = true;
-      },
-      undefined,
-      () => {
-        soldierTexture = texLoader.load('/textures/Trooper.png', (tex) => {
-          tex.colorSpace = THREE.SRGBColorSpace;
-          tex.magFilter = THREE.NearestFilter;
-          tex.minFilter = THREE.NearestMipmapLinearFilter;
-          tex.generateMipmaps = true;
-        });
-      }
-    );
-  }
-  return soldierTexture;
+let rawTrooperImage = null;
+let rawTrooperImagePromise = null;
+const suitTextureCache = new Map();
+
+function loadRawTrooperImage() {
+  if (rawTrooperImagePromise) return rawTrooperImagePromise;
+  rawTrooperImagePromise = new Promise((resolve) => {
+    if (typeof window === 'undefined') return resolve(null);
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      rawTrooperImage = img;
+      resolve(img);
+    };
+    img.onerror = () => {
+      const imgFallback = new Image();
+      imgFallback.onload = () => {
+        rawTrooperImage = imgFallback;
+        resolve(imgFallback);
+      };
+      imgFallback.onerror = () => {
+        console.warn('[Model] Failed to load Trooper.png for canvas tinting');
+        resolve(null);
+      };
+      imgFallback.src = 'models/Trooper.png';
+    };
+    img.src = '/models/Trooper.png';
+  });
+  return rawTrooperImagePromise;
 }
 
-let soldierFbxPromise = null;
-export function preloadSoldierModel() {
-  if (!soldierFbxPromise) {
-    getSoldierTexture(); // 텍스처 사전 로딩 병렬 트리거
-    const loader = new FBXLoader();
-    soldierFbxPromise = new Promise((resolve) => {
-      loader.load(
-        '/models/ps1low_poly_gas_mask_soldier_character_model.fbx',
-        (fbx) => resolve(fbx),
-        undefined,
-        (err) => {
-          console.warn('[Model] Primary soldier FBX load failed, trying relative path:', err);
-          loader.load(
-            'models/ps1low_poly_gas_mask_soldier_character_model.fbx',
-            (fbx) => resolve(fbx),
-            undefined,
-            (err2) => {
-              console.error('[Model] Failed to load soldier FBX model:', err2);
-              resolve(null);
-            }
-          );
-        }
-      );
-    });
+/**
+ * Trooper.png UV 텍스처에서 오직 순수 네이비 블루 전투복 직물 영역만 선별(Masking)하여,
+ * 방독면 안면부, 고글 렌즈, 가죽 하네스, 벨트, 금속 버클은 100% 원본 흑색/유리/가죽을 유지하고
+ * 전투복 수트 패브릭의 색상만 지정된 플레이어 팀 컬러로 변환한 CanvasTexture를 생성 및 캐싱합니다.
+ */
+export function getTintedSoldierTexture(suitColorKey = 'steel') {
+  if (typeof window === 'undefined') return null;
+  const key = suitColorKey || 'steel';
+  if (suitTextureCache.has(key)) {
+    return suitTextureCache.get(key);
   }
-  return soldierFbxPromise;
+
+  const texLoader = new THREE.TextureLoader();
+  const baseTex = texLoader.load('/models/Trooper.png', (tex) => {
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.NearestMipmapLinearFilter;
+    tex.generateMipmaps = true;
+  });
+
+  suitTextureCache.set(key, baseTex);
+
+  loadRawTrooperImage().then((img) => {
+    if (!img) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width || 256;
+    canvas.height = img.height || 256;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imgData.data;
+
+    const preset = SUIT_COLORS[key] || SUIT_COLORS.steel;
+    const tintColor = new THREE.Color(preset.tintHex || 0xffffff);
+    const tr = tintColor.r * 255;
+    const tg = tintColor.g * 255;
+    const tb = tintColor.b * 255;
+
+    const isSteel = (key === 'steel');
+
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+
+      // UV 맵 정밀 분리 필터:
+      // 방독면(Lens, Mask)과 벨트, 버클은 무채색(b - max(r,g) <= 3)이므로 절대 수정되지 않습니다.
+      // 순수 네이비 블루 전투복 직물(b > r + 5 && b > g + 2 && b >= 20)만 선별 마스킹합니다.
+      if (b > r + 5 && b > g + 2 && b >= 20) {
+        if (!isSteel) {
+          const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
+          const factor = lum / 0.18; // 원본 원단 기본 휘도 기준
+          data[i]     = Math.min(255, Math.max(0, Math.round(tr * factor * 0.88)));
+          data[i + 1] = Math.min(255, Math.max(0, Math.round(tg * factor * 0.88)));
+          data[i + 2] = Math.min(255, Math.max(0, Math.round(tb * factor * 0.88)));
+        }
+      }
+    }
+
+    ctx.putImageData(imgData, 0, 0);
+
+    const canvasTex = new THREE.CanvasTexture(canvas);
+    canvasTex.colorSpace = THREE.SRGBColorSpace;
+    canvasTex.magFilter = THREE.NearestFilter;
+    canvasTex.minFilter = THREE.NearestMipmapLinearFilter;
+    canvasTex.generateMipmaps = true;
+    canvasTex.needsUpdate = true;
+
+    suitTextureCache.set(key, canvasTex);
+
+    baseTex.image = canvas;
+    baseTex.needsUpdate = true;
+  });
+
+  return baseTex;
+}
+
+export function getSoldierTexture() {
+  return getTintedSoldierTexture('steel');
+}
+
+/**
+ * 믹사모 애니메이션의 루트 모션(Hips의 X/Z 축 이동)을 첫 프레임 위치로 고정하여
+ * 제자리(In-Place) 애니메이션으로 변환합니다. (게임 엔진 이동 및 물리와 완벽 결합)
+ */
+function stripRootMotion(clip) {
+  if (!clip) return null;
+  const cloned = clip.clone();
+  for (const track of cloned.tracks) {
+    if (track.name.toLowerCase().includes('hips.position')) {
+      const vals = track.values;
+      if (vals.length >= 3) {
+        const initX = vals[0];
+        const initZ = vals[2];
+        for (let i = 0; i < vals.length; i += 3) {
+          vals[i] = initX;
+          // vals[i+1] (Y축 바운스/반동)은 그대로 살려둠
+          vals[i + 2] = initZ;
+        }
+      }
+    }
+  }
+  return cloned;
+}
+
+/**
+ * 애니메이션 트랙의 본 타겟 이름을 타겟 3D 모델의 실제 본 노드 이름으로 매칭합니다.
+ */
+function retargetClipToModel(clip, modelRoot) {
+  if (!clip || !modelRoot) return clip;
+  const boneNames = new Set();
+  const cleanToReal = new Map();
+
+  modelRoot.traverse((obj) => {
+    if (obj.isBone || obj.isObject3D) {
+      boneNames.add(obj.name);
+      const clean = obj.name.replace(/^mixamorig[:_]?/i, '');
+      cleanToReal.set(clean.toLowerCase(), obj.name);
+      cleanToReal.set(obj.name.toLowerCase(), obj.name);
+    }
+  });
+
+  const cloned = clip.clone();
+  for (const track of cloned.tracks) {
+    const dotIdx = track.name.lastIndexOf('.');
+    if (dotIdx === -1) continue;
+    const targetName = track.name.substring(0, dotIdx);
+    const prop = track.name.substring(dotIdx);
+
+    if (boneNames.has(targetName)) continue;
+
+    const clean = targetName.replace(/^mixamorig[:_]?/i, '').toLowerCase();
+    const matched = cleanToReal.get(clean) || cleanToReal.get(targetName.toLowerCase());
+    if (matched) {
+      track.name = matched + prop;
+    }
+  }
+  return cloned;
+}
+
+let soldierAssetsPromise = null;
+const soldierAnimClips = {
+  walk: null,
+  run: null,
+  run_back: null,
+  die: null,
+  idle: null
+};
+
+export function preloadSoldierAssets() {
+  if (soldierAssetsPromise) return soldierAssetsPromise;
+
+  const fbxLoader = new FBXLoader();
+
+  const loadFbx = (url) => new Promise((resolve) => {
+    fbxLoader.load(
+      url,
+      (fbx) => resolve(fbx),
+      undefined,
+      (err) => {
+        console.warn("[Model] Primary load failed for " + url + ", trying fallback:", err);
+        const fallbackUrl = url.startsWith('/') ? url.slice(1) : '/' + url;
+        fbxLoader.load(
+          fallbackUrl,
+          (fbx2) => resolve(fbx2),
+          undefined,
+          (err2) => {
+        console.error("[Model] Both load attempts failed for " + url + ":", err2);
+            resolve(null);
+          }
+        );
+      }
+    );
+  });
+
+  soldierAssetsPromise = Promise.all([
+    loadFbx('/models/ps1low_poly_gas_mask_soldier_character_model.fbx'),
+    loadFbx('/models/Crouched Walking.fbx'),
+    loadFbx('/models/Run Forward.fbx'),
+    loadFbx('/models/Run Backward.fbx'),
+    loadFbx('/models/Dying Backwards.fbx')
+  ]).then(([modelFbx, walkFbx, runFbx, runBackFbx, dieFbx]) => {
+    if (walkFbx && walkFbx.animations && walkFbx.animations.length > 0) {
+      const clip = walkFbx.animations[0];
+      clip.name = 'walk';
+      soldierAnimClips.walk = stripRootMotion(clip);
+
+      // Crouched Walking의 첫 프레임 자세로 자연스러운 전술 웅크림 대기(idle) 모션 생성
+      try {
+        const idleClip = THREE.AnimationUtils.subclip(soldierAnimClips.walk, 'idle', 0, 1, 30);
+        soldierAnimClips.idle = idleClip;
+      } catch (_) {
+        soldierAnimClips.idle = soldierAnimClips.walk.clone();
+        soldierAnimClips.idle.name = 'idle';
+      }
+    }
+
+    if (runFbx && runFbx.animations && runFbx.animations.length > 0) {
+      const clip = runFbx.animations[0];
+      clip.name = 'run';
+      soldierAnimClips.run = stripRootMotion(clip);
+    }
+
+    if (runBackFbx && runBackFbx.animations && runBackFbx.animations.length > 0) {
+      const clip = runBackFbx.animations[0];
+      clip.name = 'run_back';
+      soldierAnimClips.run_back = stripRootMotion(clip);
+    }
+
+    if (dieFbx && dieFbx.animations && dieFbx.animations.length > 0) {
+      const clip = dieFbx.animations[0];
+      clip.name = 'die';
+      soldierAnimClips.die = clip.clone();
+    }
+
+    return {
+      modelFbx,
+      clips: soldierAnimClips
+    };
+  });
+
+  return soldierAssetsPromise;
+}
+
+export function preloadSoldierModel() {
+  return preloadSoldierAssets().then((res) => (res ? res.modelFbx : null));
 }
 
 if (typeof window !== 'undefined') {
-  preloadSoldierModel();
+  preloadSoldierAssets();
 }
 
 export class PlayerCharacterEntity {
@@ -2764,15 +2971,16 @@ export class PlayerCharacterEntity {
     this.root.add(this.modelGroup);
 
     this.bones = {};
-    this.initialBoneRotations = {};
-    this.initialBonePositions = {};
-    this.baseHipsY = 0;
     this.isModelReady = false;
 
-    // 로딩 중 몇 밀리초 동안 표시할 임시 플레이스홀더
+    this.mixer = null;
+    this.actions = {};
+    this.currentAnim = null;
+
+    // 로딩 중 임시 플레이스홀더
     this.buildTemporaryPlaceholder();
 
-    // 실제 리깅 솔저 3D 모델 비동기 로딩 및 인스턴스화
+    // 3D 솔저 모델 및 믹사모 4종 애니메이션 바인딩
     this.loadSoldierModel();
   }
 
@@ -2781,12 +2989,10 @@ export class PlayerCharacterEntity {
     const preset = SUIT_COLORS[this.suitColor] || SUIT_COLORS.steel;
     const mat = new THREE.MeshLambertMaterial({ color: preset.colorHex });
 
-    // 몸체 캡슐
     const body = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.16, 0.95, 10), mat);
     body.position.y = 0.95;
     this.placeholderGroup.add(body);
 
-    // 머리
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), mat);
     head.position.y = 1.58;
     this.placeholderGroup.add(head);
@@ -2795,20 +3001,22 @@ export class PlayerCharacterEntity {
   }
 
   loadSoldierModel() {
-    preloadSoldierModel().then((templateFbx) => {
-      if (!templateFbx) return;
+    preloadSoldierAssets().then((assets) => {
+      if (!assets || !assets.modelFbx) return;
 
-      // SkeletonUtils.clone으로 각 대원별 독립 스켈레톤 및 본 복제
+      const templateFbx = assets.modelFbx;
+      const clips = assets.clips;
+
+      // 각 대원별 독립 스켈레톤 및 본 복제
       const cloned = SkeletonUtils.clone(templateFbx);
 
-      // 모델 크기 정밀 보정: 원본 높이 3.34m -> 게임 내 성인 신장 1.76m (스케일 0.528)
+      // 모델 크기 정밀 보정: 원본 높이 3.34m -> 게임 내 성인 신장 1.76m
       const targetHeight = 1.76;
       const modelScale = targetHeight / 3.34;
       cloned.scale.setScalar(modelScale);
       cloned.position.set(0, 0, 0);
 
-      // 본 맵핑 및 캐싱 (Three.js PropertyBinding.sanitizeNodeName 대응)
-      // 본 맵핑 및 캐싱 (Three.js PropertyBinding.sanitizeNodeName 대응)
+      // 본 맵핑 및 캐싱
       cloned.traverse((child) => {
         if (child.isBone) {
           const rawName = child.name;
@@ -2816,37 +3024,49 @@ export class PlayerCharacterEntity {
           const cleanName = rawName.replace(/^mixamorig[:_]?/i, '');
           this.bones[cleanName] = child;
           this.bones[cleanName.toLowerCase()] = child;
-          child.userData.bindQuat = child.quaternion.clone();
-          child.userData.bindPos = child.position.clone();
         }
 
         if (child.isMesh) {
           child.castShadow = true;
           child.receiveShadow = true;
           this.soldierMesh = child;
-          const tex = getSoldierTexture();
-          const mat = new THREE.MeshStandardMaterial({
-            map: tex,
+
+          // 원본 방독면/렌즈/벨트는 100% 무채색 유지 + 파란 수트 영역만 선별 치환된 텍스처 바인딩
+          const tintedTex = getTintedSoldierTexture(this.suitColor);
+          child.material = new THREE.MeshStandardMaterial({
+            map: tintedTex,
             roughness: 0.72,
             metalness: 0.28,
-            side: THREE.FrontSide
+            side: THREE.FrontSide,
+            color: 0xffffff // 전체 틴트 곱셈 제거
           });
-          this.applySuitColorToMaterial(mat, this.suitColor);
-          child.material = mat;
         }
       });
 
-      if (this.bones['Hips']) {
-        this.baseHipsY = this.bones['Hips'].position.y;
-      }
-
-      // 플레이어 식별용 전술 네온 암밴드 부착
+      // 전술 네온 암밴드 부착
       this.attachTacticalSuitAccents();
 
-      // 오른손에 전술 손전등 장착 (등 뒤로 솟구치는 가짜 반투명 콘 제거)
+      // 오른손에 전술 손전등 부착
       this.attachFlashlightToRightHand();
 
-      // 임시 플레이스홀더 제거 후 3D 솔저 모델 배치
+      // AnimationMixer 생성 및 4종 믹사모 애니메이션 클립 바인딩
+      this.mixer = new THREE.AnimationMixer(cloned);
+
+      for (const [animKey, origClip] of Object.entries(clips)) {
+        if (!origClip) continue;
+        const boundClip = retargetClipToModel(origClip, cloned);
+        const action = this.mixer.clipAction(boundClip);
+
+        if (animKey === 'die') {
+          action.setLoop(THREE.LoopOnce, 1);
+          action.clampWhenFinished = true;
+        } else {
+          action.setLoop(THREE.LoopRepeat);
+        }
+        this.actions[animKey] = action;
+      }
+
+      // 플레이스홀더 제거 후 3D 모델 추가
       while (this.modelGroup.children.length > 0) {
         this.modelGroup.remove(this.modelGroup.children[0]);
       }
@@ -2854,22 +3074,46 @@ export class PlayerCharacterEntity {
       this.soldierRoot = cloned;
       this.isModelReady = true;
 
-      // 초기 대기 자세 적용
-      this.applyTacticalPose(0, this.animMode || 'idle');
+      // 초기 애니메이션 재생
+      this.playAnim(this.animMode || 'idle', 0.1);
     });
   }
 
-  applySuitColorToMaterial(material, suitColorKey) {
-    const preset = SUIT_COLORS[suitColorKey] || SUIT_COLORS.steel;
-    if (material.color) {
-      material.color.setHex(preset.tintHex || 0xffffff);
+  playAnim(name, fadeDuration = 0.22) {
+    if (!this.mixer) return;
+
+    // 모드 명칭 정규화
+    let targetKey = name;
+    if (targetKey === 'sprint') targetKey = 'run';
+    if (targetKey === 'stalk') targetKey = 'walk';
+    if (targetKey === 'fallen') targetKey = 'die';
+
+    if (!this.actions[targetKey]) {
+      if (targetKey === 'run_back' && this.actions['run']) targetKey = 'run';
+      else if (targetKey === 'idle' && this.actions['walk']) targetKey = 'walk';
+      else return;
     }
-    if (material.emissive) {
-      material.emissive.setHex(0x000000);
-      material.emissiveIntensity = 0;
+
+    if (this.currentAnim === targetKey && this.actions[targetKey].isRunning()) {
+      return;
     }
-    material.roughness = 0.72;
-    material.metalness = 0.28;
+
+    const prevAction = this.currentAnim ? this.actions[this.currentAnim] : null;
+    const nextAction = this.actions[targetKey];
+
+    nextAction.reset();
+    if (targetKey === 'idle' && this.actions['idle']) {
+      nextAction.timeScale = 0.04; // 대기 중 미세 호흡 느낌
+    } else {
+      nextAction.timeScale = 1.0;
+    }
+    nextAction.play();
+
+    if (prevAction && prevAction !== nextAction) {
+      prevAction.crossFadeTo(nextAction, fadeDuration, true);
+    }
+
+    this.currentAnim = targetKey;
   }
 
   setSuitColor(suitColorKey) {
@@ -2877,7 +3121,10 @@ export class PlayerCharacterEntity {
     const preset = SUIT_COLORS[suitColorKey] || SUIT_COLORS.steel;
 
     if (this.soldierMesh && this.soldierMesh.material) {
-      this.applySuitColorToMaterial(this.soldierMesh.material, suitColorKey);
+      const tex = getTintedSoldierTexture(suitColorKey);
+      this.soldierMesh.material.map = tex;
+      this.soldierMesh.material.color.setHex(0xffffff); // 페인트 틴트 제거
+      this.soldierMesh.material.needsUpdate = true;
     }
     if (this.accentMat) {
       this.accentMat.color.setHex(preset.accentHex);
@@ -2895,7 +3142,6 @@ export class PlayerCharacterEntity {
       metalness: 0.3
     });
 
-    // 왼팔/오른팔 상박 전술 네온 암밴드 (고유 팀 컬러로 세련되게 식별)
     const bandGeo = new THREE.CylinderGeometry(0.065, 0.061, 0.08, 12);
     if (this.bones['LeftArm']) {
       const leftBand = new THREE.Mesh(bandGeo, this.accentMat);
@@ -2916,7 +3162,6 @@ export class PlayerCharacterEntity {
     if (!handBone) return;
 
     const torchGroup = new THREE.Group();
-    // 손 파지 위치 및 각도 (정면을 향하도록 배치)
     torchGroup.position.set(-0.012, 0.05, 0.02);
     torchGroup.rotation.set(0, 0, -Math.PI / 2);
     handBone.add(torchGroup);
@@ -2928,7 +3173,6 @@ export class PlayerCharacterEntity {
       metalness: 0.85
     });
 
-    // 손전등 원통 본체
     const body = new THREE.Mesh(
       new THREE.CylinderGeometry(0.016, 0.014, 0.13, 10),
       darkMetal
@@ -2936,7 +3180,6 @@ export class PlayerCharacterEntity {
     body.rotation.x = Math.PI / 2;
     torchGroup.add(body);
 
-    // 손전등 헤드 베젤
     const head = new THREE.Mesh(
       new THREE.CylinderGeometry(0.024, 0.016, 0.04, 10),
       darkMetal
@@ -2945,14 +3188,12 @@ export class PlayerCharacterEntity {
     head.position.z = 0.075;
     torchGroup.add(head);
 
-    // 전면 발광 렌즈 (원형)
     const lensMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
     const lens = new THREE.Mesh(new THREE.CircleGeometry(0.020, 10), lensMat);
     lens.position.z = 0.096;
     torchGroup.add(lens);
     this.torchLens = lens;
 
-    // 등 뒤로 솟구치던 기괴한 1.8m 반투명 메쉬 콘은 완전히 제거
     this.torchBeamCone = null;
 
     if (this.enableLight) {
@@ -2973,157 +3214,20 @@ export class PlayerCharacterEntity {
     if (this.torchLens) this.torchLens.visible = this.flashlightOn;
   }
 
-  resetBones() {
-    for (const name in this.bones) {
-      const b = this.bones[name];
-      if (b && b.userData && b.userData.bindQuat) {
-        b.quaternion.copy(b.userData.bindQuat);
-      }
-      if (b && b.userData && b.userData.bindPos) {
-        b.position.copy(b.userData.bindPos);
-      }
-    }
-  }
-
-  applyTacticalPose(t, mode) {
-    if (!this.isModelReady) return;
-
-    this.resetBones();
-
-    if (mode === 'fallen') {
-      this.setFallenPose();
-      return;
-    }
-
-    if (this.root.position.y !== 0) this.root.position.y = 0;
-    if (this.root.rotation.x !== 0 || this.root.rotation.z !== 0) {
-      this.root.rotation.set(0, this.root.rotation.y, 0);
-    }
-
-    const b = this.bones;
-
-    if (mode === 'sprint') {
-      // 1. 전술 전력 질주 (Sprint)
-      const freq = 8.2;
-      const sinP = Math.sin(t * freq);
-      const cosP = Math.cos(t * freq);
-
-      if (b['Hips'] && b['Hips'].userData.bindPos) {
-        b['Hips'].position.y = b['Hips'].userData.bindPos.y + Math.abs(sinP) * 0.04;
-        b['Hips'].rotateY(sinP * 0.08);
-      }
-      if (b['Spine']) {
-        b['Spine'].rotateX(0.22);
-        b['Spine'].rotateY(-sinP * 0.09);
-      }
-      if (b['Spine1']) b['Spine1'].rotateX(0.08);
-
-      // 다리 질주 스트라이드 (전방 +Z 진행)
-      if (b['LeftUpLeg']) b['LeftUpLeg'].rotateX(sinP * 0.62);
-      if (b['LeftLeg']) b['LeftLeg'].rotateX(-Math.max(0, -sinP) * 0.85);
-
-      if (b['RightUpLeg']) b['RightUpLeg'].rotateX(-sinP * 0.62);
-      if (b['RightLeg']) b['RightLeg'].rotateX(-Math.max(0, sinP) * 0.85);
-
-      // 팔 역동적인 질주 펌핑
-      if (b['LeftArm']) {
-        b['LeftArm'].rotateX(0.70);
-        b['LeftArm'].rotateZ(sinP * 0.52);
-      }
-      if (b['LeftForeArm']) b['LeftForeArm'].rotateZ(-0.55 + Math.abs(cosP) * 0.25);
-
-      if (b['RightArm']) {
-        b['RightArm'].rotateX(0.70);
-        b['RightArm'].rotateZ(-sinP * 0.52);
-      }
-      if (b['RightForeArm']) b['RightForeArm'].rotateZ(0.55 + Math.abs(cosP) * 0.25);
-
-      if (b['Head']) b['Head'].rotateX(-0.12);
-    } else if (mode === 'walk') {
-      // 2. 전술 이동 / 걷기 (Walk)
-      const freq = 4.6;
-      const sinP = Math.sin(t * freq);
-
-      if (b['Hips'] && b['Hips'].userData.bindPos) {
-        b['Hips'].position.y = b['Hips'].userData.bindPos.y + Math.abs(sinP) * 0.025;
-        b['Hips'].rotateY(sinP * 0.04);
-      }
-      if (b['Spine']) {
-        b['Spine'].rotateX(0.08);
-        b['Spine'].rotateY(-sinP * 0.05);
-      }
-
-      // 자연스러운 보행 스트라이드
-      if (b['LeftUpLeg']) b['LeftUpLeg'].rotateX(sinP * 0.38);
-      if (b['LeftLeg']) b['LeftLeg'].rotateX(-Math.max(0, -sinP) * 0.45);
-
-      if (b['RightUpLeg']) b['RightUpLeg'].rotateX(-sinP * 0.38);
-      if (b['RightLeg']) b['RightLeg'].rotateX(-Math.max(0, sinP) * 0.45);
-
-      // 자연스러운 양팔 보행 스윙
-      if (b['LeftArm']) {
-        b['LeftArm'].rotateX(0.72);
-        b['LeftArm'].rotateZ(sinP * 0.28);
-      }
-      if (b['LeftForeArm']) b['LeftForeArm'].rotateZ(-0.30);
-
-      if (b['RightArm']) {
-        b['RightArm'].rotateX(0.72);
-        b['RightArm'].rotateZ(-sinP * 0.28);
-      }
-      if (b['RightForeArm']) b['RightForeArm'].rotateZ(0.30);
-
-      if (b['Head']) {
-        b['Head'].rotateX(-0.02);
-        b['Head'].rotateY(Math.sin(t * 1.2) * 0.06);
-      }
-    } else {
-      // 3. 대기 / 정지 경계 (Idle)
-      const breath = Math.sin(t * 1.8);
-
-      if (b['Hips'] && b['Hips'].userData.bindPos) b['Hips'].position.y = b['Hips'].userData.bindPos.y + breath * 0.005;
-      if (b['Spine']) b['Spine'].rotateX(0.05 + breath * 0.015);
-
-      // 양팔을 자연스럽게 내린 단정한 전술 파지 자세
-      if (b['LeftArm']) {
-        b['LeftArm'].rotateX(0.72);
-        b['LeftArm'].rotateZ(breath * 0.02);
-      }
-      if (b['RightArm']) {
-        b['RightArm'].rotateX(0.72);
-        b['RightArm'].rotateZ(-breath * 0.02);
-      }
-      if (b['LeftForeArm']) b['LeftForeArm'].rotateZ(-0.25);
-      if (b['RightForeArm']) b['RightForeArm'].rotateZ(0.25);
-
-      if (b['Head']) {
-        b['Head'].rotateY(Math.sin(t * 0.7) * 0.14);
-        b['Head'].rotateX(Math.sin(t * 1.1) * 0.03);
-      }
-    }
-  }
-
   setFallenPose() {
-    this.animMode = 'fallen';
-    this.root.position.y = 0.08;
-    this.root.rotation.set(-Math.PI / 2, 0, 0.20);
-
-    const b = this.bones;
-    if (b['Hips']) b['Hips'].position.y = 0.08;
-    if (b['Spine']) b['Spine'].rotateX(0.12);
-    if (b['Head']) b['Head'].rotateY(0.35);
-    if (b['LeftArm']) { b['LeftArm'].rotateX(0.3); b['LeftArm'].rotateZ(-0.4); }
-    if (b['RightArm']) { b['RightArm'].rotateX(0.5); b['RightArm'].rotateZ(0.4); }
-    if (b['LeftUpLeg']) b['LeftUpLeg'].rotateX(0.15);
-    if (b['RightUpLeg']) b['RightUpLeg'].rotateX(-0.15);
+    this.animMode = 'die';
+    this.playAnim('die', 0.1);
   }
 
   update(dt, mode = this.animMode) {
     this.animMode = mode;
     this.time += dt;
 
-    if (!this.isModelReady) return;
-
-    this.applyTacticalPose(this.time, mode);
+    if (this.mixer) {
+      if (mode && mode !== this.currentAnim) {
+        this.playAnim(mode);
+      }
+      this.mixer.update(dt);
+    }
   }
 }

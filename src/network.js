@@ -233,6 +233,7 @@ export class NetworkManager {
             rp.targetYaw = msg.yaw;
             rp.isMoving = msg.isMoving;
             rp.isSprinting = msg.isSprinting;
+            rp.isMovingBackward = Boolean(msg.isMovingBackward);
             rp.heldItem = msg.heldItem;
 
             if (typeof msg.flashlightOn === 'boolean' && rp.flashlightOn !== msg.flashlightOn) {
@@ -474,7 +475,7 @@ export class NetworkManager {
     this.remotePlayers.clear();
   }
 
-  sendPlayerSync(pos, yaw, pitch, isMoving, isSprinting, heldItem, flashlightOn = true) {
+  sendPlayerSync(pos, yaw, pitch, isMoving, isSprinting, heldItem, flashlightOn = true, isMovingBackward = false) {
     if (!this.isConnected || !this.ws || !this.roomId) return;
     const now = performance.now();
     if (now - this.lastSyncTime < this.syncInterval) return;
@@ -520,6 +521,7 @@ export class NetworkManager {
       pitch: Math.round(pitch * 100) / 100,
       isMoving,
       isSprinting,
+      isMovingBackward,
       heldItem,
       flashlightOn,
       ping: this.currentPing || 0
@@ -619,7 +621,16 @@ export class NetworkManager {
       while (diff < -Math.PI) diff += Math.PI * 2;
       rp.entity.root.rotation.y += diff * Math.min(1, dt * 14);
 
-      const animMode = rp.isSprinting ? 'sprint' : rp.isMoving ? 'walk' : 'idle';
+      let animMode = 'idle';
+      if (rp.isDead) {
+        animMode = 'die';
+      } else if (rp.isSprinting && rp.isMovingBackward) {
+        animMode = 'run_back';
+      } else if (rp.isSprinting) {
+        animMode = 'run';
+      } else if (rp.isMoving) {
+        animMode = 'walk';
+      }
       rp.entity.update(dt, animMode);
     }
   }

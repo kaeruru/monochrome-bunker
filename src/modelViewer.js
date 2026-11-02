@@ -302,11 +302,11 @@ export class ModelShowcaseViewer {
 
     const animLabels = {
       player: {
-        idle: '전술 대기 (IDLE)',
-        stalk: '전술 이동 (WALK)',
-        chase: '전력 질주 (SPRINT)',
-        attack: '돌격 질주 (SPRINT)',
-        jumpscare: '대원 다운 (FALLEN)'
+        idle: '대기 (IDLE)',
+        stalk: '걷기 (WALK)',
+        chase: '앞으로 달리기 (RUN)',
+        attack: '뒤로 달리기 (RUN BACK)',
+        jumpscare: '쓰러져 사망 (DIE)'
       },
       monster: {
         idle: '대기 / 잠복 (IDLE)',
@@ -527,12 +527,14 @@ export class ModelShowcaseViewer {
     }
     if (this.playerModel && this.playerModel.root.visible) {
       let playerMode = 'idle';
-      if (this.animState === 'chase' || this.animState === 'attack') {
-        playerMode = 'sprint';
+      if (this.animState === 'chase') {
+        playerMode = 'run';
+      } else if (this.animState === 'attack') {
+        playerMode = 'run_back';
       } else if (this.animState === 'stalk') {
         playerMode = 'walk';
       } else if (this.animState === 'jumpscare') {
-        playerMode = 'fallen';
+        playerMode = 'die';
       } else {
         playerMode = 'idle';
       }
