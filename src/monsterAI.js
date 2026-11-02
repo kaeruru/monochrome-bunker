@@ -214,6 +214,11 @@ export class MonsterAI {
     this.pathIndex = 0;
     this.waterEdgeFrustrationTimer = 0;
     this.chaseWindupTimer = 0;
+    this.ch3SurgeData = null;
+    if (this.monster?.root) {
+      this.monster.root.rotation.x = 0;
+      this.monster.root.rotation.z = 0;
+    }
     this.isPlayerSnared = false;
     this.snareEscapeProgress = 0;
 
@@ -560,7 +565,23 @@ export class MonsterAI {
    * - 챕터 2의 악어 크롤러는 천장 환기구를 쓰지 않고 침수 수로('W') 내부에서만 서식하므로 생성 생략
    */
   buildVentNetworkMeshes() {
-    if (this.chapterId === 'chapter2') return;
+    if (this.chapterId === 'chapter2' || this.chapterId === 'chapter3') {
+      // 챕터 2 수로 및 챕터 3 도넛 심연에서는 바닥 환기구 그릴 박스를 두지 않고 스폰 노드 좌표만 관리
+      for (let i = 0; i < this.activeVentNodes.length; i++) {
+        const node = this.activeVentNodes[i];
+        const w = tileToWorld(node.col, node.row);
+        const floorY = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(w.x, w.z) : 0;
+        this.ventMeshes.push({
+          group: null,
+          node,
+          x: w.x,
+          y: floorY,
+          z: w.z,
+          gratePivot: { rotation: { x: 0 } }
+        });
+      }
+      return;
+    }
     const frameMat = new THREE.MeshStandardMaterial({
       color: 0x22262a,
       roughness: 0.55,
@@ -1438,15 +1459,56 @@ export class MonsterAI {
             this.targetVentIdx = this.pickNextVentIndex(this.currentVentIdx, playerPos);
             this.updateBioSignHUD();
           } else {
-            // 목표 지점 도착 -> 챕터 3에서는 심연 구멍 아래에서 플랫폼 위로 수직 돌진 상승!
+            // 목표 지점 도착 -> 챕터 3에서는 심연 허공 아래(-32m)에서 플랫폼으로 포물선 도약(Abyssal Leap) 돌진!
             this.state = 'VENT_EMERGE';
-            this.stateTimer = 1.25;
-            const d = Math.hypot(playerPos.x - toW.x, playerPos.z - toW.z);
-            if (d < 30.0) {
-              sound.playVentGrate(Math.max(0.10, (1 - d / 30.0) * 0.48));
-            }
-            if (isCh3 && d < 24.0 && this.callbacks.onToast) {
-              this.callbacks.onToast(`[ABYSS SURGE] 발밑 깊은 심연 구멍에서 괴물이 ${toNode.zone || '플랫폼'} 위로 수직 돌진해 올라옵니다!`, 'danger');
+            if (isCh3) {
+              this.stateTimer = 1.35;
+              const vm = this.ventMeshes[this.currentVentIdx];
+              const landX = vm ? vm.x : toW.x;
+              const landZ = vm ? vm.z : toW.z;
+              const landY = (this.map && this.map.getFloorHeightAt) ? this.map.getFloorHeightAt(landX, landZ) : 12.0;
+
+              // 도넛 심연 구멍 방향: 중앙 기둥(0,0) 방향 또는 외곽 낭떠러지 바깥 허공에서 뛰어오름
+              const distFromCenter = Math.hypot(landX, landZ);
+              let offX = 0, offZ = 0;
+              if (distFromCenter < 13.0) {
+                // 중앙 기둥 쪽 심연 허공
+                offX = distFromCenter > 0.1 ? -(landX / distFromCenter) * 4.8 : 0;
+                offZ = distFromCenter > 0.1 ? -(landZ / distFromCenter) * 4.8 : -4.8;
+              } else {
+                // 외곽 낭떠러지 심연 허공
+                offX = (landX / distFromCenter) * 4.8;
+                offZ = (landZ / distFromCenter) * 4.8;
+              }
+
+              const startX = landX + offX;
+              const startZ = landZ + offZ;
+              const startY = landY - 32.0;
+
+              this.ch3SurgeData = {
+                startX, startY, startZ,
+                landX, landY, landZ,
+                surgeYaw: Math.atan2(landX - startX, landZ - startZ)
+              };
+              this.targetYaw = this.ch3SurgeData.surgeYaw;
+              this.yaw = this.targetYaw;
+              this.pos.set(startX, startY, startZ);
+              this.setHeartCoreColor(0xff2222);
+
+              const d = Math.hypot(playerPos.x - landX, playerPos.z - landZ);
+              if (d < 35.0) {
+                sound.playMonsterSpotted(0.65);
+                sound.playVentGrate(0.65);
+              }
+              if (this.callbacks.onToast) {
+                this.callbacks.onToast(`[ABYSS LEAP] 발밑 깊은 심연 구멍에서 괴물이 ${toNode.zone || '플랫폼'} 위로 치솟아 도약합니다!`, 'danger');
+              }
+            } else {
+              this.stateTimer = 1.25;
+              const d = Math.hypot(playerPos.x - toW.x, playerPos.z - toW.z);
+              if (d < 30.0) {
+                sound.playVentGrate(Math.max(0.10, (1 - d / 30.0) * 0.48));
+              }
             }
             this.updateBioSignHUD();
           }
@@ -1456,25 +1518,97 @@ export class MonsterAI {
 
       case 'VENT_EMERGE': {
         const isCh3 = this.chapterId === 'chapter3';
-        animMode = isCh3 ? 'chase' : 'idle';
+        if (isCh3 && this.ch3SurgeData) {
+          animMode = 'attack';
+          this.stateTimer -= dt;
+          const totalT = 1.35;
+          const ratio = Math.max(0, Math.min(1.0, 1.0 - this.stateTimer / totalT));
+          const data = this.ch3SurgeData;
+
+          // 1. 수평 이동: 심연 허공 -> 플랫폼 안쪽으로 포물선 Sine 감속 이동
+          const horizProg = Math.sin(ratio * Math.PI * 0.5);
+          this.pos.x = THREE.MathUtils.lerp(data.startX, data.landX, horizProg);
+          this.pos.z = THREE.MathUtils.lerp(data.startZ, data.landZ, horizProg);
+
+          // 2. 수직 이동: 심연 -32m에서 초고속 급상승 -> 정점(landY + 1.8m) -> 플랫폼(landY) 강타
+          const peakY = data.landY + 1.75;
+          if (ratio < 0.76) {
+            const sub = ratio / 0.76;
+            const riseEase = 1.0 - Math.pow(1.0 - sub, 2.6);
+            this.pos.y = THREE.MathUtils.lerp(data.startY, peakY, riseEase);
+            // 몸을 위로 쳐들고 발톱을 뻗는 다이내믹 피치
+            this.monster.root.rotation.x = -1.20 * (1.0 - sub * 0.5);
+          } else {
+            const sub = (ratio - 0.76) / 0.24;
+            const fallEase = sub * sub;
+            this.pos.y = THREE.MathUtils.lerp(peakY, data.landY, fallEase);
+            // 착지 시 앞쪽으로 웅크리는 포즈
+            this.monster.root.rotation.x = THREE.MathUtils.lerp(-0.55, 0.45, sub);
+          }
+
+          this.targetYaw = data.surgeYaw;
+
+          if (this.stateTimer <= 0) {
+            this.pos.set(data.landX, data.landY, data.landZ);
+            this.monster.root.rotation.x = 0;
+            this.ch3SurgeData = null;
+
+            // 착지 임팩트 사운드 & 쿵 소리
+            sound.playDoorBash(0.95);
+            if (sound.playMonsterFootstep3D) {
+              sound.playMonsterFootstep3D(0.75, 0, true);
+            }
+
+            // 플레이어 카메라 화면 진동 (Screen Shake)
+            if (this.callbacks.onScreenShake) {
+              const dist = Math.hypot(playerPos.x - data.landX, playerPos.z - data.landZ);
+              const intensity = Math.max(0, 1.0 - dist / 22.0) * 0.14;
+              if (intensity > 0.01) {
+                this.callbacks.onScreenShake(intensity, 0.45);
+              }
+            }
+
+            if (
+              this.currentVentIdx === 3 &&
+              this.sabotageCooldown <= 0 &&
+              this.interactionSystem &&
+              !this.interactionSystem.isBlackout &&
+              Math.random() < 0.6
+            ) {
+              this.sabotageCooldown = 80;
+              this.interactionSystem.triggerBlackout('심연에서 치솟은 괴물이 수직 갱도 주 배전 케이블을 끊어 정전이 발생했습니다!');
+            }
+
+            if (this.investigateTarget) {
+              this.state = 'INVESTIGATE';
+              this.setHeartCoreColor(0xffaa33);
+              this.computePathToWorld(this.investigateTarget.x, this.investigateTarget.z, false);
+            } else {
+              this.state = 'PATROL';
+              this.patrolDuration = 18 + Math.random() * 10;
+              this.setHeartCoreColor(0xdbe8ff);
+              this.pickRandomPatrolPoint();
+            }
+            this.updateBioSignHUD();
+          }
+          break;
+        }
+
+        animMode = 'idle';
         this.stateTimer -= dt;
         const vm = this.ventMeshes[this.currentVentIdx];
         const groundY = vm && vm.y !== undefined ? vm.y : (this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0);
-        if (vm) {
-          // 벤트 뚜껑이 젖혀지며 열림
+        if (vm && vm.gratePivot) {
           vm.gratePivot.rotation.x = THREE.MathUtils.lerp(vm.gratePivot.rotation.x, -1.25, dt * 8);
           this.pos.x = vm.x;
           this.pos.z = vm.z;
         }
-        // 챕터 3: 발밑 심연 구멍(groundY - 22.0m)에서 철창 플랫폼(groundY)으로 수직 상승 돌진!
-        // 챕터 1: 천장 환기구(groundY + 2.4m)에서 지면(groundY)으로 착지
         const ratio = 1.0 - Math.max(0, this.stateTimer / 1.25);
-        const startY = isCh3 ? (groundY - 22.0) : (groundY + 2.4);
-        this.pos.y = THREE.MathUtils.lerp(startY, groundY, Math.min(1, ratio * 1.15));
+        this.pos.y = THREE.MathUtils.lerp(groundY + 2.4, groundY, Math.min(1, ratio * 1.2));
 
         if (this.stateTimer <= 0) {
           this.pos.y = groundY;
-          if (vm) vm.gratePivot.rotation.x = 0;
+          if (vm && vm.gratePivot) vm.gratePivot.rotation.x = 0;
 
           // 만약 전기실(vent_elec)에 출현했고 정전 쿨다운이 끝났다면 60% 확률로 전력망 습격
           if (
@@ -1485,11 +1619,7 @@ export class MonsterAI {
             Math.random() < 0.6
           ) {
             this.sabotageCooldown = 80;
-            this.interactionSystem.triggerBlackout(
-              isCh3
-                ? '심연에서 치솟은 괴물이 수직 갱도 주 배전 케이블을 끊어 정전이 발생했습니다!'
-                : '전기실 환기구에서 출현한 괴물이 주 배전반을 습격하여 정전이 발생했습니다!'
-            );
+            this.interactionSystem.triggerBlackout('전기실 환기구에서 출현한 괴물이 주 배전반을 습격하여 정전이 발생했습니다!');
           }
 
           if (this.investigateTarget) {
@@ -1509,20 +1639,52 @@ export class MonsterAI {
 
       case 'VENT_ENTER': {
         const isCh3 = this.chapterId === 'chapter3';
+        if (isCh3) {
+          animMode = 'chase';
+          this.stateTimer -= dt;
+          const totalT = 1.15;
+          const ratio = Math.max(0, Math.min(1.0, 1.0 - this.stateTimer / totalT));
+          const groundY = (this.map && this.map.getFloorHeightAt) ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0;
+
+          // 난간 너머 심연 허공을 향해 몸을 던짐
+          const distFromCenter = Math.hypot(this.pos.x, this.pos.z);
+          const diveDirX = distFromCenter > 0.1 ? (this.pos.x / distFromCenter) : 0;
+          const diveDirZ = distFromCenter > 0.1 ? (this.pos.z / distFromCenter) : 1;
+          this.targetYaw = Math.atan2(diveDirX, diveDirZ);
+          this.pos.x += diveDirX * dt * 4.5;
+          this.pos.z += diveDirZ * dt * 4.5;
+
+          // 심연 깊은 곳으로 다이빙 강하
+          const fallY = groundY + Math.sin(ratio * Math.PI * 0.7) * 0.9 - Math.pow(ratio, 2.2) * 32.0;
+          this.pos.y = fallY;
+          this.monster.root.rotation.x = THREE.MathUtils.lerp(0.2, 1.2, ratio);
+
+          if (this.stateTimer <= 0) {
+            this.monster.root.rotation.x = 0;
+            this.pos.y = -24.0;
+            this.state = 'VENT_LURK';
+            this.ventHopsRemaining = 1 + Math.floor(Math.random() * 2);
+            this.targetVentIdx = this.pickNextVentIndex(this.currentVentIdx, playerPos);
+            this.ventProgress = 0;
+            this.setHeartCoreColor(0xdbe8ff);
+            this.updateBioSignHUD();
+          }
+          break;
+        }
+
         animMode = 'idle';
         this.stateTimer -= dt;
         const vm = this.ventMeshes[this.currentVentIdx];
         const groundY = vm && vm.y !== undefined ? vm.y : (this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0);
-        if (vm) {
+        if (vm && vm.gratePivot) {
           vm.gratePivot.rotation.x = THREE.MathUtils.lerp(vm.gratePivot.rotation.x, -1.2, dt * 8);
         }
         const ratio = 1.0 - Math.max(0, this.stateTimer / 1.1);
-        const endY = isCh3 ? (groundY - 22.0) : (groundY + 3.2);
-        this.pos.y = THREE.MathUtils.lerp(groundY, endY, Math.min(1, ratio));
+        this.pos.y = THREE.MathUtils.lerp(groundY, groundY + 3.2, Math.min(1, ratio));
 
         if (this.stateTimer <= 0) {
-          if (vm) vm.gratePivot.rotation.x = 0;
-          this.pos.y = isCh3 ? -24.0 : 4.4;
+          if (vm && vm.gratePivot) vm.gratePivot.rotation.x = 0;
+          this.pos.y = 4.4;
           this.state = 'VENT_LURK';
           this.ventHopsRemaining = 1 + Math.floor(Math.random() * 2);
           this.targetVentIdx = this.pickNextVentIndex(this.currentVentIdx, playerPos);
@@ -1812,6 +1974,9 @@ export class MonsterAI {
     const actualDist = Math.hypot(this.pos.x - frameStartX, this.pos.z - frameStartZ);
     this.monster.root.position.copy(this.pos);
     this.monster.root.rotation.y = this.yaw;
+    if (this.state !== 'VENT_EMERGE' && this.state !== 'VENT_ENTER') {
+      this.monster.root.rotation.x = THREE.MathUtils.lerp(this.monster.root.rotation.x, 0, dt * 8);
+    }
     this.monster.update(dt, animMode, actualDist);
 
     // 지상 이동 시 3D 발소리 루프 (벽 너머에서 들리는 묵직한 쿵... 쿵... 소리)

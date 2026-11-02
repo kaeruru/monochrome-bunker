@@ -525,6 +525,10 @@ class MonochromeBunker3D {
           '[AMBUSH] 경사로/사다리 밑에 숨어있던 매복자 악어에게 물려 수로로 밀려났습니다! 스토커 악어가 접근합니다!',
           'danger'
         );
+      },
+      onScreenShake: (intensity, duration = 0.45) => {
+        this.screenShakeIntensity = Math.max(this.screenShakeIntensity || 0, intensity);
+        this.screenShakeTimer = Math.max(this.screenShakeTimer || 0, duration);
       }
     });
     this.cctv.monsterAI = this.monsterAI;
@@ -2485,9 +2489,20 @@ class MonochromeBunker3D {
       this.playerCamera.position.y = targetEyeH;
     }
 
+    let shakeX = 0, shakeY = 0, shakeZ = 0;
+    if (this.screenShakeTimer > 0) {
+      this.screenShakeTimer -= dt;
+      const sh = this.screenShakeIntensity || 0;
+      shakeX = (Math.random() - 0.5) * sh;
+      shakeY = (Math.random() - 0.5) * sh;
+      shakeZ = (Math.random() - 0.5) * sh;
+      this.screenShakeIntensity = Math.max(0, this.screenShakeIntensity - dt * 0.28);
+    }
+
     const struggleJitter = isSnared ? 0.032 : ((this.lurkerSlowTimer && this.lurkerSlowTimer > 1.4) ? 0.025 : 0);
-    this.playerCamera.position.x = this.playerPos.x + (struggleJitter ? (Math.random() - 0.5) * struggleJitter : 0);
-    this.playerCamera.position.z = this.playerPos.z + (struggleJitter ? (Math.random() - 0.5) * struggleJitter : 0);
+    this.playerCamera.position.x = this.playerPos.x + shakeX + (struggleJitter ? (Math.random() - 0.5) * struggleJitter : 0);
+    this.playerCamera.position.y += shakeY;
+    this.playerCamera.position.z = this.playerPos.z + shakeZ + (struggleJitter ? (Math.random() - 0.5) * struggleJitter : 0);
 
     // 5-1. 1인칭 손 & 들고 있는 아이템 뷰모델 애니메이션 업데이트
     if (this.viewModel) {
