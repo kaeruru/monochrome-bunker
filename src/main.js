@@ -1148,7 +1148,7 @@ class MonochromeBunker3D {
       this.btnDeployMission.addEventListener('pointerdown', (e) => e.stopPropagation());
       this.btnDeployMission.addEventListener('click', (e) => {
         e.stopPropagation();
-        this.deployMission();
+        this.deployMission(this.selectedChapterId);
       });
     }
 
@@ -1667,11 +1667,14 @@ class MonochromeBunker3D {
       this.gameSetupModalEl.classList.add('hidden');
     }
 
-    const targetChapter = forcedChapterId
-      || (this.networkManager?.roomId ? this.networkManager.mapId : null)
-      || this.selectedCoopMapId
-      || this.selectedChapterId
-      || 'chapter2';
+    let targetChapter = forcedChapterId;
+    if (!targetChapter && this.networkManager?.roomId) {
+      targetChapter = this.networkManager.mapId;
+    }
+    if (!targetChapter) {
+      targetChapter = (this.gameMode === 'coop') ? this.selectedCoopMapId : this.selectedChapterId;
+    }
+    targetChapter = targetChapter || this.selectedChapterId || 'chapter1';
     this.selectedChapterId = targetChapter;
     this.selectedCoopMapId = targetChapter;
     this.callsign = (this.callsignInput?.value || 'OPERATIVE-01').trim();
