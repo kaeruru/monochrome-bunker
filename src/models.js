@@ -3064,12 +3064,19 @@ export class PlayerCharacterEntity {
     this.modelGroup = new THREE.Group();
     this.root.add(this.modelGroup);
 
+    // 장비 그룹 (비동기 FBX 로딩 및 본 스윙에 영향받지 않고 즉시 독립 전방 조준)
+    this.equipmentGroup = new THREE.Group();
+    this.root.add(this.equipmentGroup);
+
     this.bones = {};
     this.isModelReady = false;
 
     this.mixer = null;
     this.actions = {};
     this.currentAnim = null;
+
+    // 즉시 손전등 장비 생성 (비동기 FBX 로딩 지연 중에도 즉각 가시화)
+    this.buildTacticalFlashlight();
 
     // 로딩 중 임시 플레이스홀더
     this.buildTemporaryPlaceholder();
@@ -3168,6 +3175,9 @@ export class PlayerCharacterEntity {
       this.soldierRoot = cloned;
       this.isModelReady = true;
 
+      // 손전등 가시성 재동기화
+      this.setFlashlight(this.flashlightOn);
+
       // 초기 애니메이션 재생
       if (this.animMode === 'die') {
         this.setFallenPose();
@@ -3255,13 +3265,21 @@ export class PlayerCharacterEntity {
   }
 
   attachFlashlightToRightHand() {
-    const handBone = this.bones['RightHand'] || this.bones['RightForeArm'];
-    if (!handBone) return;
+    this.buildTacticalFlashlight();
+  }
+
+  buildTacticalFlashlight() {
+    if (this.torchGroup) return;
 
     const torchGroup = new THREE.Group();
-    torchGroup.position.set(-0.012, 0.05, 0.02);
-    torchGroup.rotation.set(0, 0, -Math.PI / 2);
-    handBone.add(torchGroup);
+    // 오른손/허리 높이(x=0.22, y=1.05, z=0.18)에서 정면(+Z)을 향해 똑바로 배치
+    torchGroup.position.set(0.22, 1.05, 0.18);
+    torchGroup.rotation.set(0, 0, 0); // 대원의 시선/정면(+Z) 완벽 조준
+    if (this.equipmentGroup) {
+      this.equipmentGroup.add(torchGroup);
+    } else {
+      this.root.add(torchGroup);
+    }
     this.torchGroup = torchGroup;
 
     const darkMetal = new THREE.MeshStandardMaterial({
@@ -3303,7 +3321,7 @@ export class PlayerCharacterEntity {
         depthWrite: false
       });
       const glowSprite = new THREE.Sprite(glowMat);
-      glowSprite.scale.set(0.40, 0.40, 1);
+      glowSprite.scale.set(0.42, 0.42, 1);
       glowSprite.position.set(0, 0, 0.10);
       torchGroup.add(glowSprite);
       this.torchGlowSprite = glowSprite;
@@ -3344,6 +3362,8 @@ export class PlayerCharacterEntity {
       spot.target = target;
       this.torchSpot = spot;
     }
+
+    this.setFlashlight(this.flashlightOn);
   }
 
   setFlashlight(enabled) {
