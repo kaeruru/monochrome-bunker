@@ -383,7 +383,7 @@ export class NetworkManager {
     const fallbackColor = colorKeys[this.remotePlayers.size % colorKeys.length];
     const suitColor = playerData.suitColor || fallbackColor;
 
-    const entity = new PlayerCharacterEntity(playerData.callsign || '동료 대원', false, suitColor);
+    const entity = new PlayerCharacterEntity(playerData.callsign || '동료 대원', true, suitColor);
     entity.root.position.set(playerData.x || 0, 0, playerData.z || -2);
     this.scene.add(entity.root);
 
@@ -652,6 +652,10 @@ export class NetworkManager {
       while (diff < -Math.PI) diff += Math.PI * 2;
       rp.entity.root.rotation.y += diff * Math.min(1, dt * 14);
 
+      if (typeof rp.targetPitch === 'number') {
+        rp.pitch = THREE.MathUtils.lerp(rp.pitch || 0, rp.targetPitch, Math.min(1, dt * 14));
+      }
+
       let animMode = 'idle';
       if (rp.isDead) {
         animMode = 'die';
@@ -662,7 +666,7 @@ export class NetworkManager {
       } else if (rp.isMoving) {
         animMode = 'walk';
       }
-      rp.entity.update(dt, animMode);
+      rp.entity.update(dt, animMode, rp.pitch || 0);
     }
   }
 }

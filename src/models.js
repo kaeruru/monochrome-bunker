@@ -2996,6 +2996,57 @@ if (typeof window !== 'undefined') {
   preloadSoldierAssets();
 }
 
+let cachedBeamTex = null;
+function getVolumetricBeamTexture() {
+  if (cachedBeamTex) return cachedBeamTex;
+  if (typeof document === 'undefined') return null;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+
+  // 세로 그라디언트: 손전등 렌즈(y=0)에서 시작해 13m 거리(y=256)로 멀어질수록 부드럽게 감쇠
+  const grad = ctx.createLinearGradient(0, 0, 0, 256);
+  grad.addColorStop(0.0, 'rgba(255, 248, 230, 0.45)');
+  grad.addColorStop(0.15, 'rgba(255, 240, 210, 0.28)');
+  grad.addColorStop(0.50, 'rgba(235, 225, 200, 0.12)');
+  grad.addColorStop(0.82, 'rgba(210, 220, 230, 0.04)');
+  grad.addColorStop(1.0, 'rgba(200, 210, 220, 0.0)');
+
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 128, 256);
+
+  cachedBeamTex = new THREE.CanvasTexture(canvas);
+  cachedBeamTex.wrapS = THREE.ClampToEdgeWrapping;
+  cachedBeamTex.wrapT = THREE.ClampToEdgeWrapping;
+  return cachedBeamTex;
+}
+
+let cachedGlowTex = null;
+function getLensGlowTexture() {
+  if (cachedGlowTex) return cachedGlowTex;
+  if (typeof document === 'undefined') return null;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 64;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+
+  const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  grad.addColorStop(0.0, 'rgba(255, 255, 255, 1.0)');
+  grad.addColorStop(0.2, 'rgba(255, 248, 210, 0.85)');
+  grad.addColorStop(0.5, 'rgba(255, 220, 150, 0.35)');
+  grad.addColorStop(0.85, 'rgba(255, 200, 100, 0.08)');
+  grad.addColorStop(1.0, 'rgba(0, 0, 0, 0.0)');
+
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 64, 64);
+
+  cachedGlowTex = new THREE.CanvasTexture(canvas);
+  return cachedGlowTex;
+}
+
 export class PlayerCharacterEntity {
   constructor(name = '기동대원 #02', enableLight = true, suitColor = 'steel') {
     this.name = name;
@@ -3240,13 +3291,54 @@ export class PlayerCharacterEntity {
     torchGroup.add(lens);
     this.torchLens = lens;
 
-    this.torchBeamCone = null;
+    // 1. 손전등 렌즈 정면 발광 스프라이트 (Flare / Bulb Glow)
+    const glowTex = getLensGlowTexture();
+    if (glowTex) {
+      const glowMat = new THREE.SpriteMaterial({
+        map: glowTex,
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.95,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+      const glowSprite = new THREE.Sprite(glowMat);
+      glowSprite.scale.set(0.40, 0.40, 1);
+      glowSprite.position.set(0, 0, 0.10);
+      torchGroup.add(glowSprite);
+      this.torchGlowSprite = glowSprite;
+    }
 
+    // 2. 어둠을 가르는 반투명 볼륨 빛줄기 원뿔 (Volumetric Beam Cone - 옵션 3 최적화 방식)
+    const beamTex = getVolumetricBeamTexture();
+    if (beamTex) {
+      // 시작 반경 0.035m, 13m 거리에서 반경 1.35m로 퍼지는 원뿔 지오메트리
+      const beamGeo = new THREE.CylinderGeometry(0.035, 1.35, 13.0, 16, 1, true);
+      beamGeo.rotateX(Math.PI / 2);
+      beamGeo.translate(0, 0, 6.5 + 0.10);
+
+      const beamMat = new THREE.MeshBasicMaterial({
+        map: beamTex,
+        color: 0xffeedd,
+        transparent: true,
+        opacity: 0.85,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      });
+      const beamMesh = new THREE.Mesh(beamGeo, beamMat);
+      beamMesh.renderOrder = 999;
+      torchGroup.add(beamMesh);
+      this.torchBeamCone = beamMesh;
+    }
+
+    // 3. 갤탭 S9 FE 60FPS 최적화를 고려한 가벼운 소프트 스포트라이트 (섀도우 맵 100% OFF)
     if (this.enableLight) {
-      const spot = new THREE.SpotLight(0xfff4e0, 4.5, 12, Math.PI / 5, 0.4, 1.2);
+      const spot = new THREE.SpotLight(0xffecd0, 2.5, 12.0, Math.PI / 4.2, 0.65, 1.6);
+      spot.castShadow = false; // GPU 부하 방지를 위해 그림자 완전 차단
       spot.position.set(0, 0, 0.10);
       const target = new THREE.Object3D();
-      target.position.set(0, 0, 6);
+      target.position.set(0, 0, 8);
       torchGroup.add(spot);
       torchGroup.add(target);
       spot.target = target;
@@ -3258,6 +3350,8 @@ export class PlayerCharacterEntity {
     this.flashlightOn = !!enabled;
     if (this.torchSpot) this.torchSpot.visible = this.flashlightOn;
     if (this.torchLens) this.torchLens.visible = this.flashlightOn;
+    if (this.torchGlowSprite) this.torchGlowSprite.visible = this.flashlightOn;
+    if (this.torchBeamCone) this.torchBeamCone.visible = this.flashlightOn;
   }
 
   setFallenPose() {
