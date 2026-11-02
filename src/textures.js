@@ -418,6 +418,130 @@ export function createIndustrialMaterials() {
     addRealisticNoiseAndScratches(ctx, s, 0.12, 16);
   }, 512);
 
+  // ============================================================================
+  // [제3장: 심연의 지열 갱도 전용 아날로그 텍스처]
+  // 1. 붉은 현무암 지열 암반 벽 (Geothermal Basalt Rock Wall)
+  // ============================================================================
+  const rockWallTex = createProceduralTexture((ctx, s) => {
+    ctx.fillStyle = '#22110c';
+    ctx.fillRect(0, 0, s, s);
+
+    // 불규칙한 암반 균열 및 화산 지열 핏줄
+    for (let i = 0; i < 28; i++) {
+      ctx.beginPath();
+      let cx = Math.random() * s;
+      let cy = Math.random() * s;
+      ctx.moveTo(cx, cy);
+      for (let j = 0; j < 5; j++) {
+        cx += (Math.random() - 0.5) * 80;
+        cy += (Math.random() - 0.5) * 60;
+        ctx.lineTo(cx, cy);
+      }
+      ctx.strokeStyle = i % 3 === 0 ? 'rgba(120, 35, 18, 0.45)' : 'rgba(15, 7, 5, 0.65)';
+      ctx.lineWidth = i % 4 === 0 ? 3.5 : 1.8;
+      ctx.stroke();
+    }
+
+    // 거친 암석 블록 명암 그라데이션
+    for (let y = 0; y < s; y += 64) {
+      const grad = ctx.createLinearGradient(0, y, 0, y + 64);
+      grad.addColorStop(0, 'rgba(45, 20, 14, 0.35)');
+      grad.addColorStop(1, 'rgba(10, 5, 3, 0.55)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, y, s, 64);
+    }
+
+    addRealisticNoiseAndScratches(ctx, s, 0.18, 20);
+  }, 512);
+
+  // 2. 침목과 두 줄의 철제 광차 레일 바닥 (Mine Cart Rail Track)
+  const mineRailTex = createProceduralTexture((ctx, s) => {
+    // 자갈 쇄석 베이스
+    ctx.fillStyle = '#1c1715';
+    ctx.fillRect(0, 0, s, s);
+
+    // 가로 나무 침목 (Wooden Ties)
+    const tieStep = 48;
+    for (let y = 8; y < s; y += tieStep) {
+      ctx.fillStyle = '#281c15';
+      ctx.fillRect(16, y, s - 32, 22);
+      ctx.fillStyle = '#140e0a';
+      ctx.fillRect(16, y + 18, s - 32, 4); // 침목 하단 그림자
+      // 나무 결
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+      ctx.fillRect(20, y + 6, s - 40, 2);
+      ctx.fillRect(24, y + 12, s - 48, 2);
+    }
+
+    // 두 줄의 세로 철제 레일 (Steel Rails)
+    const railX1 = 130;
+    const railX2 = s - 130;
+    for (const rx of [railX1, railX2]) {
+      // 레일 밑판
+      ctx.fillStyle = '#1b1d20';
+      ctx.fillRect(rx - 12, 0, 24, s);
+      // 레일 기둥
+      ctx.fillStyle = '#3a4046';
+      ctx.fillRect(rx - 6, 0, 12, s);
+      // 레일 상단 광택면
+      ctx.fillStyle = '#7a8590';
+      ctx.fillRect(rx - 3, 0, 6, s);
+      ctx.fillStyle = '#b0bec5';
+      ctx.fillRect(rx - 1, 0, 2, s);
+
+      // 레일 고정 볼트
+      for (let y = 8 + 11; y < s; y += tieStep) {
+        ctx.fillStyle = '#101214';
+        ctx.beginPath();
+        ctx.arc(rx - 8, y, 2.5, 0, Math.PI * 2);
+        ctx.arc(rx + 8, y, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    addRealisticNoiseAndScratches(ctx, s, 0.14, 18);
+  }, 512);
+
+  // 3. 거친 채굴 암반 및 분쇄석 바닥 (Excavated Ore Bed Floor)
+  const mineStoneTex = createProceduralTexture((ctx, s) => {
+    ctx.fillStyle = '#201612';
+    ctx.fillRect(0, 0, s, s);
+
+    // 암석 블록 격자
+    ctx.strokeStyle = '#120c09';
+    ctx.lineWidth = 3;
+    for (let x = 0; x < s; x += 64) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, s);
+      ctx.stroke();
+    }
+    for (let y = 0; y < s; y += 64) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(s, y);
+      ctx.stroke();
+    }
+
+    addRealisticNoiseAndScratches(ctx, s, 0.22, 24);
+  }, 512);
+
+  // 4. 거친 갱도 암반 천장 (Mine Rock Ceiling)
+  const mineCeilingTex = createProceduralTexture((ctx, s) => {
+    ctx.fillStyle = '#180e0a';
+    ctx.fillRect(0, 0, s, s);
+
+    // 갱도 철골 버팀목 실루엣
+    for (let y = 0; y < s; y += 128) {
+      ctx.fillStyle = '#2d180f';
+      ctx.fillRect(0, y, s, 16);
+      ctx.fillStyle = '#0c0604';
+      ctx.fillRect(0, y + 16, s, 6);
+    }
+
+    addRealisticNoiseAndScratches(ctx, s, 0.16, 20);
+  }, 512);
+
   // 6. 상하 개폐식 블라스트 도어 (스텐실 라벨 + 부식된 경고 빗금)
   const doorTex = makePhotoTexture((ctx, s) => {
     // 묵직한 강철 셔터 베이스
@@ -820,6 +944,25 @@ export function createIndustrialMaterials() {
     ledRed: new THREE.MeshBasicMaterial({ color: 0xff3333 }),
     consoleScreen: new THREE.MeshBasicMaterial({ color: 0x90ffb8 }),
     lampOrangeTube: new THREE.MeshBasicMaterial({ color: 0xff8c2a }),
-    lampOrangeFixture: new THREE.MeshLambertMaterial({ color: 0x221a14 })
+    lampOrangeFixture: new THREE.MeshLambertMaterial({ color: 0x221a14 }),
+    // 챕터 3 지열 갱도 전용 머티리얼
+    wallRock: new THREE.MeshLambertMaterial({
+      map: rockWallTex,
+      color: 0xffffff
+    }),
+    floorMineRail: new THREE.MeshLambertMaterial({
+      map: mineRailTex,
+      color: 0xffffff
+    }),
+    floorMineStone: new THREE.MeshLambertMaterial({
+      map: mineStoneTex,
+      color: 0xffffff
+    }),
+    ceilingRock: new THREE.MeshLambertMaterial({
+      map: mineCeilingTex,
+      color: 0xffffff
+    }),
+    lampMineTube: new THREE.MeshBasicMaterial({ color: 0xff5518 }),
+    lampMineFixture: new THREE.MeshLambertMaterial({ color: 0x24140c })
   };
 }

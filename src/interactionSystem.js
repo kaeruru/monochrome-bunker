@@ -74,6 +74,24 @@ const CANDIDATE_SPAWN_SPOTS_CH2 = [
   { col: 3,  row: 18, zone: '서측 원통 배수관 (서남 방수 보관함)', isLocker: true }
 ];
 
+// 챕터 3 (심연 지열 갱도) 전용 후보 스폰 지점 풀 (14개 시설 지점)
+const CANDIDATE_SPAWN_SPOTS_CH3 = [
+  { col: 7,  row: 4,  zone: '제1 굴착 발파 구역 (발파용 캐비닛)', isLocker: true },
+  { col: 8,  row: 5,  zone: '제1 굴착 발파 구역 (굴착기 선반)', isLocker: false },
+  { col: 14, row: 10, zone: '지질 코어 보관소 (시료 보관함)', isLocker: true },
+  { col: 3,  row: 16, zone: '지열 발전 터빈실 (터빈 정비대)', isLocker: false },
+  { col: 12, row: 15, zone: '갱도 보안 초소 (비상 사물함)', isLocker: true },
+  { col: 7,  row: 23, zone: '광석 분쇄소 (광석 분류 캐비닛)', isLocker: true },
+  { col: 15, row: 21, zone: '지열 증기 보일러실 (압력 제어함)', isLocker: true },
+  { col: 23, row: 22, zone: '광차 레일 환승 허브 (환승 공구함)', isLocker: true },
+  { col: 29, row: 14, zone: '지질 통신실 (통신 장비 선반)', isLocker: true },
+  { col: 37, row: 4,  zone: '화약 저장고 (폭약 방호 금고)', isLocker: true },
+  { col: 34, row: 11, zone: '환풍 통풍탑 (환기 모터 선반)', isLocker: false },
+  { col: 43, row: 14, zone: '심부 시추실 (시추 코어 캐비닛)', isLocker: true },
+  { col: 37, row: 21, zone: '중장비 정비고 (정비 자재함)', isLocker: true },
+  { col: 31, row: 25, zone: '폐쇄 채굴 갱도 (버려진 광차 선반)', isLocker: false }
+];
+
 function createSeededRandom(s) {
   let seed = (typeof s === 'number' ? s : 123456789) % 2147483647;
   if (seed <= 0) seed += 2147483646;
@@ -228,9 +246,10 @@ export class InteractionAndEscapeSystem {
     this.autoBlackoutTimer = 65 + Math.random() * 20;
 
     const isCh2 = this.map.chapterId === 'chapter2';
+    const isCh3 = this.map.chapterId === 'chapter3';
 
-    // 1. 중앙 코어 부품 장착 슬롯 4개 생성 (챕터 2는 중앙 배수 펌프실 (24,14), 챕터 1은 (24,6))
-    this.buildCentralCoreReceptors(isCh2 ? 24 : 24, isCh2 ? 14 : 6);
+    // 1. 중앙 코어 부품 장착 슬롯 4개 생성 (챕터 2는 중앙 배수 펌프실 (24,14), 챕터 1/3은 기동장 (24,6))
+    this.buildCentralCoreReceptors(24, isCh2 ? 14 : 6);
 
     // 2. 북쪽 벽 비상 탈출 엘리베이터 게이트 생성
     this.buildEscapeGate(21, isCh2 ? 11 : 3);
@@ -238,8 +257,10 @@ export class InteractionAndEscapeSystem {
     // 3. 북동쪽 부품 위치 스캔 단말기 생성
     this.buildScannerTerminal(27, isCh2 ? 11 : 3);
 
-    // 4. 주 배전반(차단기 레버 3개) 생성 (챕터 1 전용: 전기실 (16,20), 챕터 2는 전기실 없음)
-    if (!isCh2) {
+    // 4. 주 배전반(차단기 레버 3개) 생성 (챕터 1: 전기실 (16,20), 챕터 3: 지열 발전 터빈실 (3,14), 챕터 2는 침수)
+    if (isCh3) {
+      this.buildElectricalBreakerPanel(3, 14);
+    } else if (!isCh2) {
       this.buildElectricalBreakerPanel(16, 20);
     }
 
@@ -529,7 +550,7 @@ export class InteractionAndEscapeSystem {
    * 14개 후보 스팟을 셔플하여 필수 코어 부품 4개 + 조명탄 2개 + 빈 캐비닛들을 배치합니다.
    */
   spawnRandomizedItemsAndLockers(seed = null) {
-    const spotPool = this.map.chapterId === 'chapter2' ? CANDIDATE_SPAWN_SPOTS_CH2 : CANDIDATE_SPAWN_SPOTS;
+    const spotPool = this.map.chapterId === 'chapter2' ? CANDIDATE_SPAWN_SPOTS_CH2 : (this.map.chapterId === 'chapter3' ? CANDIDATE_SPAWN_SPOTS_CH3 : CANDIDATE_SPAWN_SPOTS);
     const shuffled = [...spotPool];
     const rng = seed ? createSeededRandom(seed) : Math.random;
     for (let i = shuffled.length - 1; i > 0; i--) {

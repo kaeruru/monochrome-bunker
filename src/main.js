@@ -657,8 +657,8 @@ class MonochromeBunker3D {
 
     // 암전 해제 및 챕터별 정상 조명 복구
     this.applyChapterLighting(false);
-    if (this.map.bunkerAmbient) this.map.bunkerAmbient.intensity = this.activeChapterId === 'chapter2' ? 1.25 : 0.45;
-    if (this.map.genLight) this.map.genLight.intensity = this.activeChapterId === 'chapter2' ? 5.2 : 2.2;
+    if (this.map.bunkerAmbient) this.map.bunkerAmbient.intensity = this.activeChapterId === 'chapter2' ? 1.25 : (this.activeChapterId === 'chapter3' ? 0.85 : 0.45);
+    if (this.map.genLight) this.map.genLight.intensity = this.activeChapterId === 'chapter2' ? 5.2 : (this.activeChapterId === 'chapter3' ? 4.0 : 2.2);
     if (this.map.consoleLight) this.map.consoleLight.intensity = 2.0;
 
     this.map.setBlackoutState(false);
@@ -1789,7 +1789,35 @@ class MonochromeBunker3D {
 
   applyChapterLighting(isBlackout = false) {
     const isCh2 = this.activeChapterId === 'chapter2';
-    if (isCh2) {
+    const isCh3 = this.activeChapterId === 'chapter3';
+    if (isCh3) {
+      // 제3장: 심도 300m 지하 지열 갱도 (붉은 지열 증기 연무 및 따뜻한 광산 작업등)
+      this.flashlightOn = !isBlackout;
+      this.flashlight.color.setHex(0xffecd0); // 따뜻한 백열 광산 헬멧 라이트
+      this.flashlight.distance = 32.0;
+      this.flashlight.angle = Math.PI / 3.2;
+      this.flashlight.penumbra = 0.75;
+      this.flashlight.intensity = isBlackout ? 0 : 20.0;
+      if (this.playerFillLight) this.playerFillLight.intensity = isBlackout ? 0.15 : 1.10;
+      if (this.btnTouchCCTV) this.btnTouchCCTV.style.display = '';
+      if (this.btnTouchFlashlight) {
+        const lbl = this.btnTouchFlashlight.querySelector('.btn-label');
+        if (lbl) lbl.textContent = 'LIGHT';
+        const sub = this.btnTouchFlashlight.querySelector('.btn-sub');
+        if (sub) sub.textContent = '[ F ]';
+        this.btnTouchFlashlight.classList.toggle('active', this.flashlightOn);
+        this.btnTouchFlashlight.style.opacity = '1.0';
+        this.btnTouchFlashlight.title = '광산 전술 라이트 온/오프';
+      }
+      const fogColor = isBlackout ? 0x0a0302 : 0x180604;
+      this.scene.background.setHex(fogColor);
+      this.scene.fog = new THREE.FogExp2(fogColor, 0.046);
+      if (this.ambientLight) {
+        this.ambientLight.color.setHex(isBlackout ? 0x1a0604 : 0x361008);
+        this.ambientLight.intensity = isBlackout ? 0.10 : 0.38;
+      }
+      if (this.mistParticles) this.mistParticles.visible = true;
+    } else if (isCh2) {
       // 챕터 2: 차가운 암흑 침수 수로 전술 조명 & 뿌연 수증기 물안개 (가시거리 11.5m)
       this.flashlightOn = true;
       this.flashlight.color.setHex(0xeef5fc); // 차가운 청백색 전술 스포트라이트

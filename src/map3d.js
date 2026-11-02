@@ -225,6 +225,7 @@ export class Map3D {
   buildFromTileMap(mapArray) {
     let doorIndex = 1;
     const isCh2 = this.chapterId === 'chapter2';
+    const isCh3 = this.chapterId === 'chapter3';
 
     // 대규모 지오메트리 병합 수집 버퍼 (드로우콜 2,000+개 -> 6개 내외로 압축)
     const wallGeos = [];
@@ -583,7 +584,8 @@ export class Map3D {
 
     if (wallGeos.length > 0) {
       const mergedWall = BufferGeometryUtils.mergeGeometries(wallGeos, false);
-      const wallMesh = new THREE.Mesh(mergedWall, this.materials.wall);
+      const wallMat = isCh3 ? this.materials.wallRock : this.materials.wall;
+      const wallMesh = new THREE.Mesh(mergedWall, wallMat);
       this.mapGroup.add(wallMesh);
       wallGeos.forEach(g => g.dispose());
     }
@@ -597,21 +599,24 @@ export class Map3D {
 
     if (floorCorridorGeos.length > 0) {
       const mergedFloor = BufferGeometryUtils.mergeGeometries(floorCorridorGeos, false);
-      const floorMesh = new THREE.Mesh(mergedFloor, this.materials.floorCorridor);
+      const corridorMat = isCh3 ? this.materials.floorMineRail : this.materials.floorCorridor;
+      const floorMesh = new THREE.Mesh(mergedFloor, corridorMat);
       this.mapGroup.add(floorMesh);
       floorCorridorGeos.forEach(g => g.dispose());
     }
 
     if (floorBunkerGeos.length > 0) {
       const mergedFloor = BufferGeometryUtils.mergeGeometries(floorBunkerGeos, false);
-      const floorMesh = new THREE.Mesh(mergedFloor, this.materials.floorBunker);
+      const bunkerMat = isCh3 ? this.materials.floorMineStone : this.materials.floorBunker;
+      const floorMesh = new THREE.Mesh(mergedFloor, bunkerMat);
       this.mapGroup.add(floorMesh);
       floorBunkerGeos.forEach(g => g.dispose());
     }
 
     if (floorRoomGeos.length > 0) {
       const mergedFloor = BufferGeometryUtils.mergeGeometries(floorRoomGeos, false);
-      const floorMesh = new THREE.Mesh(mergedFloor, this.materials.floorRoom);
+      const roomMat = isCh3 ? this.materials.floorMineStone : this.materials.floorRoom;
+      const floorMesh = new THREE.Mesh(mergedFloor, roomMat);
       this.mapGroup.add(floorMesh);
       floorRoomGeos.forEach(g => g.dispose());
     }
@@ -635,7 +640,7 @@ export class Map3D {
 
     if (ceilingGeos.length > 0) {
       const mergedCeiling = BufferGeometryUtils.mergeGeometries(ceilingGeos, false);
-      const ceilMat = isCh2 ? this.materials.ceilingBrick : this.materials.ceiling;
+      const ceilMat = isCh3 ? this.materials.ceilingRock : (isCh2 ? this.materials.ceilingBrick : this.materials.ceiling);
       const ceilingMesh = new THREE.Mesh(mergedCeiling, ceilMat);
       this.mapGroup.add(ceilingMesh);
       ceilingGeos.forEach(g => g.dispose());
@@ -1291,19 +1296,22 @@ export class Map3D {
 
   buildCeilingLamp(x, z, col = 0, row = 0) {
     const isCh2 = this.chapterId === 'chapter2';
+    const isCh3 = this.chapterId === 'chapter3';
     const group = new THREE.Group();
     const inLowPipe = isCh2 && this.isWaterTile(col, row);
     const lampY = isCh2 ? (inLowPipe ? 3.12 : 4.18) : (WALL_HEIGHT - 0.06);
     group.position.set(x, lampY, z);
 
-    const fixtureMat = isCh2 ? this.materials.lampOrangeFixture : this.materials.doorFrame;
+    const fixtureMat = isCh3
+      ? this.materials.lampMineFixture
+      : (isCh2 ? this.materials.lampOrangeFixture : this.materials.doorFrame);
     const fixture = new THREE.Mesh(
       new THREE.BoxGeometry(1.1, 0.10, 0.38),
       fixtureMat
     );
     group.add(fixture);
 
-    const tubeColor = isCh2 ? 0xff9228 : 0xbfc6cc;
+    const tubeColor = isCh3 ? 0xff5518 : (isCh2 ? 0xff9228 : 0xbfc6cc);
     const tubeMat = new THREE.MeshBasicMaterial({ color: tubeColor });
     const tube = new THREE.Mesh(
       new THREE.BoxGeometry(0.96, 0.06, 0.26),
@@ -1319,8 +1327,8 @@ export class Map3D {
       y: lampY - 0.35,
       z,
       tubeMat,
-      baseIntensity: isCh2 ? 3.4 : 2.2,
-      currentIntensity: isCh2 ? 3.4 : 2.2,
+      baseIntensity: isCh3 ? 3.2 : (isCh2 ? 3.4 : 2.2),
+      currentIntensity: isCh3 ? 3.2 : (isCh2 ? 3.4 : 2.2),
       nextFlickerIn: 2.5 + Math.random() * 9.0,
       flickerRemain: 0,
       soundCooldown: 0
@@ -1414,9 +1422,18 @@ export class Map3D {
       3: 'CAM 03 - 동측 침수 저류 수로',
       4: 'CAM 04 - 서측 원형 수로 합류부'
     };
-    const camName = isCh2
-      ? (ch2Overrides[num]?.name || defaultNamesCh2[num] || `CAM 0${num} - 수로 감시`)
-      : (defaultNamesCh1[num] || `CAM 0${num} - 구역 감시`);
+    const defaultNamesCh3 = {
+      1: 'CAM 01 - 동쪽 광차 갱도 통로',
+      2: 'CAM 02 - 남쪽 레일 환승 허브',
+      3: 'CAM 03 - 제1 굴착 발파 구역',
+      4: 'CAM 04 - 지열 발전 터빈실'
+    };
+    const isCh3 = this.chapterId === 'chapter3';
+    const camName = isCh3
+      ? (defaultNamesCh3[num] || `CAM 0${num} - 갱도 감시`)
+      : (isCh2
+        ? (ch2Overrides[num]?.name || defaultNamesCh2[num] || `CAM 0${num} - 수로 감시`)
+        : (defaultNamesCh1[num] || `CAM 0${num} - 구역 감시`));
 
     // 카메라 시점 위치를 카메라 하우징 전방으로 배치하여 자체 모델 및 천장/벽면 간섭 원천 방지
     const fwdX = -Math.sin(finalYaw) * 0.32;
