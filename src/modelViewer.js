@@ -142,6 +142,14 @@ export class ModelShowcaseViewer {
     this.rimLight.position.set(-3, 4, -3);
     this.scene.add(this.rimLight);
 
+    this.fillLight = new THREE.DirectionalLight(0x9aa8b8, 1.1);
+    this.fillLight.position.set(-3, 3, 3);
+    this.scene.add(this.fillLight);
+
+    this.backLight = new THREE.DirectionalLight(0x708090, 0.9);
+    this.backLight.position.set(0, 3, -4);
+    this.scene.add(this.backLight);
+
     // 모델 인스턴스 생성
     this.monster = new MonsterEntity();
     this.scp096 = new Scp096Entity();
@@ -191,6 +199,7 @@ export class ModelShowcaseViewer {
     this.lurker.root.visible = false;
     this.snare.root.visible = false;
     this.playerModel.root.visible = false;
+    this.playerModel.setFlashlight(false);
 
     if (target === 'trio') {
       this.lurker.root.visible = true;
@@ -260,6 +269,7 @@ export class ModelShowcaseViewer {
       }
     } else if (target === 'player') {
       this.playerModel.root.visible = true;
+      this.playerModel.setFlashlight(true);
       this.playerModel.root.position.set(0, 0, 0);
       this.orbitDist = 2.45;
       this.orbitCenterY = 0.98;
@@ -317,14 +327,18 @@ export class ModelShowcaseViewer {
     const btn = document.getElementById('btn-mv-lighting');
     if (this.lightingMode === 'studio') {
       this.lightingMode = 'horror';
-      this.ambientLight.intensity = 0.15;
-      this.keyLight.intensity = 0.45;
+      this.ambientLight.intensity = 0.25;
+      this.keyLight.intensity = 0.55;
+      if (this.fillLight) this.fillLight.intensity = 0.20;
+      if (this.backLight) this.backLight.intensity = 0.15;
       this.rimLight.intensity = 16;
       if (btn) btn.textContent = '[LIGHT: HORROR] 호러 핀조명';
     } else {
       this.lightingMode = 'studio';
-      this.ambientLight.intensity = 0.85;
-      this.keyLight.intensity = 1.85;
+      this.ambientLight.intensity = 0.95;
+      this.keyLight.intensity = 1.95;
+      if (this.fillLight) this.fillLight.intensity = 1.1;
+      if (this.backLight) this.backLight.intensity = 0.9;
       this.rimLight.intensity = 12;
       if (btn) btn.textContent = '[LIGHT: STUDIO] 스튜디오';
     }

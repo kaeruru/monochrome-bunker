@@ -2808,16 +2808,16 @@ export class PlayerCharacterEntity {
       cloned.position.set(0, 0, 0);
 
       // 본 맵핑 및 캐싱 (Three.js PropertyBinding.sanitizeNodeName 대응)
+      // 본 맵핑 및 캐싱 (Three.js PropertyBinding.sanitizeNodeName 대응)
       cloned.traverse((child) => {
         if (child.isBone) {
           const rawName = child.name;
           this.bones[rawName] = child;
-          // FBXLoader 콜론 제거 대응: "mixamorigLeftArm", "mixamorig:LeftArm", "mixamorig_LeftArm"
           const cleanName = rawName.replace(/^mixamorig[:_]?/i, '');
           this.bones[cleanName] = child;
           this.bones[cleanName.toLowerCase()] = child;
-          this.initialBoneRotations[cleanName] = child.rotation.clone();
-          this.initialBonePositions[cleanName] = child.position.clone();
+          child.userData.bindQuat = child.quaternion.clone();
+          child.userData.bindPos = child.position.clone();
         }
 
         if (child.isMesh) {
@@ -2840,10 +2840,10 @@ export class PlayerCharacterEntity {
         this.baseHipsY = this.bones['Hips'].position.y;
       }
 
-      // 플레이어 식별용 전술 네온 암밴드 & 가슴/등 비콘 LED & 고글 렌즈 부착
+      // 플레이어 식별용 전술 네온 암밴드 부착
       this.attachTacticalSuitAccents();
 
-      // 오른손에 전술 손전등 & 조명 콘 장착
+      // 오른손에 전술 손전등 장착 (등 뒤로 솟구치는 가짜 반투명 콘 제거)
       this.attachFlashlightToRightHand();
 
       // 임시 플레이스홀더 제거 후 3D 솔저 모델 배치
@@ -2883,11 +2883,6 @@ export class PlayerCharacterEntity {
       this.accentMat.color.setHex(preset.accentHex);
       this.accentMat.emissive.setHex(preset.accentHex);
     }
-    if (this.visorMat) {
-      const vHex = preset.visorHex || preset.accentHex;
-      this.visorMat.color.setHex(vHex);
-      this.visorMat.emissive.setHex(vHex);
-    }
   }
 
   attachTacticalSuitAccents() {
@@ -2895,20 +2890,13 @@ export class PlayerCharacterEntity {
     this.accentMat = new THREE.MeshStandardMaterial({
       color: preset.accentHex,
       emissive: preset.accentHex,
-      emissiveIntensity: 2.2,
-      roughness: 0.25,
-      metalness: 0.4
-    });
-    this.visorMat = new THREE.MeshStandardMaterial({
-      color: preset.visorHex || preset.accentHex,
-      emissive: preset.visorHex || preset.accentHex,
-      emissiveIntensity: 2.8,
-      roughness: 0.1,
-      metalness: 0.2
+      emissiveIntensity: 1.8,
+      roughness: 0.35,
+      metalness: 0.3
     });
 
-    // 1. 왼팔/오른팔 상박 전술 식별 암밴드 (고유 팀 컬러 네온 밴드)
-    const bandGeo = new THREE.CylinderGeometry(0.064, 0.060, 0.09, 12);
+    // 왼팔/오른팔 상박 전술 네온 암밴드 (고유 팀 컬러로 세련되게 식별)
+    const bandGeo = new THREE.CylinderGeometry(0.065, 0.061, 0.08, 12);
     if (this.bones['LeftArm']) {
       const leftBand = new THREE.Mesh(bandGeo, this.accentMat);
       leftBand.position.set(0, 0.12, 0);
@@ -2921,41 +2909,6 @@ export class PlayerCharacterEntity {
       this.bones['RightArm'].add(rightBand);
       this.rightBand = rightBand;
     }
-
-    // 2. 가슴 & 등판 식별 비콘 라이트
-    const spineBone = this.bones['Spine2'] || this.bones['Spine1'] || this.bones['Spine'];
-    if (spineBone) {
-      const chestBeacon = new THREE.Mesh(
-        new THREE.BoxGeometry(0.055, 0.04, 0.035),
-        this.accentMat
-      );
-      chestBeacon.position.set(0, 0.16, 0.15);
-      spineBone.add(chestBeacon);
-      this.chestBeacon = chestBeacon;
-
-      const backBeacon = new THREE.Mesh(
-        new THREE.BoxGeometry(0.055, 0.04, 0.035),
-        this.accentMat
-      );
-      backBeacon.position.set(0, 0.16, -0.15);
-      spineBone.add(backBeacon);
-      this.backBeacon = backBeacon;
-    }
-
-    // 3. 방독면 고글 렌즈 발광
-    if (this.bones['Head']) {
-      const lensGeo = new THREE.SphereGeometry(0.024, 8, 8);
-      lensGeo.scale(1, 1, 0.5);
-      const leftLens = new THREE.Mesh(lensGeo, this.visorMat);
-      leftLens.position.set(0.044, 0.165, 0.17);
-      this.bones['Head'].add(leftLens);
-      this.leftLens = leftLens;
-
-      const rightLens = new THREE.Mesh(lensGeo, this.visorMat);
-      rightLens.position.set(-0.044, 0.165, 0.17);
-      this.bones['Head'].add(rightLens);
-      this.rightLens = rightLens;
-    }
   }
 
   attachFlashlightToRightHand() {
@@ -2963,57 +2916,48 @@ export class PlayerCharacterEntity {
     if (!handBone) return;
 
     const torchGroup = new THREE.Group();
-    // 오른손 파지 위치 정밀 조정
-    torchGroup.position.set(-0.015, 0.06, 0.04);
-    torchGroup.rotation.set(0.58, 0.20, -1.86);
+    // 손 파지 위치 및 각도 (정면을 향하도록 배치)
+    torchGroup.position.set(-0.012, 0.05, 0.02);
+    torchGroup.rotation.set(0, 0, -Math.PI / 2);
     handBone.add(torchGroup);
     this.torchGroup = torchGroup;
 
     const darkMetal = new THREE.MeshStandardMaterial({
-      color: 0x1f2327,
-      roughness: 0.4,
-      metalness: 0.8
+      color: 0x181a1d,
+      roughness: 0.35,
+      metalness: 0.85
     });
 
+    // 손전등 원통 본체
     const body = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.022, 0.018, 0.18, 10),
+      new THREE.CylinderGeometry(0.016, 0.014, 0.13, 10),
       darkMetal
     );
     body.rotation.x = Math.PI / 2;
     torchGroup.add(body);
 
+    // 손전등 헤드 베젤
     const head = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.032, 0.022, 0.05, 10),
+      new THREE.CylinderGeometry(0.024, 0.016, 0.04, 10),
       darkMetal
     );
     head.rotation.x = Math.PI / 2;
-    head.position.z = 0.10;
+    head.position.z = 0.075;
     torchGroup.add(head);
 
+    // 전면 발광 렌즈 (원형)
     const lensMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const lens = new THREE.Mesh(new THREE.CircleGeometry(0.028, 10), lensMat);
-    lens.position.z = 0.126;
+    const lens = new THREE.Mesh(new THREE.CircleGeometry(0.020, 10), lensMat);
+    lens.position.z = 0.096;
     torchGroup.add(lens);
     this.torchLens = lens;
 
-    const beamGeo = new THREE.ConeGeometry(0.36, 1.8, 14, 1, true);
-    beamGeo.translate(0, -0.9, 0);
-    beamGeo.rotateX(-Math.PI / 2);
-    const beamMat = new THREE.MeshBasicMaterial({
-      color: 0xfff4e0,
-      transparent: true,
-      opacity: 0.12,
-      side: THREE.DoubleSide,
-      depthWrite: false
-    });
-    const beamCone = new THREE.Mesh(beamGeo, beamMat);
-    beamCone.position.z = 0.13;
-    torchGroup.add(beamCone);
-    this.torchBeamCone = beamCone;
+    // 등 뒤로 솟구치던 기괴한 1.8m 반투명 메쉬 콘은 완전히 제거
+    this.torchBeamCone = null;
 
     if (this.enableLight) {
-      const spot = new THREE.SpotLight(0xfff0d6, 5.8, 14, Math.PI / 5.5, 0.5, 1.4);
-      spot.position.set(0, 0, 0.13);
+      const spot = new THREE.SpotLight(0xfff4e0, 4.5, 12, Math.PI / 5, 0.4, 1.2);
+      spot.position.set(0, 0, 0.10);
       const target = new THREE.Object3D();
       target.position.set(0, 0, 6);
       torchGroup.add(spot);
@@ -3025,207 +2969,157 @@ export class PlayerCharacterEntity {
 
   setFlashlight(enabled) {
     this.flashlightOn = !!enabled;
-    if (this.torchBeamCone) this.torchBeamCone.visible = this.flashlightOn;
     if (this.torchSpot) this.torchSpot.visible = this.flashlightOn;
     if (this.torchLens) this.torchLens.visible = this.flashlightOn;
   }
 
-  setFallenPose() {
-    this.animMode = 'fallen';
-    this.root.position.y = 0.08;
-    this.root.rotation.set(-Math.PI / 2, 0, (Math.random() - 0.5) * 0.45);
-
-    const b = this.bones;
-    const init = this.initialBoneRotations;
-    if (b['Hips'] && init['Hips']) b['Hips'].position.y = 0.08;
-    if (b['Spine'] && init['Spine']) b['Spine'].rotation.set(init['Spine'].x + 0.12, init['Spine'].y + 0.25, init['Spine'].z + 0.05);
-    if (b['Head'] && init['Head']) b['Head'].rotation.set(init['Head'].x - 0.25, init['Head'].y + 0.5, init['Head'].z - 0.15);
-    if (b['LeftArm'] && init['LeftArm']) b['LeftArm'].rotation.set(init['LeftArm'].x + 0.4, init['LeftArm'].y + 0.3, init['LeftArm'].z - 0.6);
-    if (b['RightArm'] && init['RightArm']) b['RightArm'].rotation.set(init['RightArm'].x + 0.7, init['RightArm'].y - 0.4, init['RightArm'].z + 0.5);
-    if (b['LeftUpLeg'] && init['LeftUpLeg']) b['LeftUpLeg'].rotation.set(init['LeftUpLeg'].x + 0.2, init['LeftUpLeg'].y + 0.3, init['LeftUpLeg'].z + 0.1);
-    if (b['RightUpLeg'] && init['RightUpLeg']) b['RightUpLeg'].rotation.set(init['RightUpLeg'].x - 0.2, init['RightUpLeg'].y - 0.2, init['RightUpLeg'].z - 0.1);
+  resetBones() {
+    for (const name in this.bones) {
+      const b = this.bones[name];
+      if (b && b.userData && b.userData.bindQuat) {
+        b.quaternion.copy(b.userData.bindQuat);
+      }
+      if (b && b.userData && b.userData.bindPos) {
+        b.position.copy(b.userData.bindPos);
+      }
+    }
   }
 
   applyTacticalPose(t, mode) {
     if (!this.isModelReady) return;
+
+    this.resetBones();
 
     if (mode === 'fallen') {
       this.setFallenPose();
       return;
     }
 
-    // 사망 자세에서 일반 모션 복귀 시 루트 좌표 리셋
     if (this.root.position.y !== 0) this.root.position.y = 0;
     if (this.root.rotation.x !== 0 || this.root.rotation.z !== 0) {
       this.root.rotation.set(0, this.root.rotation.y, 0);
     }
 
     const b = this.bones;
-    const init = this.initialBoneRotations;
-    const initPos = this.initialBonePositions;
 
     if (mode === 'sprint') {
-      // 1. 전술 전력 질주 (Sprint) - 바디 린 + 강한 팔 펌핑 + 무릎 굴곡
-      const freq = 9.4;
-      const phase = t * freq;
-      const sinP = Math.sin(phase);
-      const cosP = Math.cos(phase);
+      // 1. 전술 전력 질주 (Sprint)
+      const freq = 8.2;
+      const sinP = Math.sin(t * freq);
+      const cosP = Math.cos(t * freq);
 
-      if (b['Hips'] && init['Hips']) {
-        b['Hips'].position.y = (initPos['Hips'] ? initPos['Hips'].y : this.baseHipsY) + Math.abs(sinP) * 0.055;
-        b['Hips'].rotation.y = init['Hips'].y + sinP * 0.12;
+      if (b['Hips'] && b['Hips'].userData.bindPos) {
+        b['Hips'].position.y = b['Hips'].userData.bindPos.y + Math.abs(sinP) * 0.04;
+        b['Hips'].rotateY(sinP * 0.08);
       }
-      if (b['Spine'] && init['Spine']) {
-        b['Spine'].rotation.x = init['Spine'].x + 0.30 + Math.abs(sinP) * 0.05;
-        b['Spine'].rotation.y = init['Spine'].y - sinP * 0.14;
+      if (b['Spine']) {
+        b['Spine'].rotateX(0.22);
+        b['Spine'].rotateY(-sinP * 0.09);
       }
-      if (b['Spine1'] && init['Spine1']) {
-        b['Spine1'].rotation.x = init['Spine1'].x + 0.14;
-      }
+      if (b['Spine1']) b['Spine1'].rotateX(0.08);
 
-      // 다리 질주 스트라이드 (전방 +Z 방향 스트라이드)
-      if (b['LeftUpLeg'] && init['LeftUpLeg']) {
-        b['LeftUpLeg'].rotation.x = init['LeftUpLeg'].x - sinP * 0.88;
-      }
-      if (b['LeftLeg'] && init['LeftLeg']) {
-        b['LeftLeg'].rotation.x = init['LeftLeg'].x - Math.max(0, -sinP) * 1.35;
-      }
+      // 다리 질주 스트라이드 (전방 +Z 진행)
+      if (b['LeftUpLeg']) b['LeftUpLeg'].rotateX(sinP * 0.62);
+      if (b['LeftLeg']) b['LeftLeg'].rotateX(-Math.max(0, -sinP) * 0.85);
 
-      if (b['RightUpLeg'] && init['RightUpLeg']) {
-        b['RightUpLeg'].rotation.x = init['RightUpLeg'].x + sinP * 0.88;
-      }
-      if (b['RightLeg'] && init['RightLeg']) {
-        b['RightLeg'].rotation.x = init['RightLeg'].x - Math.max(0, sinP) * 1.35;
-      }
+      if (b['RightUpLeg']) b['RightUpLeg'].rotateX(-sinP * 0.62);
+      if (b['RightLeg']) b['RightLeg'].rotateX(-Math.max(0, sinP) * 0.85);
 
-      // 왼팔 역동적인 질주 펌핑
-      if (b['LeftArm'] && init['LeftArm']) {
-        b['LeftArm'].rotation.x = init['LeftArm'].x + 0.85;
-        b['LeftArm'].rotation.z = init['LeftArm'].z + sinP * 0.82;
+      // 팔 역동적인 질주 펌핑
+      if (b['LeftArm']) {
+        b['LeftArm'].rotateX(0.70);
+        b['LeftArm'].rotateZ(sinP * 0.52);
       }
-      if (b['LeftForeArm'] && init['LeftForeArm']) {
-        b['LeftForeArm'].rotation.z = init['LeftForeArm'].z + 0.65 + Math.abs(cosP) * 0.35;
-      }
+      if (b['LeftForeArm']) b['LeftForeArm'].rotateZ(-0.55 + Math.abs(cosP) * 0.25);
 
-      // 오른팔 손전등 전방 유지하면서 펌핑
-      if (b['RightArm'] && init['RightArm']) {
-        b['RightArm'].rotation.x = init['RightArm'].x + 0.85;
-        b['RightArm'].rotation.z = init['RightArm'].z - 0.45 - sinP * 0.35;
+      if (b['RightArm']) {
+        b['RightArm'].rotateX(0.70);
+        b['RightArm'].rotateZ(-sinP * 0.52);
       }
-      if (b['RightForeArm'] && init['RightForeArm']) {
-        b['RightForeArm'].rotation.z = init['RightForeArm'].z - 0.65;
-      }
+      if (b['RightForeArm']) b['RightForeArm'].rotateZ(0.55 + Math.abs(cosP) * 0.25);
 
-      if (b['Head'] && init['Head']) {
-        b['Head'].rotation.x = init['Head'].x - 0.15;
-        b['Head'].rotation.y = init['Head'].y + Math.sin(t * 2.2) * 0.08;
-      }
+      if (b['Head']) b['Head'].rotateX(-0.12);
     } else if (mode === 'walk') {
-      // 2. 전술 이동 / 걷기 (Walk) - 안정적인 보행 + 손전등 전방 수색
-      const freq = 5.2;
-      const phase = t * freq;
-      const sinP = Math.sin(phase);
-      const cosP = Math.cos(phase);
+      // 2. 전술 이동 / 걷기 (Walk)
+      const freq = 4.6;
+      const sinP = Math.sin(t * freq);
 
-      if (b['Hips'] && init['Hips']) {
-        b['Hips'].position.y = (initPos['Hips'] ? initPos['Hips'].y : this.baseHipsY) + Math.abs(sinP) * 0.03;
-        b['Hips'].rotation.y = init['Hips'].y + sinP * 0.06;
+      if (b['Hips'] && b['Hips'].userData.bindPos) {
+        b['Hips'].position.y = b['Hips'].userData.bindPos.y + Math.abs(sinP) * 0.025;
+        b['Hips'].rotateY(sinP * 0.04);
       }
-      if (b['Spine'] && init['Spine']) {
-        b['Spine'].rotation.x = init['Spine'].x + 0.10 + Math.abs(sinP) * 0.02;
-        b['Spine'].rotation.y = init['Spine'].y - sinP * 0.07;
-      }
-      if (b['Spine1'] && init['Spine1']) {
-        b['Spine1'].rotation.x = init['Spine1'].x + 0.04;
+      if (b['Spine']) {
+        b['Spine'].rotateX(0.08);
+        b['Spine'].rotateY(-sinP * 0.05);
       }
 
-      // 다리 보행 스윙
-      if (b['LeftUpLeg'] && init['LeftUpLeg']) {
-        b['LeftUpLeg'].rotation.x = init['LeftUpLeg'].x - sinP * 0.52;
-      }
-      if (b['LeftLeg'] && init['LeftLeg']) {
-        b['LeftLeg'].rotation.x = init['LeftLeg'].x - Math.max(0, -sinP) * 0.75;
-      }
+      // 자연스러운 보행 스트라이드
+      if (b['LeftUpLeg']) b['LeftUpLeg'].rotateX(sinP * 0.38);
+      if (b['LeftLeg']) b['LeftLeg'].rotateX(-Math.max(0, -sinP) * 0.45);
 
-      if (b['RightUpLeg'] && init['RightUpLeg']) {
-        b['RightUpLeg'].rotation.x = init['RightUpLeg'].x + sinP * 0.52;
-      }
-      if (b['RightLeg'] && init['RightLeg']) {
-        b['RightLeg'].rotation.x = init['RightLeg'].x - Math.max(0, sinP) * 0.75;
-      }
+      if (b['RightUpLeg']) b['RightUpLeg'].rotateX(-sinP * 0.38);
+      if (b['RightLeg']) b['RightLeg'].rotateX(-Math.max(0, sinP) * 0.45);
 
-      // 왼팔 자연스러운 보행 스윙
-      if (b['LeftArm'] && init['LeftArm']) {
-        b['LeftArm'].rotation.x = init['LeftArm'].x + 0.95;
-        b['LeftArm'].rotation.z = init['LeftArm'].z + sinP * 0.42;
+      // 자연스러운 양팔 보행 스윙
+      if (b['LeftArm']) {
+        b['LeftArm'].rotateX(0.72);
+        b['LeftArm'].rotateZ(sinP * 0.28);
       }
-      if (b['LeftForeArm'] && init['LeftForeArm']) {
-        b['LeftForeArm'].rotation.z = init['LeftForeArm'].z + 0.35;
-      }
+      if (b['LeftForeArm']) b['LeftForeArm'].rotateZ(-0.30);
 
-      // 오른팔 손전등 전방 유지 (정면 로우-레디)
-      if (b['RightArm'] && init['RightArm']) {
-        b['RightArm'].rotation.x = init['RightArm'].x + 0.90;
-        b['RightArm'].rotation.z = init['RightArm'].z - 0.45 + Math.sin(phase * 0.5) * 0.05;
+      if (b['RightArm']) {
+        b['RightArm'].rotateX(0.72);
+        b['RightArm'].rotateZ(-sinP * 0.28);
       }
-      if (b['RightForeArm'] && init['RightForeArm']) {
-        b['RightForeArm'].rotation.z = init['RightForeArm'].z - 0.65;
-      }
+      if (b['RightForeArm']) b['RightForeArm'].rotateZ(0.30);
 
-      if (b['Head'] && init['Head']) {
-        b['Head'].rotation.x = init['Head'].x;
-        b['Head'].rotation.y = init['Head'].y + Math.sin(t * 1.5) * 0.12;
+      if (b['Head']) {
+        b['Head'].rotateX(-0.02);
+        b['Head'].rotateY(Math.sin(t * 1.2) * 0.06);
       }
     } else {
-      // 3. 대기 / 정지 경계 (Idle) - 호흡 모션, 주위 경계 수색
+      // 3. 대기 / 정지 경계 (Idle)
       const breath = Math.sin(t * 1.8);
 
-      if (b['Hips'] && init['Hips']) {
-        b['Hips'].position.y = (initPos['Hips'] ? initPos['Hips'].y : this.baseHipsY) + breath * 0.008;
-        b['Hips'].rotation.y = init['Hips'].y;
-      }
-      if (b['Spine'] && init['Spine']) {
-        b['Spine'].rotation.x = init['Spine'].x + 0.04 + breath * 0.02;
-        b['Spine'].rotation.y = init['Spine'].y + Math.sin(t * 0.7) * 0.04;
-      }
+      if (b['Hips'] && b['Hips'].userData.bindPos) b['Hips'].position.y = b['Hips'].userData.bindPos.y + breath * 0.005;
+      if (b['Spine']) b['Spine'].rotateX(0.05 + breath * 0.015);
 
-      if (b['LeftUpLeg'] && init['LeftUpLeg']) b['LeftUpLeg'].rotation.x = init['LeftUpLeg'].x;
-      if (b['LeftLeg'] && init['LeftLeg']) b['LeftLeg'].rotation.x = init['LeftLeg'].x;
-      if (b['RightUpLeg'] && init['RightUpLeg']) b['RightUpLeg'].rotation.x = init['RightUpLeg'].x;
-      if (b['RightLeg'] && init['RightLeg']) b['RightLeg'].rotation.x = init['RightLeg'].x;
+      // 양팔을 자연스럽게 내린 단정한 전술 파지 자세
+      if (b['LeftArm']) {
+        b['LeftArm'].rotateX(0.72);
+        b['LeftArm'].rotateZ(breath * 0.02);
+      }
+      if (b['RightArm']) {
+        b['RightArm'].rotateX(0.72);
+        b['RightArm'].rotateZ(-breath * 0.02);
+      }
+      if (b['LeftForeArm']) b['LeftForeArm'].rotateZ(-0.25);
+      if (b['RightForeArm']) b['RightForeArm'].rotateZ(0.25);
 
-      // 팔을 몸 옆으로 자연스럽게 내림
-      if (b['LeftArm'] && init['LeftArm']) {
-        b['LeftArm'].rotation.x = init['LeftArm'].x + 1.05;
-        b['LeftArm'].rotation.z = init['LeftArm'].z + breath * 0.02;
-      }
-      if (b['LeftForeArm'] && init['LeftForeArm']) {
-        b['LeftForeArm'].rotation.z = init['LeftForeArm'].z + 0.22;
-      }
-
-      // 오른손 손전등 정면 지향 유지
-      if (b['RightArm'] && init['RightArm']) {
-        b['RightArm'].rotation.x = init['RightArm'].x + 0.95;
-        b['RightArm'].rotation.z = init['RightArm'].z - 0.42 + breath * 0.02;
-      }
-      if (b['RightForeArm'] && init['RightForeArm']) {
-        b['RightForeArm'].rotation.z = init['RightForeArm'].z - 0.65;
-      }
-
-      // 머리 천천히 좌우 주시
-      if (b['Head'] && init['Head']) {
-        b['Head'].rotation.y = init['Head'].y + Math.sin(t * 0.8) * 0.22;
-        b['Head'].rotation.x = init['Head'].x + Math.sin(t * 1.3) * 0.04;
+      if (b['Head']) {
+        b['Head'].rotateY(Math.sin(t * 0.7) * 0.14);
+        b['Head'].rotateX(Math.sin(t * 1.1) * 0.03);
       }
     }
   }
 
+  setFallenPose() {
+    this.animMode = 'fallen';
+    this.root.position.y = 0.08;
+    this.root.rotation.set(-Math.PI / 2, 0, 0.20);
+
+    const b = this.bones;
+    if (b['Hips']) b['Hips'].position.y = 0.08;
+    if (b['Spine']) b['Spine'].rotateX(0.12);
+    if (b['Head']) b['Head'].rotateY(0.35);
+    if (b['LeftArm']) { b['LeftArm'].rotateX(0.3); b['LeftArm'].rotateZ(-0.4); }
+    if (b['RightArm']) { b['RightArm'].rotateX(0.5); b['RightArm'].rotateZ(0.4); }
+    if (b['LeftUpLeg']) b['LeftUpLeg'].rotateX(0.15);
+    if (b['RightUpLeg']) b['RightUpLeg'].rotateX(-0.15);
+  }
+
   update(dt, mode = this.animMode) {
     this.animMode = mode;
-    if (mode === 'fallen') {
-      this.setFallenPose();
-      return;
-    }
     this.time += dt;
 
     if (!this.isModelReady) return;
