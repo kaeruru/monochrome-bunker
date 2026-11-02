@@ -29,6 +29,8 @@ export class NetworkManager {
     this.lastSentIsSprinting = false;
     this.lastSentFlashlight = true;
     this.lastSentHeldItem = null;
+    this.lastSentIsMovingBackward = false;
+    this.lastSentIsDead = false;
     this.lastHeartbeatTime = 0;
     this.heartbeatInterval = 1200; // 정지 시 1.2초마다 하트비트 전송
 
@@ -241,6 +243,14 @@ export class NetworkManager {
             rp.isMoving = msg.isMoving;
             rp.isSprinting = msg.isSprinting;
             rp.isMovingBackward = Boolean(msg.isMovingBackward);
+            if (typeof msg.isDead === 'boolean') {
+              if (!rp.isDead && msg.isDead) {
+                rp.isDead = true;
+                rp.entity.setFallenPose();
+              } else {
+                rp.isDead = msg.isDead;
+              }
+            }
             rp.heldItem = msg.heldItem;
 
             if (typeof msg.flashlightOn === 'boolean' && rp.flashlightOn !== msg.flashlightOn) {
@@ -311,6 +321,13 @@ export class NetworkManager {
         }
 
         case 'player_down': {
+          if (msg.playerId) {
+            const rp = this.remotePlayers.get(msg.playerId);
+            if (rp) {
+              rp.isDead = true;
+              rp.entity.setFallenPose();
+            }
+          }
           if (this.callbacks.onToast) {
             this.callbacks.onToast(`[RADIO EMERGENCY] 대원 [${msg.callsign}]이(가) 괴물에게 피습되었습니다!`, 'danger');
           }
@@ -482,7 +499,7 @@ export class NetworkManager {
     this.remotePlayers.clear();
   }
 
-  sendPlayerSync(pos, yaw, pitch, isMoving, isSprinting, heldItem, flashlightOn = true, isMovingBackward = false) {
+  sendPlayerSync(pos, yaw, pitch, isMoving, isSprinting, heldItem, flashlightOn = true, isMovingBackward = false, isDead = false) {
     if (!this.isConnected || !this.ws || !this.roomId) return;
     const now = performance.now();
     if (now - this.lastSyncTime < this.syncInterval) return;
@@ -499,7 +516,9 @@ export class NetworkManager {
     const stateChanged = (isMoving !== this.lastSentIsMoving) ||
                          (isSprinting !== this.lastSentIsSprinting) ||
                          (heldItem !== this.lastSentHeldItem) ||
-                         (flashlightOn !== this.lastSentFlashlight);
+                         (flashlightOn !== this.lastSentFlashlight) ||
+                         (isMovingBackward !== this.lastSentIsMovingBackward) ||
+                         (isDead !== this.lastSentIsDead);
 
     const isDeadband = (distSq < 0.0001) && (dyaw < 0.02) && (dpitch < 0.02) && !stateChanged;
     const isHeartbeatDue = (now - this.lastHeartbeatTime >= this.heartbeatInterval);
@@ -516,6 +535,8 @@ export class NetworkManager {
     this.lastSentPitch = pitch;
     this.lastSentIsMoving = isMoving;
     this.lastSentIsSprinting = isSprinting;
+    this.lastSentIsMovingBackward = isMovingBackward;
+    this.lastSentIsDead = isDead;
     this.lastSentHeldItem = heldItem;
     this.lastSentFlashlight = flashlightOn;
 
@@ -529,6 +550,7 @@ export class NetworkManager {
       isMoving,
       isSprinting,
       isMovingBackward,
+      isDead,
       heldItem,
       flashlightOn,
       ping: this.currentPing || 0
@@ -623,7 +645,9 @@ export class NetworkManager {
     for (const [_, rp] of this.remotePlayers) {
       rp.entity.root.position.lerp(rp.targetPos, Math.min(1, dt * 14));
 
-      let diff = rp.targetYaw - rp.entity.root.rotation.y;
+      // 180도 회전 보정: Mixamo FBX 정면(+Z)과 FPS 카메라 시선(-Z) 위상 완벽 일치
+      const targetRotY = rp.targetYaw + Math.PI;
+      let diff = targetRotY - rp.entity.root.rotation.y;
       while (diff > Math.PI) diff -= Math.PI * 2;
       while (diff < -Math.PI) diff += Math.PI * 2;
       rp.entity.root.rotation.y += diff * Math.min(1, dt * 14);

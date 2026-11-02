@@ -300,6 +300,8 @@ function handleMessage(ws, msg) {
         p.pitch = msg.pitch;
         p.isMoving = msg.isMoving;
         p.isSprinting = msg.isSprinting;
+        p.isMovingBackward = Boolean(msg.isMovingBackward);
+        if (typeof msg.isDead === 'boolean') p.isDead = msg.isDead;
         p.heldItem = msg.heldItem;
         if (typeof msg.flashlightOn === 'boolean') p.flashlightOn = msg.flashlightOn;
         if (typeof msg.ping === 'number') p.ping = msg.ping;
@@ -314,6 +316,8 @@ function handleMessage(ws, msg) {
           pitch: p.pitch,
           isMoving: p.isMoving,
           isSprinting: p.isSprinting,
+          isMovingBackward: p.isMovingBackward,
+          isDead: p.isDead,
           heldItem: p.heldItem,
           flashlightOn: p.flashlightOn,
           ping: p.ping
@@ -429,6 +433,11 @@ function handleMessage(ws, msg) {
       if (!ws.currentRoomId) return;
       const room = rooms.get(ws.currentRoomId);
       if (!room) return;
+
+      const p = room.players.get(ws);
+      if (p) {
+        p.isDead = true;
+      }
 
       broadcastToRoom(room, {
         type: 'player_down',

@@ -2827,6 +2827,34 @@ function stripRootMotion(clip) {
 }
 
 /**
+ * subclip의 0초 지속(NaN Mixer) 버그를 방지하고 완벽한 루프를 보장하는
+ * 전술 웅크림 대기(idle) 모션 클립을 생성합니다.
+ */
+function createSafeIdleClip(sourceClip) {
+  if (!sourceClip) return null;
+  const tracks = [];
+  const duration = 1.0;
+
+  for (const track of sourceClip.tracks) {
+    const isQuat = track.name.endsWith('.quaternion');
+    const stride = isQuat ? 4 : 3;
+    const firstVal = Array.from(track.values.slice(0, stride));
+
+    // 0초와 1초에 첫 프레임 자세를 복제하여 duration: 1.0의 완전한 루프 트랙 생성
+    const times = [0, duration];
+    const values = [...firstVal, ...firstVal];
+
+    if (isQuat) {
+      tracks.push(new THREE.QuaternionKeyframeTrack(track.name, times, values));
+    } else {
+      tracks.push(new THREE.VectorKeyframeTrack(track.name, times, values));
+    }
+  }
+
+  return new THREE.AnimationClip('idle', duration, tracks);
+}
+
+/**
  * 애니메이션 트랙의 본 타겟 이름을 타겟 3D 모델의 실제 본 노드 이름으로 매칭합니다.
  */
 function retargetClipToModel(clip, modelRoot) {
@@ -2908,14 +2936,8 @@ export function preloadSoldierAssets() {
       clip.name = 'walk';
       soldierAnimClips.walk = stripRootMotion(clip);
 
-      // Crouched Walking의 첫 프레임 자세로 자연스러운 전술 웅크림 대기(idle) 모션 생성
-      try {
-        const idleClip = THREE.AnimationUtils.subclip(soldierAnimClips.walk, 'idle', 0, 1, 30);
-        soldierAnimClips.idle = idleClip;
-      } catch (_) {
-        soldierAnimClips.idle = soldierAnimClips.walk.clone();
-        soldierAnimClips.idle.name = 'idle';
-      }
+      // Crouched Walking의 첫 프레임 자세로 duration: 1.0의 안전한 전술 웅크림 대기(idle) 모션 생성
+      soldierAnimClips.idle = createSafeIdleClip(soldierAnimClips.walk);
     }
 
     if (runFbx && runFbx.animations && runFbx.animations.length > 0) {
@@ -3094,19 +3116,18 @@ export class PlayerCharacterEntity {
       else return;
     }
 
-    if (this.currentAnim === targetKey && this.actions[targetKey].isRunning()) {
-      return;
+    if (this.currentAnim === targetKey) {
+      const curAction = this.actions[targetKey];
+      if (curAction && (curAction.isRunning() || curAction.clampWhenFinished)) {
+        return;
+      }
     }
 
     const prevAction = this.currentAnim ? this.actions[this.currentAnim] : null;
     const nextAction = this.actions[targetKey];
 
     nextAction.reset();
-    if (targetKey === 'idle' && this.actions['idle']) {
-      nextAction.timeScale = 0.04; // 대기 중 미세 호흡 느낌
-    } else {
-      nextAction.timeScale = 1.0;
-    }
+    nextAction.timeScale = 1.0;
     nextAction.play();
 
     if (prevAction && prevAction !== nextAction) {

@@ -766,6 +766,10 @@ class MonochromeBunker3D {
     this.controls.setDisabled(true);
     this.controls.unlock();
 
+    if (this.networkManager && this.networkManager.roomId) {
+      this.networkManager.sendPlayerDown(this.callsign);
+    }
+
     // 1. 점프스케어 오버레이 제거
     if (this.jumpscareOverlayEl) {
       this.jumpscareOverlayEl.classList.add('hidden');
@@ -2417,7 +2421,8 @@ class MonochromeBunker3D {
         isActivelySprinting,
         heldType,
         this.flashlightOn,
-        isMovingBackward
+        isMovingBackward,
+        Boolean(this.isPlayerDead)
       );
       if (this.networkManager.isHost && this.monsterAI) {
         this.networkManager.sendMonsterSync(
