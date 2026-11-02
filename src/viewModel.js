@@ -1,6 +1,5 @@
 import * as THREE from 'three';
-import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { SUIT_COLORS, preloadSoldierAssets, getTintedSoldierTexture } from './models.js';
+import { SUIT_COLORS, getTintedSoldierTexture } from './models.js';
 
 /**
  * 월드 배치용 & 1인칭 손 파지용 공용 고디테일 3D 아이템 메쉬 생성기
@@ -29,7 +28,7 @@ export function buildItemMesh3D(itemType) {
   let updateItemAnim = () => {};
 
   if (itemType === 'energy_cell') {
-    // 1. 고출력 플라즈마 에너지 셀 (원통형 중장비 배터리 + 발광 코어 + 상단 손잡이)
+    // 1. 고출력 플라즈마 에너지 셀
     const capGeo = new THREE.CylinderGeometry(0.11, 0.11, 0.045, 8);
     const bottomCap = new THREE.Mesh(capGeo, darkSteelMat);
     bottomCap.position.y = -0.14;
@@ -39,7 +38,6 @@ export function buildItemMesh3D(itemType) {
     topCap.position.y = 0.14;
     group.add(topCap);
 
-    // 내부 발광 플라즈마 코어 실린더
     const coreMat = new THREE.MeshStandardMaterial({
       color: 0xe0f7ff,
       emissive: 0x88dcff,
@@ -53,7 +51,6 @@ export function buildItemMesh3D(itemType) {
     );
     group.add(coreMesh);
 
-    // 내부 나선 코일 링 3개
     const ringGeo = new THREE.TorusGeometry(0.076, 0.008, 8, 16);
     for (const ry of [-0.06, 0, 0.06]) {
       const ring = new THREE.Mesh(ringGeo, brushedMetalMat);
@@ -62,7 +59,6 @@ export function buildItemMesh3D(itemType) {
       group.add(ring);
     }
 
-    // 외곽 보호 프레임 기둥 4개
     const strutGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.26, 8);
     for (let i = 0; i < 4; i++) {
       const a = (i * Math.PI) / 2 + Math.PI / 4;
@@ -71,7 +67,6 @@ export function buildItemMesh3D(itemType) {
       group.add(strut);
     }
 
-    // 상단 D형 운반 손잡이
     const handleBar = new THREE.Mesh(
       new THREE.BoxGeometry(0.12, 0.018, 0.022),
       gripRubberMat
@@ -92,14 +87,13 @@ export function buildItemMesh3D(itemType) {
       coreMat.emissiveIntensity = 1.35 + Math.sin(t * 5.2) * 0.45;
     };
   } else if (itemType === 'security_keycard') {
-    // 2. 보안 암호 디크립터 키카드 (전술 단말기형 카드 + 디지털 해독 디스플레이 + 안테나)
+    // 2. 보안 암호 디크립터 키카드
     const body = new THREE.Mesh(
       new THREE.BoxGeometry(0.16, 0.23, 0.024),
       darkSteelMat
     );
     group.add(body);
 
-    // 상단 금색/은색 마그네틱 IC 접촉 단자부
     const connector = new THREE.Mesh(
       new THREE.BoxGeometry(0.11, 0.035, 0.028),
       brushedMetalMat
@@ -107,7 +101,6 @@ export function buildItemMesh3D(itemType) {
     connector.position.set(0, 0.105, 0);
     group.add(connector);
 
-    // 우측 소형 수신 안테나
     const ant = new THREE.Mesh(
       new THREE.CylinderGeometry(0.005, 0.007, 0.09, 8),
       brushedMetalMat
@@ -115,7 +108,6 @@ export function buildItemMesh3D(itemType) {
     ant.position.set(0.068, 0.14, 0);
     group.add(ant);
 
-    // 전면 해독 OLED 스크린
     const screenMat = new THREE.MeshStandardMaterial({
       color: 0xb8ffda,
       emissive: 0x44ee88,
@@ -129,7 +121,6 @@ export function buildItemMesh3D(itemType) {
     screen.position.set(0, 0.015, 0.013);
     group.add(screen);
 
-    // 스캔 라인 바 (위아래로 움직이는 애니메이션 요소)
     const scanLine = new THREE.Mesh(
       new THREE.PlaneGeometry(0.115, 0.012),
       new THREE.MeshBasicMaterial({ color: 0xffffff })
@@ -137,7 +128,6 @@ export function buildItemMesh3D(itemType) {
     scanLine.position.set(0, 0.015, 0.014);
     group.add(scanLine);
 
-    // 하단 키패드 버튼 6개
     const keyGeo = new THREE.BoxGeometry(0.028, 0.018, 0.008);
     for (let r = 0; r < 2; r++) {
       for (let c = 0; c < 3; c++) {
@@ -149,102 +139,95 @@ export function buildItemMesh3D(itemType) {
 
     updateItemAnim = (t) => {
       scanLine.position.y = 0.015 + Math.sin(t * 4.5) * 0.042;
-      screenMat.emissiveIntensity = 1.05 + Math.sin(t * 8.0) * 0.25;
     };
   } else if (itemType === 'coolant_valve') {
-    // 3. 초저온 냉각 밸브 휠 (중공업 주철 4스포크 핸드휠 + 중앙 육각 스핀들 너트)
-    const wheelMat = new THREE.MeshStandardMaterial({
-      color: 0x483232,
-      roughness: 0.52,
-      metalness: 0.72
-    });
-
-    const rim = new THREE.Mesh(
-      new THREE.TorusGeometry(0.135, 0.022, 12, 28),
-      wheelMat
+    // 3. 냉각수 수동 압력 밸브
+    const hub = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.045, 0.045, 0.12, 12),
+      darkSteelMat
     );
-    group.add(rim);
+    group.add(hub);
 
-    // 십자 스포크 2개 (4방향)
-    for (let i = 0; i < 2; i++) {
-      const spoke = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.013, 0.013, 0.26, 8),
-        brushedMetalMat
-      );
-      spoke.rotation.z = (i * Math.PI) / 2;
+    const hexNut = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.028, 0.028, 0.035, 6),
+      brushedMetalMat
+    );
+    hexNut.position.y = 0.07;
+    group.add(hexNut);
+
+    const wheelRim = new THREE.Mesh(
+      new THREE.TorusGeometry(0.155, 0.022, 10, 24),
+      brushedMetalMat
+    );
+    wheelRim.rotation.x = Math.PI / 2;
+    wheelRim.position.y = 0.025;
+    group.add(wheelRim);
+
+    const spokeGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.15, 8);
+    for (let i = 0; i < 4; i++) {
+      const a = (i * Math.PI) / 2;
+      const spoke = new THREE.Mesh(spokeGeo, darkSteelMat);
+      spoke.rotation.z = Math.PI / 2;
+      spoke.rotation.y = a;
+      spoke.position.set(Math.cos(a) * 0.075, 0.025, Math.sin(a) * 0.075);
       group.add(spoke);
     }
 
-    // 중앙 육각 결합 허브
-    const hub = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.042, 0.042, 0.065, 6),
-      darkSteelMat
-    );
-    hub.rotation.x = Math.PI / 2;
-    group.add(hub);
-
-    // 전면 손잡이 노브
-    const knob = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.014, 0.012, 0.055, 10),
-      gripRubberMat
-    );
-    knob.rotation.x = Math.PI / 2;
-    knob.position.set(0.115, 0.06, 0.032);
-    group.add(knob);
-
-    // 중앙 압력 코어 표시 링
-    const indicatorMat = new THREE.MeshStandardMaterial({
-      color: 0xd8ecff,
-      emissive: 0x77bbff,
-      emissiveIntensity: 0.9
+    const gripMat = new THREE.MeshStandardMaterial({
+      color: 0x992222,
+      roughness: 0.6,
+      metalness: 0.2
     });
-    const centerDot = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.02, 0.02, 0.07, 12),
-      indicatorMat
-    );
-    centerDot.rotation.x = Math.PI / 2;
-    group.add(centerDot);
+    for (let i = 0; i < 4; i++) {
+      const a = (i * Math.PI) / 2 + Math.PI / 4;
+      const notch = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.026, 0.026, 0.036, 10),
+        gripMat
+      );
+      notch.rotation.x = Math.PI / 2;
+      notch.position.set(Math.cos(a) * 0.155, 0.025, Math.sin(a) * 0.155);
+      group.add(notch);
+    }
 
     updateItemAnim = (t) => {
-      indicatorMat.emissiveIntensity = 0.75 + Math.sin(t * 3.8) * 0.25;
+      wheelRim.rotation.z = t * 1.2;
     };
   } else if (itemType === 'flare') {
-    // 4. 비상 전술 조명탄 (원통 스틱 + 발화부 캡)
-    const bodyMat = new THREE.MeshStandardMaterial({
-      color: 0x582424,
-      roughness: 0.58,
-      metalness: 0.35
-    });
-    const stick = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.028, 0.028, 0.25, 12),
-      bodyMat
+    // 4. 전술 비상 조명탄
+    const tube = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.024, 0.024, 0.26, 12),
+      new THREE.MeshStandardMaterial({
+        color: 0xcc3322,
+        roughness: 0.5,
+        metalness: 0.2
+      })
     );
-    group.add(stick);
+    group.add(tube);
 
-    // 하단 그립 링
-    const grip = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.031, 0.031, 0.09, 12),
+    const cap = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.026, 0.026, 0.045, 12),
       gripRubberMat
     );
-    grip.position.y = -0.07;
-    group.add(grip);
+    cap.position.y = -0.12;
+    group.add(cap);
 
-    // 상단 발화 팁
-    const tipMat = new THREE.MeshStandardMaterial({
-      color: 0xffd0c8,
-      emissive: 0xff5544,
-      emissiveIntensity: 1.5,
-      roughness: 0.3
-    });
-    const tip = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.024, 0.029, 0.035, 12),
-      tipMat
+    const igniter = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.018, 0.022, 0.035, 10),
+      brushedMetalMat
     );
-    tip.position.y = 0.135;
+    igniter.position.y = 0.135;
+    group.add(igniter);
+
+    const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffeedd });
+    const tip = new THREE.Mesh(
+      new THREE.SphereGeometry(0.016, 8, 8),
+      sparkMat
+    );
+    tip.position.y = 0.155;
     group.add(tip);
 
     updateItemAnim = (t) => {
-      tipMat.emissiveIntensity = 1.2 + Math.sin(t * 14.0) * 0.45;
+      sparkMat.color.setHex((Math.sin(t * 18) > 0) ? 0xffffff : 0xffaa44);
     };
   }
 
@@ -252,10 +235,108 @@ export function buildItemMesh3D(itemType) {
 }
 
 /**
+ * 인체공학적 마디 관절을 갖춘 고품질 전술 장갑(Operator Combat Glove) & 소매 조립기
+ * @param {boolean} isLeft 좌측 손 여부
+ * @param {THREE.Material} sleeveMat 전투복 패브릭 머티리얼 (팀 컬러 반영)
+ * @param {THREE.Material} gloveMat 전술 장갑 가죽 머티리얼
+ * @param {THREE.Material} armorMat 탄소섬유 너클 보호대 머티리얼
+ */
+function createTacticalArmAndHand(isLeft, sleeveMat, gloveMat, armorMat) {
+  const armRoot = new THREE.Group();
+
+  // 1. 전술 전투복 전완근 소매 (부드러운 테이퍼 원단)
+  const sleeveGeo = new THREE.CylinderGeometry(0.044, 0.056, 0.32, 14);
+  const sleeve = new THREE.Mesh(sleeveGeo, sleeveMat);
+  sleeve.rotation.x = Math.PI / 2.22;
+  sleeve.rotation.z = isLeft ? -0.22 : 0.22;
+  sleeve.position.set(isLeft ? -0.045 : 0.045, -0.075, 0.13);
+  armRoot.add(sleeve);
+
+  // 소매 끝단 접힘단 밴드(Cuff)
+  const cuffGeo = new THREE.CylinderGeometry(0.047, 0.048, 0.032, 14);
+  const cuff = new THREE.Mesh(cuffGeo, sleeveMat);
+  cuff.rotation.x = Math.PI / 2.22;
+  cuff.rotation.z = isLeft ? -0.22 : 0.22;
+  cuff.position.set(isLeft ? -0.022 : 0.022, -0.035, 0.04);
+  armRoot.add(cuff);
+
+  // 2. 손목 전술 벨크로 스트랩
+  const strapGeo = new THREE.CylinderGeometry(0.041, 0.042, 0.028, 14);
+  const strap = new THREE.Mesh(strapGeo, armorMat);
+  strap.rotation.x = Math.PI / 2.22;
+  strap.rotation.z = isLeft ? -0.22 : 0.22;
+  strap.position.set(isLeft ? -0.012 : 0.012, -0.018, 0.01);
+  armRoot.add(strap);
+
+  // 3. 전술 장갑 손바닥 및 손등 폼 패드
+  const palmGeo = new THREE.BoxGeometry(0.068, 0.044, 0.078);
+  const palm = new THREE.Mesh(palmGeo, gloveMat);
+  palm.position.set(isLeft ? 0.005 : -0.005, 0.005, -0.035);
+  palm.rotation.z = isLeft ? -0.15 : 0.15;
+  armRoot.add(palm);
+
+  // 탄소섬유 너클 가드 (Knuckle Guard)
+  const knuckleGeo = new THREE.BoxGeometry(0.064, 0.014, 0.048);
+  const knuckle = new THREE.Mesh(knuckleGeo, armorMat);
+  knuckle.position.set(isLeft ? 0.005 : -0.005, 0.028, -0.035);
+  knuckle.rotation.z = isLeft ? -0.15 : 0.15;
+  armRoot.add(knuckle);
+
+  // 4. 마디 관절이 살아있는 5개 손가락 (2~3 Joint Articulated Fingers)
+  const fingersGroup = new THREE.Group();
+  fingersGroup.position.set(isLeft ? 0.005 : -0.005, 0.005, -0.035);
+  fingersGroup.rotation.z = isLeft ? -0.15 : 0.15;
+  armRoot.add(fingersGroup);
+
+  // 엄지손가락 (Thumb) - 2단 관절
+  const thumbBase = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.020, 0.032), gloveMat);
+  thumbBase.position.set(isLeft ? -0.036 : 0.036, 0.010, -0.012);
+  thumbBase.rotation.set(0.18, isLeft ? -0.55 : 0.55, isLeft ? -0.32 : 0.32);
+  fingersGroup.add(thumbBase);
+
+  const thumbTip = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.018, 0.026), gloveMat);
+  thumbTip.position.set(0, -0.006, -0.026);
+  thumbTip.rotation.x = 0.45;
+  thumbBase.add(thumbTip);
+
+  // 4개 손가락 (검지, 중지, 약지, 소지) - 각각 3단 관절로 자연스러운 파지 형태
+  const fingerOffsets = isLeft
+    ? [-0.022, -0.007, 0.008, 0.023] // 검지 -> 소지
+    : [0.022, 0.007, -0.008, -0.023];
+
+  const fingerLengths = [0.032, 0.036, 0.034, 0.028]; // 중지가 가장 긺
+
+  for (let i = 0; i < 4; i++) {
+    const fx = fingerOffsets[i];
+    const fl = fingerLengths[i];
+
+    // 기저 마디 (Base Phalanx)
+    const joint1 = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.016, fl), gloveMat);
+    joint1.position.set(fx, 0.002, -0.040);
+    joint1.rotation.x = 0.42 + i * 0.04;
+    fingersGroup.add(joint1);
+
+    // 중간 마디 (Middle Phalanx)
+    const joint2 = new THREE.Mesh(new THREE.BoxGeometry(0.013, 0.014, fl * 0.85), gloveMat);
+    joint2.position.set(0, -0.006, -fl * 0.85);
+    joint2.rotation.x = 0.55;
+    joint1.add(joint2);
+
+    // 끝 마디 (Distal Phalanx)
+    const joint3 = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.013, fl * 0.70), gloveMat);
+    joint3.position.set(0, -0.005, -fl * 0.70);
+    joint3.rotation.x = 0.45;
+    joint2.add(joint3);
+  }
+
+  return { armRoot, sleeve, cuff, strap, palm, knuckle, fingersGroup };
+}
+
+/**
  * 1인칭 뷰모델 시스템 (FirstPersonViewModel)
- * - 플레이어 카메라 하위에 부착되어 좌측 손(전술 손전등 + 손목 단말기)과
- *   우측 손(현재 선택된 파밍 아이템: 에너지 셀, 보안 키카드, 냉각 밸브, 조명탄)을
- *   자연스러운 호흡/보행/시선 흔들림(Sway)/장착 및 상호작용 애니메이션과 함께 렌더링합니다.
+ * - 화면 시야를 가리는 3인칭 몸통/어깨를 완전히 배제하고,
+ *   화면 좌하단(손전등/음파 감지기)과 우하단(아이템 파지)에
+ *   정교한 전술 장갑과 전투복 소매를 1인칭 전용 시야각에 완벽하게 정렬하여 렌더링합니다.
  */
 export class FirstPersonViewModel {
   constructor(camera) {
@@ -269,23 +350,15 @@ export class FirstPersonViewModel {
     this.currentItemUpdater = null;
     this.suitColor = 'steel';
 
-    // 실제 3D 솔저 모델 손/팔 뷰모델 바인딩 상태
-    this.isRealHandsReady = false;
-    this.realSoldierRig = null;
-    this.realSoldierMesh = null;
-    this.realBones = {};
-    this.realLeftHandAnchor = null;
-    this.realRightHandAnchor = null;
-
     // 애니메이션 상태값
-    this.equipProgress = 1.0;    // 0 -> 1 (아이템 들기 모션)
-    this.actionTimer = 0;        // > 0 이면 앞으로 손을 뻗어 조작하는 모션
+    this.equipProgress = 1.0;
+    this.actionTimer = 0;
     this.flashlightClickTimer = 0;
-    this.sonarInspectRatio = 1.0; // 1.0 = 정지 시 화면을 들어 레이더 확인, 0.0 = 이동 시 상단 발광면을 전방으로 기울임
+    this.sonarInspectRatio = 1.0;
     this.radarSweepAngle = 0;
     this.radarRedrawAccum = 0;
 
-    // 시선 회전 관성(Sway) 계산용 이전 카메라 각도
+    // 시선 회전 관성(Sway)
     this.lastYaw = 0;
     this.lastPitch = 0;
     this.swayX = 0;
@@ -294,149 +367,124 @@ export class FirstPersonViewModel {
     this.initMaterials();
     this.buildLeftArmFlashlight();
     this.buildRightArmItemHolder();
-
-    // 실제 FBX 솔저 모델을 1인칭 손/팔로 비동기 로딩 및 리패런팅
-    this.loadRealHandsModel();
   }
 
   initMaterials() {
+    // 전투복 소매 원단 (Trooper.png UV 텍스처 + 팀 컬러 바인딩)
+    const suitTex = getTintedSoldierTexture(this.suitColor || 'steel');
     this.sleeveMat = new THREE.MeshStandardMaterial({
-      color: 0x222629,
-      roughness: 0.78,
-      metalness: 0.15
+      map: suitTex,
+      roughness: 0.74,
+      metalness: 0.22,
+      color: 0xffffff
     });
+
+    // 전술 가죽 장갑
     this.gloveMat = new THREE.MeshStandardMaterial({
-      color: 0x141618,
-      roughness: 0.65,
-      metalness: 0.25
+      color: 0x16181b,
+      roughness: 0.62,
+      metalness: 0.28
     });
+
+    // 탄소섬유 너클 가드 및 금속 프레임
     this.armorPlateMat = new THREE.MeshStandardMaterial({
-      color: 0x3a4046,
-      roughness: 0.42,
-      metalness: 0.78
+      color: 0x2e3338,
+      roughness: 0.38,
+      metalness: 0.82
     });
+
     this.pdaScreenMat = new THREE.MeshStandardMaterial({
       color: 0xb8f4d8,
       emissive: 0x38b878,
       emissiveIntensity: 0.85,
       roughness: 0.25
     });
+
     this.lensMat = new THREE.MeshBasicMaterial({ color: 0xf4faff });
   }
 
   setSuitColor(suitColorKey) {
     this.suitColor = suitColorKey;
-    const preset = SUIT_COLORS[suitColorKey] || SUIT_COLORS.steel;
-    if (this.sleeveMat && preset) {
-      this.sleeveMat.color.setHex(preset.tintHex || 0x222629);
-      if (preset.tintHex === 0xffffff) {
-        this.sleeveMat.color.setHex(0x282e34);
-      }
-    }
-    if (this.realSoldierMesh && this.realSoldierMesh.material) {
-      const tex = getTintedSoldierTexture(suitColorKey);
-      this.realSoldierMesh.material.map = tex;
-      this.realSoldierMesh.material.color.setHex(0xffffff);
-      this.realSoldierMesh.material.needsUpdate = true;
+    const tex = getTintedSoldierTexture(suitColorKey);
+    if (this.sleeveMat) {
+      this.sleeveMat.map = tex;
+      this.sleeveMat.color.setHex(0xffffff);
+      this.sleeveMat.needsUpdate = true;
     }
   }
 
   buildLeftArmFlashlight() {
     this.leftArmGroup = new THREE.Group();
-    // 화면 좌하단 배치
-    this.leftArmGroup.position.set(-0.26, -0.23, -0.42);
+    // 화면 좌하단 배치 (시야 중심을 전혀 가리지 않는 자연스러운 전술 파지 위치)
+    this.leftArmGroup.position.set(-0.25, -0.22, -0.42);
     this.root.add(this.leftArmGroup);
 
-    // 1. 임시 플레이스홀더 소매/손 (실제 모델 로딩 완료 시 숨김)
-    const forearm = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.042, 0.052, 0.28, 12),
-      this.sleeveMat
-    );
-    forearm.rotation.x = Math.PI / 2.2;
-    forearm.rotation.z = -0.22;
-    forearm.position.set(-0.04, -0.06, 0.11);
-    this.leftArmGroup.add(forearm);
-    this.leftForearmMesh = forearm;
+    // 1. 고품질 전술 손 & 소매 모델 조립
+    const leftArmData = createTacticalArmAndHand(true, this.sleeveMat, this.gloveMat, this.armorPlateMat);
+    this.leftArmGroup.add(leftArmData.armRoot);
+    this.leftArmData = leftArmData;
 
     // 2. 왼손 손목 전술 단말기(PDA)
     const pdaBody = new THREE.Mesh(
-      new THREE.BoxGeometry(0.065, 0.022, 0.085),
+      new THREE.BoxGeometry(0.062, 0.020, 0.078),
       this.armorPlateMat
     );
-    pdaBody.position.set(-0.018, -0.015, 0.04);
-    pdaBody.rotation.z = -0.35;
-    pdaBody.rotation.x = 0.2;
+    pdaBody.position.set(-0.016, -0.012, 0.035);
+    pdaBody.rotation.z = -0.32;
+    pdaBody.rotation.x = 0.18;
     this.leftArmGroup.add(pdaBody);
-    this.pdaBody = pdaBody;
 
     const pdaScreen = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.05, 0.068),
+      new THREE.PlaneGeometry(0.048, 0.062),
       this.pdaScreenMat
     );
     pdaScreen.rotation.x = -Math.PI / 2;
-    pdaScreen.position.set(0, 0.012, 0);
+    pdaScreen.position.set(0, 0.011, 0);
     pdaBody.add(pdaScreen);
 
-    // 3. 왼손 장갑 & 손등 보호대
-    const hand = new THREE.Mesh(
-      new THREE.BoxGeometry(0.065, 0.048, 0.085),
-      this.gloveMat
-    );
-    hand.position.set(0.01, 0.005, -0.04);
-    this.leftArmGroup.add(hand);
-    this.leftHandMesh = hand;
-
-    const knuckleGuard = new THREE.Mesh(
-      new THREE.BoxGeometry(0.068, 0.015, 0.055),
-      this.armorPlateMat
-    );
-    knuckleGuard.position.set(0.01, 0.03, -0.04);
-    this.leftArmGroup.add(knuckleGuard);
-    this.leftKnuckleMesh = knuckleGuard;
-
-    // 4. 전술 손전등 본체 (챕터 1 / 챕터 3 전용)
+    // 3. 전술 손전등 본체 (챕터 1 / 챕터 3 전용)
     this.torchGroup = new THREE.Group();
-    this.torchGroup.position.set(0.025, 0.022, -0.08);
+    this.torchGroup.position.set(0.020, 0.024, -0.075);
     this.leftArmGroup.add(this.torchGroup);
 
     const torchBody = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.022, 0.02, 0.18, 12),
+      new THREE.CylinderGeometry(0.020, 0.018, 0.17, 12),
       this.armorPlateMat
     );
     torchBody.rotation.x = Math.PI / 2;
     this.torchGroup.add(torchBody);
 
     const torchHead = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.032, 0.024, 0.055, 14),
+      new THREE.CylinderGeometry(0.030, 0.022, 0.052, 14),
       this.armorPlateMat
     );
     torchHead.rotation.x = Math.PI / 2;
-    torchHead.position.z = -0.1;
+    torchHead.position.z = -0.095;
     this.torchGroup.add(torchHead);
 
     this.torchLens = new THREE.Mesh(
-      new THREE.CircleGeometry(0.028, 14),
+      new THREE.CircleGeometry(0.026, 14),
       this.lensMat
     );
     this.torchLens.rotation.y = Math.PI;
-    this.torchLens.position.z = -0.129;
+    this.torchLens.position.z = -0.122;
     this.torchGroup.add(this.torchLens);
 
-    // 5. 챕터 2 전용: 직육면체 수중 음파 레이더 감지기 + 상단 발광 작업등
+    // 4. 챕터 2 전용: 직육면체 수중 음파 레이더 감지기 + 상단 발광 작업등
     this.sonarDeviceGroup = new THREE.Group();
-    this.sonarDeviceGroup.position.set(0.032, 0.042, -0.075);
+    this.sonarDeviceGroup.position.set(0.028, 0.038, -0.070);
     this.sonarDeviceGroup.visible = false;
     this.leftArmGroup.add(this.sonarDeviceGroup);
 
     const sonarBody = new THREE.Mesh(
-      new THREE.BoxGeometry(0.092, 0.142, 0.044),
+      new THREE.BoxGeometry(0.090, 0.140, 0.042),
       this.armorPlateMat
     );
     this.sonarDeviceGroup.add(sonarBody);
 
-    for (const by of [-0.066, 0.066]) {
+    for (const by of [-0.065, 0.065]) {
       const bumper = new THREE.Mesh(
-        new THREE.BoxGeometry(0.098, 0.018, 0.048),
+        new THREE.BoxGeometry(0.096, 0.018, 0.046),
         this.gloveMat
       );
       bumper.position.y = by;
@@ -444,25 +492,25 @@ export class FirstPersonViewModel {
     }
 
     const topHousing = new THREE.Mesh(
-      new THREE.BoxGeometry(0.084, 0.014, 0.038),
+      new THREE.BoxGeometry(0.082, 0.014, 0.036),
       this.armorPlateMat
     );
-    topHousing.position.set(0, 0.078, 0);
+    topHousing.position.set(0, 0.076, 0);
     this.sonarDeviceGroup.add(topHousing);
 
     this.sonarTopLightMat = new THREE.MeshBasicMaterial({ color: 0xffe4b0 });
     const topDiffuserBar = new THREE.Mesh(
-      new THREE.BoxGeometry(0.076, 0.010, 0.030),
+      new THREE.BoxGeometry(0.074, 0.010, 0.028),
       this.sonarTopLightMat
     );
-    topDiffuserBar.position.set(0, 0.083, 0);
+    topDiffuserBar.position.set(0, 0.081, 0);
     this.sonarDeviceGroup.add(topDiffuserBar);
 
     const sonarAntenna = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.005, 0.007, 0.055, 8),
+      new THREE.CylinderGeometry(0.005, 0.007, 0.052, 8),
       this.armorPlateMat
     );
-    sonarAntenna.position.set(0.036, 0.095, -0.01);
+    sonarAntenna.position.set(0.035, 0.092, -0.01);
     this.sonarDeviceGroup.add(sonarAntenna);
 
     this.radarCanvas = document.createElement('canvas');
@@ -473,10 +521,10 @@ export class FirstPersonViewModel {
     this.radarScreenMat = new THREE.MeshBasicMaterial({ map: this.radarTex });
 
     const radarScreenMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.076, 0.086),
+      new THREE.PlaneGeometry(0.074, 0.084),
       this.radarScreenMat
     );
-    radarScreenMesh.position.set(0, 0.012, 0.0235);
+    radarScreenMesh.position.set(0, 0.012, 0.0225);
     this.sonarDeviceGroup.add(radarScreenMesh);
 
     for (let bi = -1; bi <= 1; bi++) {
@@ -484,7 +532,7 @@ export class FirstPersonViewModel {
         new THREE.BoxGeometry(0.018, 0.012, 0.006),
         bi === 0 ? this.pdaScreenMat : this.gloveMat
       );
-      btn.position.set(bi * 0.024, -0.046, 0.023);
+      btn.position.set(bi * 0.024, -0.045, 0.022);
       this.sonarDeviceGroup.add(btn);
     }
 
@@ -493,62 +541,18 @@ export class FirstPersonViewModel {
 
   buildRightArmItemHolder() {
     this.rightArmGroup = new THREE.Group();
-    this.rightArmGroup.position.set(0.27, -0.24, -0.44);
+    // 화면 우하단 배치 (시야 중심을 전혀 가리지 않는 자연스러운 전술 파지 위치)
+    this.rightArmGroup.position.set(0.26, -0.23, -0.44);
     this.root.add(this.rightArmGroup);
 
-    // 1. 임시 플레이스홀더 소매/손
-    const forearm = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.044, 0.054, 0.3, 12),
-      this.sleeveMat
-    );
-    forearm.rotation.x = Math.PI / 2.25;
-    forearm.rotation.z = 0.25;
-    forearm.position.set(0.055, -0.075, 0.13);
-    this.rightArmGroup.add(forearm);
-    this.rightForearmMesh = forearm;
+    // 1. 고품질 전술 손 & 소매 모델 조립
+    const rightArmData = createTacticalArmAndHand(false, this.sleeveMat, this.gloveMat, this.armorPlateMat);
+    this.rightArmGroup.add(rightArmData.armRoot);
+    this.rightArmData = rightArmData;
 
-    const palm = new THREE.Mesh(
-      new THREE.BoxGeometry(0.07, 0.052, 0.09),
-      this.gloveMat
-    );
-    palm.position.set(0, -0.01, -0.02);
-    palm.rotation.z = 0.22;
-    this.rightArmGroup.add(palm);
-    this.rightPalmMesh = palm;
-
-    const armorBack = new THREE.Mesh(
-      new THREE.BoxGeometry(0.068, 0.016, 0.06),
-      this.armorPlateMat
-    );
-    armorBack.position.set(0.008, 0.022, -0.02);
-    armorBack.rotation.z = 0.22;
-    this.rightArmGroup.add(armorBack);
-    this.rightArmorBackMesh = armorBack;
-
-    this.rightFingersGroup = new THREE.Group();
-    this.rightArmGroup.add(this.rightFingersGroup);
-
-    const thumb = new THREE.Mesh(
-      new THREE.BoxGeometry(0.024, 0.024, 0.055),
-      this.gloveMat
-    );
-    thumb.position.set(-0.036, 0.015, -0.045);
-    thumb.rotation.y = -0.35;
-    this.rightFingersGroup.add(thumb);
-
-    for (let i = 0; i < 4; i++) {
-      const finger = new THREE.Mesh(
-        new THREE.BoxGeometry(0.016, 0.022, 0.058),
-        this.gloveMat
-      );
-      finger.position.set(-0.022 + i * 0.016, -0.012, -0.072);
-      finger.rotation.x = 0.35;
-      this.rightFingersGroup.add(finger);
-    }
-
-    // 3. 아이템 장착 앵커
+    // 2. 들고 있는 3D 아이템이 장착되는 앵커
     this.heldItemAnchor = new THREE.Group();
-    this.heldItemAnchor.position.set(-0.015, 0.075, -0.065);
+    this.heldItemAnchor.position.set(-0.010, 0.065, -0.060);
     this.rightArmGroup.add(this.heldItemAnchor);
 
     this.itemPool = {};
@@ -578,116 +582,6 @@ export class FirstPersonViewModel {
     }
   }
 
-  /**
-   * 실제 FBX 3D 솔저 모델을 1인칭 카메라 하위로 복제하여 진짜 손과 소매를 바인딩합니다.
-   */
-  loadRealHandsModel() {
-    preloadSoldierAssets().then((assets) => {
-      if (!assets || !assets.modelFbx) return;
-
-      const cloned = SkeletonUtils.clone(assets.modelFbx);
-      const targetHeight = 1.76;
-      const modelScale = targetHeight / 3.34;
-      cloned.scale.setScalar(modelScale);
-      cloned.position.set(0, -1.34, -0.08);
-
-      this.realBones = {};
-      cloned.traverse((child) => {
-        if (child.isBone) {
-          this.realBones[child.name] = child;
-          const clean = child.name.replace(/^mixamorig[:_]?/i, '');
-          this.realBones[clean] = child;
-          this.realBones[clean.toLowerCase()] = child;
-        }
-        if (child.isMesh) {
-          child.castShadow = false;
-          child.receiveShadow = false;
-          child.frustumCulled = false;
-          this.realSoldierMesh = child;
-          const tintedTex = getTintedSoldierTexture(this.suitColor);
-          child.material = new THREE.MeshStandardMaterial({
-            map: tintedTex,
-            roughness: 0.72,
-            metalness: 0.28,
-            side: THREE.FrontSide,
-            color: 0xffffff
-          });
-        }
-      });
-
-      // 시야를 가리는 머리와 목 본 축소
-      if (this.realBones['Head']) this.realBones['Head'].scale.set(0.001, 0.001, 0.001);
-      if (this.realBones['Neck']) this.realBones['Neck'].scale.set(0.001, 0.001, 0.001);
-
-      // 왼손 본에 장비(손전등, 소나, PDA) 부착
-      const leftHand = this.realBones['LeftHand'];
-      if (leftHand) {
-        if (this.leftForearmMesh) this.leftForearmMesh.visible = false;
-        if (this.leftHandMesh) this.leftHandMesh.visible = false;
-        if (this.leftKnuckleMesh) this.leftKnuckleMesh.visible = false;
-
-        this.realLeftHandAnchor = new THREE.Group();
-        this.realLeftHandAnchor.position.set(0, 0.085, 0.02);
-        this.realLeftHandAnchor.rotation.set(-Math.PI / 2, 0, Math.PI / 2);
-        leftHand.add(this.realLeftHandAnchor);
-
-        if (this.torchGroup) this.realLeftHandAnchor.add(this.torchGroup);
-        if (this.sonarDeviceGroup) this.realLeftHandAnchor.add(this.sonarDeviceGroup);
-        if (this.pdaBody) this.realLeftHandAnchor.add(this.pdaBody);
-      }
-
-      // 오른손 본에 아이템 홀더 부착
-      const rightHand = this.realBones['RightHand'];
-      if (rightHand) {
-        if (this.rightForearmMesh) this.rightForearmMesh.visible = false;
-        if (this.rightPalmMesh) this.rightPalmMesh.visible = false;
-        if (this.rightArmorBackMesh) this.rightArmorBackMesh.visible = false;
-        if (this.rightFingersGroup) this.rightFingersGroup.visible = false;
-
-        this.realRightHandAnchor = new THREE.Group();
-        this.realRightHandAnchor.position.set(0, 0.09, 0.01);
-        this.realRightHandAnchor.rotation.set(-Math.PI / 2, 0, -Math.PI / 2);
-        rightHand.add(this.realRightHandAnchor);
-
-        if (this.heldItemAnchor) {
-          this.realRightHandAnchor.add(this.heldItemAnchor);
-          this.heldItemAnchor.position.set(0, 0, 0);
-        }
-      }
-
-      // 손가락 그립 포즈
-      this.applyHandGripPoses();
-
-      this.root.add(cloned);
-      this.realSoldierRig = cloned;
-      this.isRealHandsReady = true;
-
-      this.setChapterMode(this.chapterId);
-    });
-  }
-
-  applyHandGripPoses() {
-    const b = this.realBones;
-    ['mixamorigLeftHandIndex1', 'mixamorigLeftHandIndex2', 'mixamorigLeftHandIndex3'].forEach(name => {
-      if (b[name]) b[name].rotation.z = -0.45;
-    });
-    ['mixamorigLeftHandThumb1', 'mixamorigLeftHandThumb2'].forEach(name => {
-      if (b[name]) b[name].rotation.x = 0.35;
-    });
-
-    ['mixamorigRightHandIndex1', 'mixamorigRightHandIndex2', 'mixamorigRightHandIndex3'].forEach(name => {
-      if (b[name]) b[name].rotation.z = 0.45;
-    });
-    ['mixamorigRightHandThumb1', 'mixamorigRightHandThumb2'].forEach(name => {
-      if (b[name]) b[name].rotation.x = 0.35;
-    });
-  }
-
-  /**
-   * 챕터별 좌측 손 장비 전환:
-   * - 챕터 2: 손전등 비활성화 -> 직육면체 음파 레이더 감지기 + 상단 발광 작업등 장착
-   * - 챕터 1 / 3: 기존 전술 손전등 장착
-   */
   setChapterMode(chapterId) {
     this.chapterId = chapterId || 'chapter1';
     const isCh2 = this.chapterId === 'chapter2';
@@ -696,9 +590,6 @@ export class FirstPersonViewModel {
     this.sonarInspectRatio = 1.0;
   }
 
-  /**
-   * 챕터 2 직육면체 감지기 전면 레이더 디스플레이 캔버스 갱신
-   */
   updateSonarRadar(dt, distToMonster = 99, relAngle = 0, monsterActive = false, extraBlips = null) {
     if (!this.radarCtx) return;
     this.radarSweepAngle = (this.radarSweepAngle + dt * 3.8) % (Math.PI * 2);
@@ -713,11 +604,9 @@ export class FirstPersonViewModel {
     const cy = 56;
     const maxR = 46;
 
-    // 1. 어두운 앰버 CRT 배경
     ctx.fillStyle = '#0c0703';
     ctx.fillRect(0, 0, w, h);
 
-    // 2. 동심원 거리 링 (8m, 16m, 24m) & 십자선
     ctx.strokeStyle = 'rgba(255, 148, 42, 0.36)';
     ctx.lineWidth = 1.2;
     for (const rFrac of [0.35, 0.68, 1.0]) {
@@ -734,7 +623,6 @@ export class FirstPersonViewModel {
     ctx.lineTo(cx, cy + maxR);
     ctx.stroke();
 
-    // 3. 회전하는 레이더 스윕 라인
     const sx = cx + Math.sin(this.radarSweepAngle) * maxR;
     const sy = cy - Math.cos(this.radarSweepAngle) * maxR;
     ctx.strokeStyle = 'rgba(255, 182, 72, 0.78)';
@@ -744,13 +632,11 @@ export class FirstPersonViewModel {
     ctx.lineTo(sx, sy);
     ctx.stroke();
 
-    // 4. 플레이어 중심점 마커
     ctx.fillStyle = '#ffd280';
     ctx.beginPath();
     ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
     ctx.fill();
 
-    // 5. 수중 괴수 음파 타겟 블립 표시
     const blips = (Array.isArray(extraBlips) && extraBlips.length > 0
       ? extraBlips
       : (monsterActive ? [{ dist: distToMonster, relAngle, role: 'ripper' }] : [])
@@ -785,7 +671,6 @@ export class FirstPersonViewModel {
 
     const isDanger = monsterActive && closestDist < 28;
 
-    // 6. 하단 디지털 상태창
     ctx.fillStyle = '#1a0e06';
     ctx.fillRect(6, 106, 116, 18);
     ctx.strokeStyle = 'rgba(255, 148, 42, 0.48)';
@@ -848,7 +733,7 @@ export class FirstPersonViewModel {
     this.swayX = THREE.MathUtils.lerp(this.swayX, THREE.MathUtils.clamp(-dYaw * 0.45, -0.045, 0.045), Math.min(1, dt * 10));
     this.swayY = THREE.MathUtils.lerp(this.swayY, THREE.MathUtils.clamp(dPitch * 0.45, -0.045, 0.045), Math.min(1, dt * 10));
 
-    // 2. 호흡 + 보행 흔들림
+    // 2. 호흡 + 보행/질주 바빙(Bobbing)
     const breathY = Math.sin(this.time * 2.2) * 0.0045;
     const breathX = Math.cos(this.time * 1.1) * 0.0025;
 
@@ -892,11 +777,32 @@ export class FirstPersonViewModel {
     const inspectRaiseY = isCh2 ? this.sonarInspectRatio * 0.078 : 0;
     const inspectPullZ = isCh2 ? this.sonarInspectRatio * 0.055 : 0;
 
+    // 3. 왼손(손전등 / 음파 감지기) 위치 및 회전
+    this.leftArmGroup.position.set(
+      -0.25 + inspectRaiseX + breathX + bobX * 0.9 + this.swayX,
+      -0.22 + inspectRaiseY + sprintDropY + breathY - bobY * 1.1 + this.swayY - torchClickOffset * 0.5,
+      -0.42 + inspectPullZ + torchClickOffset + sprintArmPump
+    );
+    this.leftArmGroup.rotation.set(
+      -sprintTilt * 0.6 + this.swayY * 1.4,
+      this.swayX * 1.5,
+      bobX * 1.5 - (isSprinting ? 0.12 : 0)
+    );
+
+    if (isCh2 && this.sonarDeviceGroup) {
+      const devicePitch = THREE.MathUtils.lerp(-1.18, -0.12, this.sonarInspectRatio);
+      const deviceYaw = THREE.MathUtils.lerp(0.08, 0.26, this.sonarInspectRatio);
+      const deviceRoll = THREE.MathUtils.lerp(0.0, -0.08, this.sonarInspectRatio);
+      this.sonarDeviceGroup.rotation.set(devicePitch, deviceYaw, deviceRoll);
+    }
+
+    // 4. 오른손(아이템 파지 손) 장착 & 상호작용 모션
     if (this.equipProgress < 1.0) {
       this.equipProgress = Math.min(1.0, this.equipProgress + dt * 3.8);
     }
     const easeEquip = 1 - Math.pow(1 - this.equipProgress, 3);
     const hasItem = Boolean(this.currentItemType);
+    const baseRightY = hasItem ? -0.21 : -0.31;
     const equipDropY = (1 - easeEquip) * -0.18;
     const equipRollZ = (1 - easeEquip) * 0.45;
 
@@ -911,82 +817,18 @@ export class FirstPersonViewModel {
       actionPitchX = -wave * 0.28;
     }
 
-    // A. 실제 3D 솔저 모델 손/팔 뼈대 애니메이션 (진짜 손 모델 활성화 시)
-    if (this.isRealHandsReady && this.realBones) {
-      const b = this.realBones;
+    this.rightArmGroup.position.set(
+      0.26 - breathX + bobX + this.swayX,
+      baseRightY + sprintDropY + breathY - bobY * 1.1 + this.swayY + equipDropY + actionReachY,
+      -0.44 + actionReachZ - sprintArmPump
+    );
+    this.rightArmGroup.rotation.set(
+      actionPitchX - sprintTilt * 0.75 + Math.sin(this.time * 1.8) * 0.025,
+      this.swayX * 1.6,
+      equipRollZ - bobX * 1.6 + (isSprinting ? 0.14 : 0)
+    );
 
-      // 1) 왼팔 (손전등 / 음파 감지기 파지)
-      if (b['LeftArm']) {
-        b['LeftArm'].rotation.x = 1.34 - sprintTilt * 0.45 + breathY * 2.5 - bobY * 1.5 + this.swayY * 0.6;
-        b['LeftArm'].rotation.z = -0.32 + inspectRaiseX * 1.2 - bobX * 0.8;
-        b['LeftArm'].rotation.y = -0.15 + this.swayX * 0.6;
-      }
-      if (b['LeftForeArm']) {
-        b['LeftForeArm'].rotation.z = -0.76 - inspectRaiseY * 1.5 - torchClickOffset * 0.6;
-        b['LeftForeArm'].rotation.x = 0.25 + inspectPullZ * 0.8;
-      }
-      if (b['LeftHand']) {
-        b['LeftHand'].rotation.x = isCh2 ? (this.sonarInspectRatio * 0.45) : 0;
-        b['LeftHand'].rotation.z = isCh2 ? (-this.sonarInspectRatio * 0.35) : 0;
-      }
-
-      // 2) 오른팔 (아이템 파지 & 조작)
-      if (b['RightArm']) {
-        const rightDrop = hasItem ? 0 : 0.18;
-        b['RightArm'].rotation.x = 1.32 - rightDrop - sprintTilt * 0.5 + actionPitchX * 0.8 + breathY * 2.5 - bobY * 1.5 + this.swayY * 0.6;
-        b['RightArm'].rotation.z = 0.32 + equipRollZ * 0.6 + bobX * 0.8;
-        b['RightArm'].rotation.y = 0.15 + this.swayX * 0.6;
-      }
-      if (b['RightForeArm']) {
-        b['RightForeArm'].rotation.z = 0.76 + actionReachZ * 0.5;
-        b['RightForeArm'].rotation.x = 0.25;
-      }
-      if (b['RightHand']) {
-        b['RightHand'].rotation.y = equipRollZ * 0.4;
-      }
-
-      // 뷰모델 신체 전체 흔들림 (시선 Sway 및 보행 반동)
-      if (this.realSoldierRig) {
-        this.realSoldierRig.position.set(
-          this.swayX * 0.3,
-          -1.34 + breathY * 0.5 - bobY * 0.5 + this.swayY * 0.3,
-          -0.08 + (isSprinting ? 0.03 : 0)
-        );
-      }
-    } else {
-      // B. 로딩 중 임시 플레이스홀더 팔 흔들림 (Fallback)
-      this.leftArmGroup.position.set(
-        -0.26 + inspectRaiseX + breathX + bobX * 0.9 + this.swayX,
-        -0.23 + inspectRaiseY + sprintDropY + breathY - bobY * 1.1 + this.swayY - torchClickOffset * 0.5,
-        -0.42 + inspectPullZ + torchClickOffset + sprintArmPump
-      );
-      this.leftArmGroup.rotation.set(
-        -sprintTilt * 0.6 + this.swayY * 1.4,
-        this.swayX * 1.5,
-        bobX * 1.5 - (isSprinting ? 0.12 : 0)
-      );
-
-      const baseRightY = hasItem ? -0.21 : -0.31;
-      this.rightArmGroup.position.set(
-        0.26 - breathX + bobX + this.swayX,
-        baseRightY + sprintDropY + breathY - bobY * 1.1 + this.swayY + equipDropY + actionReachY,
-        -0.43 + actionReachZ - sprintArmPump
-      );
-      this.rightArmGroup.rotation.set(
-        actionPitchX - sprintTilt * 0.75 + Math.sin(this.time * 1.8) * 0.025,
-        this.swayX * 1.6,
-        equipRollZ - bobX * 1.6 + (isSprinting ? 0.14 : 0)
-      );
-    }
-
-    if (isCh2 && this.sonarDeviceGroup) {
-      const devicePitch = THREE.MathUtils.lerp(-1.18, -0.12, this.sonarInspectRatio);
-      const deviceYaw = THREE.MathUtils.lerp(0.08, 0.26, this.sonarInspectRatio);
-      const deviceRoll = THREE.MathUtils.lerp(0.0, -0.08, this.sonarInspectRatio);
-      this.sonarDeviceGroup.rotation.set(devicePitch, deviceYaw, deviceRoll);
-    }
-
-    // 들고 있는 아이템 자체 애니메이션 업데이트
+    // 아이템 애니메이션 업데이트
     if (this.currentItemUpdater) {
       this.currentItemUpdater(this.time);
     }
