@@ -2489,9 +2489,11 @@ class MonochromeBunker3D {
     }
 
     // 경사로('M') 및 벽면 철제 사다리('H' - 사다리 앞으로 전진 시 자동 등반)에 따른 플레이어 고도(Y) 부드럽게 보간
+    let targetEyeH;
     if (this.isGameCleared && this.activeChapterId === 'chapter3' && this.map && this.map.gondolaCage && this.map.gondolaCage.isAscending) {
-      this.playerPos.y = this.map.gondolaCage.group.position.y + this.playerEyeHeight;
-      this.playerCamera.position.y = this.playerPos.y;
+      targetEyeH = this.map.gondolaCage.group.position.y + this.playerEyeHeight;
+      this.playerPos.y = targetEyeH;
+      this.playerCamera.position.y = targetEyeH;
     } else {
       const targetFootY = this.map ? this.map.getFloorHeightAt(this.playerPos.x, this.playerPos.z) : 0;
       this.playerFootY = THREE.MathUtils.lerp(
@@ -2499,7 +2501,7 @@ class MonochromeBunker3D {
         targetFootY,
         Math.min(1, dt * 14)
       );
-      const targetEyeH = this.playerFootY + ((inWater && isCh2) ? this.playerEyeHeight - 0.26 : this.playerEyeHeight);
+      targetEyeH = this.playerFootY + ((inWater && isCh2) ? this.playerEyeHeight - 0.26 : this.playerEyeHeight);
       this.playerPos.y = targetEyeH;
     }
 
