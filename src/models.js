@@ -2903,20 +2903,20 @@ export function preloadSoldierAssets() {
 
   const fbxLoader = new FBXLoader();
 
-  const loadFbx = (url) => new Promise((resolve) => {
+  const loadFbx = (url, secondaryFallback = null) => new Promise((resolve) => {
     fbxLoader.load(
       url,
       (fbx) => resolve(fbx),
       undefined,
       (err) => {
         console.warn("[Model] Primary load failed for " + url + ", trying fallback:", err);
-        const fallbackUrl = url.startsWith('/') ? url.slice(1) : '/' + url;
+        const fallbackUrl = secondaryFallback || (url.startsWith('/') ? url.slice(1) : '/' + url);
         fbxLoader.load(
           fallbackUrl,
           (fbx2) => resolve(fbx2),
           undefined,
           (err2) => {
-        console.error("[Model] Both load attempts failed for " + url + ":", err2);
+            console.error("[Model] Both load attempts failed for " + url + ":", err2);
             resolve(null);
           }
         );
@@ -2926,10 +2926,10 @@ export function preloadSoldierAssets() {
 
   soldierAssetsPromise = Promise.all([
     loadFbx('/models/ps1low_poly_gas_mask_soldier_character_model.fbx'),
-    loadFbx('/models/Crouched Walking.fbx'),
-    loadFbx('/models/Run Forward.fbx'),
-    loadFbx('/models/Run Backward.fbx'),
-    loadFbx('/models/Dying Backwards.fbx')
+    loadFbx('/models/soldier_walk.fbx', '/models/Crouched Walking.fbx'),
+    loadFbx('/models/soldier_run.fbx', '/models/Run Forward.fbx'),
+    loadFbx('/models/soldier_run_back.fbx', '/models/Run Backward.fbx'),
+    loadFbx('/models/soldier_die.fbx', '/models/Dying Backwards.fbx')
   ]).then(([modelFbx, walkFbx, runFbx, runBackFbx, dieFbx]) => {
     if (walkFbx && walkFbx.animations && walkFbx.animations.length > 0) {
       const clip = walkFbx.animations[0];

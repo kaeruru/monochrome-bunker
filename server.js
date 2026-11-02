@@ -39,7 +39,10 @@ const MIME_TYPES = {
   '.woff2': 'font/woff2',
   '.mp3': 'audio/mpeg',
   '.wav': 'audio/wav',
-  '.ogg': 'audio/ogg'
+  '.ogg': 'audio/ogg',
+  '.fbx': 'application/octet-stream',
+  '.glb': 'model/gltf-binary',
+  '.gltf': 'model/gltf+json'
 };
 
 // HTTP 서버 (클라우드 단일 포트 배포 시 dist 정적 파일 서빙 + API 헬스체크 제공)
@@ -62,8 +65,20 @@ const server = http.createServer((req, res) => {
 
   // dist 디렉토리가 빌드되어 있는 경우 정적 파일 서빙 (Render/Railway 원클릭 배포 지원)
   if (fs.existsSync(DIST_DIR)) {
-    let filePath = path.join(DIST_DIR, reqUrl === '/' ? 'index.html' : reqUrl);
+    let cleanUrl = reqUrl.split('?')[0];
+    try {
+      cleanUrl = decodeURIComponent(cleanUrl);
+    } catch (_) {}
+
+    let filePath = path.join(DIST_DIR, cleanUrl === '/' ? 'index.html' : cleanUrl);
     if (!fs.existsSync(filePath)) {
+      // 정적 에셋(.fbx, .glb, .png, .js, .css 등) 요청 부재 시 index.html 폴백 대신 명확한 404 반환
+      const reqExt = path.extname(cleanUrl).toLowerCase();
+      if (reqExt && reqExt !== '.html') {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('Not Found: ' + cleanUrl);
+        return;
+      }
       filePath = path.join(DIST_DIR, 'index.html');
     }
 
