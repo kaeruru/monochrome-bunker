@@ -663,7 +663,8 @@ class MonochromeBunker3D {
 
     this.map.setBlackoutState(false);
     sound.setBlackout(false);
-    this.playerPos.set(this.map.spawnPos.x, this.playerEyeHeight, this.map.spawnPos.z);
+    this.playerFootY = this.map.getFloorHeightAt(this.map.spawnPos.x, this.map.spawnPos.z);
+    this.playerPos.set(this.map.spawnPos.x, this.playerFootY + this.playerEyeHeight, this.map.spawnPos.z);
     this.playerCamera.position.copy(this.playerPos);
     this.playerCamera.rotation.z = 0;
     this.stamina = this.maxStamina;
@@ -681,16 +682,23 @@ class MonochromeBunker3D {
       this.cctv.setConfigs(this.map.cctvConfigs);
       this.cctv.updateDoorButtons(this.map.doors);
     }
-    this.controls.setDisabled(false);
-    this.controls.requestPointerLock();
     this.missionStartTime = performance.now();
-    this.showGameToast('[REDEPLOY] 벙커 재투입 완료. 새로운 무작위 배치로 작전을 개시합니다.', 'success');
+    if (this.activeChapterId === 'chapter3') {
+      this.startChapter3IntroSequence();
+    } else {
+      this.controls.setDisabled(false);
+      this.controls.requestPointerLock();
+      this.showGameToast('[REDEPLOY] 벙커 재투입 완료. 새로운 무작위 배치로 작전을 개시합니다.', 'success');
+    }
   }
 
   /**
    * 작전 사령부 브리핑 룸(로비 메뉴)으로 복귀
    */
   returnToLobby() {
+    if (this.isIntroSequenceActive) {
+      this.finishChapter3IntroSequence(true);
+    }
     if (this.tacticalDeathModalEl) this.tacticalDeathModalEl.classList.add('hidden');
     if (this.deathSurveillanceHudEl) this.deathSurveillanceHudEl.classList.add('hidden');
     if (this.gameOverModalEl) this.gameOverModalEl.classList.add('hidden');
@@ -1278,8 +1286,8 @@ class MonochromeBunker3D {
         num: 3,
         diff: 'hard',
         badge: 'CHAPTER 03',
-        title: '제3장: 심연의 지열 갱도',
-        desc: '심도 300m 지하 광산. 증기 터빈과 광차 레일 너머에서 지진 같은 진동이 울립니다.',
+        title: '제3장: 도넛 심연의 수직 갱도 (25F-21F)',
+        desc: '추락한 엘리베이터와 뚫려 있는 철창 바닥. 25층 곤돌라 모니터가 100%가 될 때까지 심연에서 솟구치는 괴물로부터 버티십시오.',
         artBg: 'radial-gradient(circle at 50% 50%, #2a0707 0%, #120303 50%, #040101 90%)',
         mistColor: 'rgba(255, 80, 80, 0.5)'
       }
@@ -1747,10 +1755,14 @@ class MonochromeBunker3D {
           if (this.monsterAI) {
             this.monsterAI.setDifficulty(this.difficulty);
           }
-          this.controls.setDisabled(false);
-          this.controls.requestPointerLock();
-          sound.playDoorSound(true);
-          this.showGameToast(`[DEPLOYED] 대원 [${this.callsign}] 작전 투입 완료.`, 'success');
+          if (targetChapter === 'chapter3') {
+            this.startChapter3IntroSequence();
+          } else {
+            this.controls.setDisabled(false);
+            this.controls.requestPointerLock();
+            sound.playDoorSound(true);
+            this.showGameToast(`[DEPLOYED] 대원 [${this.callsign}] 작전 투입 완료.`, 'success');
+          }
 
           // 부드럽게 페이드 아웃
           loadingEl.style.opacity = '0';
@@ -1798,15 +1810,16 @@ class MonochromeBunker3D {
     const isCh2 = this.activeChapterId === 'chapter2';
     const isCh3 = this.activeChapterId === 'chapter3';
     if (isCh3) {
-      // 제3장: 심도 300m 지하 지열 갱도 (붉은 지열 증기 연무 및 따뜻한 광산 작업등)
+      // 제3장: 도넛 모양의 수직 다층 갱도 (25F~21F 철창 바닥 아래 깊은 심연이 내려다보이도록 가시거리 확보)
       this.flashlightOn = !isBlackout;
       this.flashlight.color.setHex(0xffecd0); // 따뜻한 백열 광산 헬멧 라이트
-      this.flashlight.distance = 32.0;
-      this.flashlight.angle = Math.PI / 3.2;
-      this.flashlight.penumbra = 0.75;
-      this.flashlight.intensity = isBlackout ? 0 : 20.0;
-      if (this.playerFillLight) this.playerFillLight.intensity = isBlackout ? 0.15 : 1.10;
-      if (this.btnTouchCCTV) this.btnTouchCCTV.style.display = '';
+      this.flashlight.distance = 44.0;
+      this.flashlight.angle = Math.PI / 3.0;
+      this.flashlight.penumbra = 0.72;
+      this.flashlight.intensity = isBlackout ? 0 : 24.0;
+      if (this.playerFillLight) this.playerFillLight.intensity = isBlackout ? 0.18 : 1.25;
+      // 챕터 3에서는 모니터가 E키 상호작용 CCTV가 아니라 상시 100% 게이지 전광판이므로 터치 CCTV 버튼 숨김
+      if (this.btnTouchCCTV) this.btnTouchCCTV.style.display = 'none';
       if (this.btnTouchFlashlight) {
         const lbl = this.btnTouchFlashlight.querySelector('.btn-label');
         if (lbl) lbl.textContent = 'LIGHT';
@@ -1816,12 +1829,12 @@ class MonochromeBunker3D {
         this.btnTouchFlashlight.style.opacity = '1.0';
         this.btnTouchFlashlight.title = '광산 전술 라이트 온/오프';
       }
-      const fogColor = isBlackout ? 0x0a0302 : 0x180604;
+      const fogColor = isBlackout ? 0x0a0302 : 0x160604;
       this.scene.background.setHex(fogColor);
-      this.scene.fog = new THREE.FogExp2(fogColor, 0.046);
+      this.scene.fog = new THREE.FogExp2(fogColor, 0.022);
       if (this.ambientLight) {
-        this.ambientLight.color.setHex(isBlackout ? 0x1a0604 : 0x361008);
-        this.ambientLight.intensity = isBlackout ? 0.10 : 0.38;
+        this.ambientLight.color.setHex(isBlackout ? 0x1a0604 : 0x42160c);
+        this.ambientLight.intensity = isBlackout ? 0.14 : 0.48;
       }
       if (this.mistParticles) this.mistParticles.visible = true;
     } else if (isCh2) {
@@ -1967,6 +1980,250 @@ class MonochromeBunker3D {
     }
   }
 
+  /**
+   * 챕터 3 전용 스킵 가능한 인게임 시작 연출 (Elevator Crash & Gondola Holdout Briefing)
+   * - 만화 컷신이 아니라 실제 1인칭 시점으로 수직 도넛 플랫폼 가운데를 내려가다가 엘리베이터가 고장나 추락하고,
+   *   25층 곤돌라 옆 실시간 퍼센트(%) 모니터가 100%가 될 때까지 버텨야 함을 직관적으로 안내합니다.
+   */
+  startChapter3IntroSequence() {
+    this.isIntroSequenceActive = true;
+    this.introSequenceTimer = 0;
+    this.introCrashPlayed = false;
+    this.introMonitorBeepPlayed = false;
+    if (this.map) {
+      this.map.isIntroPlaying = true;
+    }
+    this.controls.setDisabled(true);
+
+    let overlay = document.getElementById('ch3-intro-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'ch3-intro-overlay';
+      overlay.style.cssText = `
+        position: fixed; inset: 0; z-index: 9500;
+        pointer-events: none;
+        display: flex; flex-direction: column; justify-content: space-between;
+        padding: 28px 34px;
+        background: radial-gradient(circle at center, transparent 55%, rgba(0, 0, 0, 0.72) 100%);
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+      `;
+      overlay.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+          <div style="background: rgba(10, 14, 20, 0.88); border-left: 3px solid #ff5252; padding: 10px 16px; color: #e2edf8;">
+            <div id="ch3-intro-badge" style="font-size: 11px; letter-spacing: 2px; color: #ff6e40; font-weight: 700;">[ SECTOR-03 // VERTICAL ABYSS SHAFT ]</div>
+            <div id="ch3-intro-status" style="font-size: 14px; font-weight: 600; margin-top: 4px;">호이스트 케이지 엘리베이터 하강 중... (심도 25F 접근)</div>
+          </div>
+          <button id="btn-skip-ch3-intro" type="button" style="
+            pointer-events: auto; cursor: pointer;
+            background: rgba(16, 22, 30, 0.92); color: #ffffff;
+            border: 1px solid rgba(100, 181, 246, 0.65); border-radius: 3px;
+            padding: 10px 18px; font-size: 13px; font-weight: 700; letter-spacing: 1px;
+            box-shadow: 0 0 18px rgba(0, 0, 0, 0.8);
+          ">[ SPACE / 클릭 ] 시작 연출 스킵</button>
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: center; margin-bottom: 18px;">
+          <div id="ch3-intro-subtitle-box" style="
+            max-width: 780px; width: 92vw;
+            background: rgba(8, 12, 18, 0.92);
+            border: 1px solid rgba(255, 110, 64, 0.45);
+            border-radius: 4px; padding: 18px 24px;
+            box-shadow: 0 0 32px rgba(0, 0, 0, 0.9);
+            text-align: left;
+          ">
+            <div id="ch3-intro-speaker" style="font-size: 12px; font-weight: 700; color: #00e5ff; letter-spacing: 1.5px; margin-bottom: 6px;">[HQ 전술 브리핑 // 무전 수신]</div>
+            <div id="ch3-intro-text" style="font-size: 15px; line-height: 1.55; color: #f0f6fc; font-weight: 500;">
+              수직 도넛 갱도로 강하 중이다. 발밑은 아파트 25층 높이의 뚫린 심연 구멍이며, 25층부터 21층까지 철창 바닥으로 연결되어 있다. 괴물이 그 보이지 않는 깊은 심연에서 수직으로 돌진해 올라오니 발밑을 철저히 주시하라!
+            </div>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+
+      const skipBtn = overlay.querySelector('#btn-skip-ch3-intro');
+      if (skipBtn) {
+        skipBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+        skipBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.finishChapter3IntroSequence(false);
+        });
+      }
+    } else {
+      overlay.style.display = 'flex';
+    }
+
+    if (!this._ch3IntroKeyHandler) {
+      this._ch3IntroKeyHandler = (e) => {
+        if (!this.isIntroSequenceActive) return;
+        if (e.code === 'Space' || e.code === 'Enter' || e.code === 'KeyE') {
+          e.preventDefault();
+          this.finishChapter3IntroSequence(false);
+        }
+      };
+      window.addEventListener('keydown', this._ch3IntroKeyHandler);
+    }
+
+    // 초기 엘리베이터 위치 설정 (25층 플랫폼 위 +14.0m 상공에서 하강 시작)
+    const baseY = (this.map && this.map.introElevatorBaseY !== undefined) ? this.map.introElevatorBaseY : 12.0;
+    if (this.map && this.map.introElevatorGroup) {
+      this.map.introElevatorGroup.position.y = baseY + 14.0;
+      this.map.introElevatorGroup.rotation.set(0, 0, 0);
+    }
+    this.playerPos.set(this.map.spawnPos.x, baseY + 14.0 + this.playerEyeHeight, this.map.spawnPos.z);
+    this.playerCamera.position.copy(this.playerPos);
+    this.playerCamera.lookAt(0, baseY + 3.0, 0); // 도넛 중앙 기둥과 심연 아래를 내려다봄
+  }
+
+  updateChapter3IntroSequence(dt) {
+    this.introSequenceTimer += dt;
+    const t = this.introSequenceTimer;
+    const baseY = (this.map && this.map.introElevatorBaseY !== undefined) ? this.map.introElevatorBaseY : 12.0;
+    const spawnX = this.map && this.map.spawnPos ? this.map.spawnPos.x : 0;
+    const spawnZ = this.map && this.map.spawnPos ? this.map.spawnPos.z : -18;
+
+    this.map.update(dt, this.playerPos, null);
+    if (this.interactionSystem) {
+      this.interactionSystem.update(dt);
+    }
+
+    const statusEl = document.getElementById('ch3-intro-status');
+    const speakerEl = document.getElementById('ch3-intro-speaker');
+    const textEl = document.getElementById('ch3-intro-text');
+    const boxEl = document.getElementById('ch3-intro-subtitle-box');
+
+    if (t < 3.6) {
+      // [Phase 1: 0.0s ~ 3.6s] 엘리베이터를 타고 도넛 플랫폼 가운데로 내려가며 주의사항 브리핑
+      const prog = t / 3.6;
+      const curElevY = THREE.MathUtils.lerp(baseY + 14.0, baseY + 4.2, prog);
+      const rattleX = Math.sin(t * 24.0) * 0.03;
+      const rattleZ = Math.cos(t * 19.0) * 0.03;
+
+      if (this.map && this.map.introElevatorGroup) {
+        this.map.introElevatorGroup.position.y = curElevY;
+        this.map.introElevatorGroup.rotation.z = Math.sin(t * 8.0) * 0.015;
+      }
+      this.playerPos.set(spawnX + rattleX, curElevY + this.playerEyeHeight, spawnZ + rattleZ);
+      this.playerCamera.position.copy(this.playerPos);
+      // 중앙 기둥과 철창 바닥 아래 깊은 도넛 심연 구멍을 조망
+      this.playerCamera.lookAt(Math.sin(t * 0.7) * 4.0, curElevY - 8.5, 0);
+
+      if (statusEl) statusEl.textContent = '호이스트 케이지 엘리베이터 하강 중... (심도 25F 접근)';
+      if (speakerEl) {
+        speakerEl.style.color = '#00e5ff';
+        speakerEl.textContent = '[HQ 전술 브리핑 // 주의사항 하달]';
+      }
+      if (textEl) {
+        textEl.textContent = '수직 도넛 갱도로 강하 중이다. 발밑은 아파트 25층 높이의 뚫린 심연 구멍이며, 25층부터 21층까지 철창 바닥으로 연결되어 있다. 괴물이 그 보이지 않는 깊은 심연에서 수직으로 돌진해 올라오니 발밑을 철저히 주시하라!';
+      }
+    } else if (t < 5.5) {
+      // [Phase 2: 3.6s ~ 5.5s] 엘리베이터 케이블이 끊어지며 덜컹거리다 25층 플랫폼에 추락/불시착!
+      if (!this.introCrashPlayed) {
+        this.introCrashPlayed = true;
+        if (sound && typeof sound.playDoorBash === 'function') sound.playDoorBash(0.85);
+        if (sound && typeof sound.playDoorMalfunction === 'function') sound.playDoorMalfunction();
+      }
+      const dropProg = Math.min(1.0, (t - 3.6) / 0.65);
+      const easeDrop = dropProg * dropProg;
+      const curElevY = THREE.MathUtils.lerp(baseY + 4.2, baseY, easeDrop);
+      const impactDecay = dropProg >= 1.0 ? Math.max(0, 1.0 - (t - 4.25) / 1.1) : 0.6;
+      const shake = (dropProg < 1.0 ? 0.14 : 0.28 * impactDecay);
+
+      if (this.map && this.map.introElevatorGroup) {
+        this.map.introElevatorGroup.position.y = curElevY;
+        this.map.introElevatorGroup.rotation.z = (Math.random() - 0.5) * shake * 0.4;
+        this.map.introElevatorGroup.rotation.x = (Math.random() - 0.5) * shake * 0.4;
+      }
+
+      this.playerPos.set(
+        spawnX + (Math.random() - 0.5) * shake,
+        curElevY + this.playerEyeHeight + (Math.random() - 0.5) * shake,
+        spawnZ + (Math.random() - 0.5) * shake
+      );
+      this.playerCamera.position.copy(this.playerPos);
+      this.playerCamera.lookAt(0, curElevY + 1.2, spawnZ - 6.0);
+
+      if (statusEl) statusEl.textContent = '[경고] 호이스트 케이블 파단! 25층 플랫폼 추락 — 엘리베이터 작동 불능!';
+      if (boxEl) boxEl.style.borderColor = '#ff1744';
+      if (speakerEl) {
+        speakerEl.style.color = '#ff5252';
+        speakerEl.textContent = '[EMERGENCY // 승강기 추락 및 작동 불능]';
+      }
+      if (textEl) {
+        textEl.textContent = '젠장, 엘리베이터 와이어가 끊어져 25층 철창 플랫폼에 추락했다! 주 엘리베이터는 완전히 파손되어 더 이상 작동하지 않는다!';
+      }
+    } else if (t < 8.6) {
+      // [Phase 3: 5.5s ~ 8.6s] 25층 곤돌라와 옆의 실시간 퍼센트(%) 모니터 타워를 클로즈업하며 목표 브리핑
+      if (!this.introMonitorBeepPlayed) {
+        this.introMonitorBeepPlayed = true;
+        if (sound && typeof sound.playClick === 'function') sound.playClick();
+      }
+      if (this.map && this.map.introElevatorGroup) {
+        this.map.introElevatorGroup.position.y = baseY;
+        this.map.introElevatorGroup.rotation.set(0, 0, 0);
+      }
+      this.playerPos.set(spawnX, baseY + this.playerEyeHeight, spawnZ);
+      this.playerCamera.position.copy(this.playerPos);
+
+      // 곤돌라 옆 대형 실시간 퍼센트 모니터(x=-2.0, y=baseY+2.05, z=-23.0)와 곤돌라를 바라봄
+      const panRatio = Math.min(1.0, (t - 5.5) / 1.2);
+      const lookX = THREE.MathUtils.lerp(0, -1.6, panRatio);
+      const lookY = THREE.MathUtils.lerp(baseY + 1.5, baseY + 2.05, panRatio);
+      const lookZ = THREE.MathUtils.lerp(spawnZ - 6.0, -23.0, panRatio);
+      this.playerCamera.lookAt(lookX, lookY, lookZ);
+
+      if (statusEl) statusEl.textContent = '비상 곤돌라 재가동 시퀀스 가동 (실시간 퍼센트 모니터 0% -> 100% 대기)';
+      if (boxEl) boxEl.style.borderColor = '#00e5ff';
+      if (speakerEl) {
+        speakerEl.style.color = '#ffab40';
+        speakerEl.textContent = '[작전 목표 // 곤돌라 재가동 100%까지 생존]';
+      }
+      if (textEl) {
+        textEl.textContent = '비상 곤돌라를 작동시키려면 재가동 시간이 걸린다! 곤돌라 옆 대형 모니터가 현재 재가동 퍼센트(%)를 실시간으로 표시한다. 모니터가 100%가 될 때까지 버텨라! (21층~24층에서 부품을 모아 23층 중앙 기둥에 넣으면 충전이 대폭 가속된다)';
+      }
+    } else {
+      this.finishChapter3IntroSequence(false);
+    }
+
+    // 손전등도 카메라 시선 방향과 동기화하여 시작 연출 중 모니터와 철창 바닥을 비춤
+    if (this.flashlight) {
+      this.flashlight.position.copy(this.playerCamera.position);
+      const fwd = this._cachedForward.set(0, 0, -1).applyQuaternion(this.playerCamera.quaternion);
+      this.flashlightTarget.position.copy(this.playerCamera.position).addScaledVector(fwd, 15);
+    }
+  }
+
+  finishChapter3IntroSequence(silent = false) {
+    this.isIntroSequenceActive = false;
+    if (this.map) {
+      this.map.isIntroPlaying = false;
+      const baseY = (this.map.introElevatorBaseY !== undefined) ? this.map.introElevatorBaseY : 12.0;
+      if (this.map.introElevatorGroup) {
+        this.map.introElevatorGroup.position.y = baseY;
+        this.map.introElevatorGroup.rotation.set(0, 0, 0);
+      }
+      if (this.map.spawnPos) {
+        this.playerFootY = baseY;
+        this.playerPos.set(this.map.spawnPos.x, baseY + this.playerEyeHeight, this.map.spawnPos.z);
+        this.playerCamera.position.copy(this.playerPos);
+      }
+    }
+    this.playerCamera.rotation.set(0, 0, 0);
+    if (this.controls) {
+      this.controls.yaw = 0;
+      this.controls.pitch = 0;
+    }
+
+    const overlay = document.getElementById('ch3-intro-overlay');
+    if (overlay) {
+      overlay.style.display = 'none';
+    }
+
+    if (!silent) {
+      this.controls.setDisabled(false);
+      this.controls.requestPointerLock();
+      this.showGameToast('[HOLD UNTIL 100%] 25층 곤돌라 옆 퍼센트 모니터가 100%가 될 때까지 심연의 괴물로부터 버티십시오!', 'warn');
+    }
+  }
+
   toggleSettingsModal() {
     if (!this.gameSetupModalEl) return;
     const isHidden = this.gameSetupModalEl.classList.contains('hidden');
@@ -2047,6 +2304,12 @@ class MonochromeBunker3D {
 
     if (this.isPlayerDead) return;
     if (this.interactionSystem && this.interactionSystem.isGameCleared) return;
+
+    // 0-1. 챕터 3 엘리베이터 추락 및 곤돌라 브리핑 시작 연출 업데이트 (언제든 스킵 가능)
+    if (this.isIntroSequenceActive) {
+      this.updateChapter3IntroSequence(dt);
+      return;
+    }
 
     // 1. 맵 애니메이션 (발전기 코어 회전, 방호문 슬라이딩, 괴물 근접 시 전등 지직거림)
     this.map.update(dt, this.playerPos, this.monsterAI ? this.monsterAI.pos : null);
@@ -2538,8 +2801,8 @@ class MonochromeBunker3D {
     const px = this.playerPos.x;
     const pz = this.playerPos.z;
 
-    // 2) CCTV 관제 콘솔 거리 체크 (거리 제곱 비교)
-    if (this.map.consolePos) {
+    // 2) CCTV 관제 콘솔 거리 체크 (챕터 3에서는 곤돌라 옆 모니터가 E키 상호작용 없는 상시 퍼센트 전광판이므로 제외)
+    if (this.map.consolePos && this.activeChapterId !== 'chapter3') {
       const dx = px - this.map.consolePos.x;
       const dz = pz - this.map.consolePos.z;
       const dSq = dx * dx + dz * dz;

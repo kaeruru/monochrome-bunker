@@ -945,6 +945,82 @@ export function createIndustrialMaterials() {
     consoleScreen: new THREE.MeshBasicMaterial({ color: 0x90ffb8 }),
     lampOrangeTube: new THREE.MeshBasicMaterial({ color: 0xff8c2a }),
     lampOrangeFixture: new THREE.MeshLambertMaterial({ color: 0x221a14 }),
+    // 챕터 3 수직 도넛 심연 갱도 전용: 발밑이 훤히 비치는 투과형 강철 철창 그레이팅 바닥
+    floorGrate: (() => {
+      const grateTex = makePhotoTexture((ctx, s) => {
+        ctx.clearRect(0, 0, s, s);
+
+        // 1. 격자 철창 내부 구멍 사이로 은은한 어두운 철망 반투명 레이어 (완전 투명 구멍 + 철살)
+        const cells = 8;
+        const step = s / cells;
+
+        // 가로/세로 보조 세밀 철망살
+        ctx.fillStyle = '#2a2e33';
+        for (let i = 1; i < cells * 2; i++) {
+          const pos = (i * s) / (cells * 2);
+          ctx.fillRect(0, pos - 3, s, 6);
+          ctx.fillRect(pos - 3, 0, 6, s);
+        }
+
+        // 주 강철 그레이팅 창살 (하중 지지용 두꺼운 철근)
+        for (let i = 0; i <= cells; i++) {
+          const pos = i * step;
+          // 가로 주 프레임
+          ctx.fillStyle = '#3c4248';
+          ctx.fillRect(0, pos - 7, s, 14);
+          ctx.fillStyle = '#555d66';
+          ctx.fillRect(0, pos - 5, s, 4);
+          // 세로 주 프레임
+          ctx.fillStyle = '#383e44';
+          ctx.fillRect(pos - 7, 0, 14, s);
+          ctx.fillStyle = '#505860';
+          ctx.fillRect(pos - 5, 0, 4, s);
+        }
+
+        // 대각선 X자 보강 브레이스 (투시감을 살리면서 강철 구조물 느낌 극대화)
+        ctx.strokeStyle = '#31363b';
+        ctx.lineWidth = 10;
+        ctx.beginPath();
+        ctx.moveTo(0, 0); ctx.lineTo(s, s);
+        ctx.moveTo(s, 0); ctx.lineTo(0, s);
+        ctx.stroke();
+
+        // 타일 외곽 묵직한 H-빔 테두리 프레임 + 녹슨 볼트 리벳
+        const border = 26;
+        ctx.fillStyle = '#26292e';
+        ctx.fillRect(0, 0, s, border);
+        ctx.fillRect(0, s - border, s, border);
+        ctx.fillRect(0, 0, border, s);
+        ctx.fillRect(s - border, 0, border, s);
+
+        // 테두리 노란색/주황색 안전 경고 마킹 포인트
+        ctx.fillStyle = '#aa6b18';
+        for (let k = 40; k < s - 40; k += 96) {
+          ctx.fillRect(k, 4, 36, 8);
+          ctx.fillRect(k, s - 12, 36, 8);
+          ctx.fillRect(4, k, 8, 36);
+          ctx.fillRect(s - 12, k, 8, 36);
+        }
+
+        // 리벳 볼트 자국
+        ctx.fillStyle = '#15171a';
+        for (let i = 0; i <= cells; i++) {
+          for (let j = 0; j <= cells; j++) {
+            ctx.beginPath();
+            ctx.arc(i * step, j * step, 5, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }, 512);
+
+      return new THREE.MeshLambertMaterial({
+        map: grateTex,
+        color: 0xffffff,
+        transparent: true,
+        alphaTest: 0.45,
+        side: THREE.DoubleSide
+      });
+    })(),
     // 챕터 3 지열 갱도 전용 머티리얼
     wallRock: new THREE.MeshLambertMaterial({
       map: rockWallTex,
@@ -963,6 +1039,7 @@ export function createIndustrialMaterials() {
       color: 0xffffff
     }),
     lampMineTube: new THREE.MeshBasicMaterial({ color: 0xff5518 }),
-    lampMineFixture: new THREE.MeshLambertMaterial({ color: 0x24140c })
+    lampMineFixture: new THREE.MeshLambertMaterial({ color: 0x24140c }),
+    hazardRailing: new THREE.MeshLambertMaterial({ color: 0xd4881e })
   };
 }

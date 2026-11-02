@@ -110,6 +110,9 @@ export class Map3D {
     this.bunkerAmbient = null;
     this.genLight = null;
     this.consoleLight = null;
+    this.gondolaMonitor = null;
+    this.introElevatorGroup = null;
+    this.isIntroPlaying = false;
     this.isBlackout = false;
   }
 
@@ -181,6 +184,15 @@ export class Map3D {
    * 두 인접 타일 사이를 걸어서(또는 경사로/사다리로) 이동 가능한지 판별 (AI 경로 탐색 및 충돌용)
    */
   canStepBetweenTiles(c0, r0, c1, r1) {
+    if (this.chapterId === 'chapter3') {
+      const ch0 = this.getTileChar(c0, r0);
+      const ch1 = this.getTileChar(c1, r1);
+      if (ch0 === '#' || ch0 === ' ' || ch1 === '#' || ch1 === ' ') return false;
+      const y0 = this.getCh3ElevationByTileFloat(c0, r0);
+      const y1 = this.getCh3ElevationByTileFloat(c1, r1);
+      // 계단/경사로가 아닌 층간 절벽(1.85m 이상 단차)은 직접 가로지를 수 없음
+      return Math.abs(y0 - y1) <= 1.85;
+    }
     if (this.chapterId !== 'chapter2') return true;
     const l0 = this.getTileLevel(c0, r0);
     const l1 = this.getTileLevel(c1, r1);
@@ -195,7 +207,53 @@ export class Map3D {
   /**
    * 월드 (x, z) 좌표에서의 실제 바닥 높이(Y) 계산 (무할당 인라인 스칼라 최적화)
    */
+  getCh3ElevationByTileFloat(fc, fr) {
+    if (fr <= 7.5) {
+      if (fc >= 16.5 && fc <= 31.5) return 12.0; // 25F 최상층 곤돌라 플랫폼
+      if (fc > 11.5 && fc < 16.5) return 9.0 + ((fc - 11.5) / 5.0) * 3.0; // 25F-24F 서측 계단
+      if (fc > 31.5 && fc < 36.5) return 9.0 + ((36.5 - fc) / 5.0) * 3.0; // 25F-24F 동측 계단
+      return 9.0; // 24F
+    }
+    if (fr <= 11.5) {
+      if (fc >= 18.0 && fc <= 30.0) {
+        if (fr <= 10.5) return 12.0 - ((fr - 7.5) / 3.0) * 6.0; // 25F-23F 북측 현수교 계단
+        return 6.0; // 23F 중앙 기둥 링
+      }
+      return 9.0; // 24F 동/서 플랫폼
+    }
+    if (fr < 14.5) {
+      if (fc >= 18.5 && fc <= 29.5) return 6.0; // 23F 중앙 기둥 링
+      return 9.0 - ((fr - 11.5) / 3.0) * 3.0; // 24F-23F 남북 계단
+    }
+    if (fr <= 17.5) {
+      return 6.0; // 23F 중단 전체 및 동서 브릿지
+    }
+    if (fr < 20.5) {
+      if (fc >= 18.5 && fc <= 29.5) {
+        if (fr <= 19.5) return 6.0;
+        return 6.0 - ((fr - 19.5) / 3.0) * 6.0; // 23F-21F 남측 현수교 계단 상부
+      }
+      return 6.0 - ((fr - 17.5) / 3.0) * 3.0; // 23F-22F 남북 계단
+    }
+    if (fr < 22.5) {
+      if (fc >= 18.0 && fc <= 30.0) {
+        return Math.max(0.0, 6.0 - ((fr - 19.5) / 3.0) * 6.0); // 23F-21F 남측 현수교 계단 하부
+      }
+      return 3.0; // 22F 동/서 플랫폼
+    }
+    // fr >= 22.5 (남측 하단)
+    if (fc >= 16.5 && fc <= 31.5) return 0.0; // 21F 최하층 대플랫폼
+    if (fc > 12.5 && fc < 16.5) return ((16.5 - fc) / 4.0) * 3.0; // 22F-21F 남서 계단
+    if (fc > 31.5 && fc < 35.5) return ((fc - 31.5) / 4.0) * 3.0; // 22F-21F 남동 계단
+    return 3.0; // 22F
+  }
+
   getFloorHeightAt(x, z) {
+    if (this.chapterId === 'chapter3') {
+      const fc = (x + this.halfMapW) / TILE_SIZE - 0.5;
+      const fr = (z + this.halfMapH) / TILE_SIZE - 0.5;
+      return this.getCh3ElevationByTileFloat(fc, fr);
+    }
     if (this.chapterId !== 'chapter2') return 0.0;
     const col = Math.floor((x + this.halfMapW) / TILE_SIZE);
     const row = Math.floor((z + this.halfMapH) / TILE_SIZE);
@@ -237,6 +295,9 @@ export class Map3D {
     const floorStoneWalkwayGeos = [];
     const floorWaterGeos = [];
     const floorWaterBedGeos = [];
+    const floorGrateGeos = [];
+    const ch3GirderGeos = [];
+    const ch3RailingGeos = [];
     const ceilingGeos = [];
 
     const baseWallGeo = new THREE.BoxGeometry(TILE_SIZE, WALL_HEIGHT, TILE_SIZE);
@@ -403,7 +464,10 @@ export class Map3D {
 
         // 1. 방호벽 및 구조 지지 기둥 ('#')
         if (ch === '#') {
-          if (isCh2) {
+          if (isCh3) {
+            // 챕터 3(수직 도넛 심연 갱도)은 시야를 가리는 실내 벽을 세우지 않고 개방형 난간으로 처리!
+            continue;
+          } else if (isCh2) {
             // 레퍼런스 2번 구현: 하부는 묵직한 석조 기단(0~2.75m), 상부는 돌출 코벨 장식과 붉은 벽돌 아치 기둥(2.75~4.55m)
             addBoxTo(wallFlumeGeos, TILE_SIZE, 2.75, TILE_SIZE, pos.x, 1.375, pos.z);
             addBoxTo(wallBrickGeos, TILE_SIZE + 0.18, 0.46, TILE_SIZE + 0.18, pos.x, 2.98, pos.z);
@@ -522,8 +586,111 @@ export class Map3D {
               dz: tDir.dz
             });
           }
+        } else if (isCh3) {
+          // [챕터 3 전용] 25층~21층 투과형 철창 그레이팅 플랫폼 & 경사로 계단 & 안전 난간 생성
+          const yCenter = this.getFloorHeightAt(pos.x, pos.z);
+          const yW = this.getFloorHeightAt(pos.x - TILE_SIZE * 0.5, pos.z);
+          const yE = this.getFloorHeightAt(pos.x + TILE_SIZE * 0.5, pos.z);
+          const yN = this.getFloorHeightAt(pos.x, pos.z - TILE_SIZE * 0.5);
+          const yS = this.getFloorHeightAt(pos.x, pos.z + TILE_SIZE * 0.5);
+
+          const dyEW = yE - yW;
+          const dyNS = yS - yN;
+          const isSlopeEW = Math.abs(dyEW) > 0.08;
+          const isSlopeNS = Math.abs(dyNS) > 0.08;
+
+          if (isSlopeEW || isSlopeNS) {
+            // 층간 연결 철창 경사로 계단 (Grate Ramp & Step Treads)
+            const deltaY = isSlopeEW ? dyEW : dyNS;
+            const slopeLen = Math.hypot(TILE_SIZE, deltaY);
+            const pitchAngle = Math.atan2(Math.abs(deltaY), TILE_SIZE);
+            let rotY = 0;
+            if (isSlopeEW) {
+              rotY = dyEW > 0 ? Math.PI / 2 : -Math.PI / 2;
+            } else {
+              rotY = dyNS > 0 ? 0 : Math.PI;
+            }
+
+            // 경사 철창 바닥면
+            const f = new THREE.PlaneGeometry(TILE_SIZE, slopeLen);
+            const fMat = new THREE.Matrix4();
+            fMat.makeTranslation(pos.x, yCenter, pos.z);
+            fMat.multiply(new THREE.Matrix4().makeRotationY(rotY));
+            fMat.multiply(new THREE.Matrix4().makeRotationX(-Math.PI / 2 - pitchAngle));
+            f.applyMatrix4(fMat);
+            floorGrateGeos.push(f);
+
+            // 경사로 좌우 강철 스트링거(계단 옆면 프레임) 및 5단 철제 계단 코(Step Treads)
+            for (const sideX of [-TILE_SIZE * 0.46, TILE_SIZE * 0.46]) {
+              const strGeo = new THREE.BoxGeometry(0.12, 0.24, slopeLen + 0.06);
+              const sMat = new THREE.Matrix4();
+              sMat.makeTranslation(pos.x, yCenter - 0.08, pos.z);
+              sMat.multiply(new THREE.Matrix4().makeRotationY(rotY));
+              sMat.multiply(new THREE.Matrix4().makeRotationX(-pitchAngle));
+              sMat.multiply(new THREE.Matrix4().makeTranslation(sideX, 0, 0));
+              strGeo.applyMatrix4(sMat);
+              ch3GirderGeos.push(strGeo);
+            }
+            for (let stepIdx = -2; stepIdx <= 2; stepIdx++) {
+              const zFrac = (stepIdx / 5.0) * slopeLen;
+              const stepGeo = new THREE.BoxGeometry(TILE_SIZE - 0.16, 0.06, 0.22);
+              const stMat = new THREE.Matrix4();
+              stMat.makeTranslation(pos.x, yCenter + 0.02, pos.z);
+              stMat.multiply(new THREE.Matrix4().makeRotationY(rotY));
+              stMat.multiply(new THREE.Matrix4().makeRotationX(-pitchAngle));
+              stMat.multiply(new THREE.Matrix4().makeTranslation(0, 0, zFrac));
+              stepGeo.applyMatrix4(stMat);
+              ch3RailingGeos.push(stepGeo);
+            }
+          } else {
+            // 수평 철창 그레이팅 플랫폼 바닥 (발밑으로 80m 심연이 훤히 투과됨)
+            addPlaneTo(floorGrateGeos, TILE_SIZE, TILE_SIZE, pos.x, yCenter, pos.z);
+
+            // 플랫폼 하단 강철 H-빔 지지 거더 격자
+            addBoxTo(ch3GirderGeos, TILE_SIZE, 0.18, 0.16, pos.x, yCenter - 0.10, pos.z - TILE_SIZE * 0.46);
+            addBoxTo(ch3GirderGeos, TILE_SIZE, 0.18, 0.16, pos.x, yCenter - 0.10, pos.z + TILE_SIZE * 0.46);
+            addBoxTo(ch3GirderGeos, 0.16, 0.18, TILE_SIZE, pos.x - TILE_SIZE * 0.46, yCenter - 0.10, pos.z);
+            addBoxTo(ch3GirderGeos, 0.16, 0.18, TILE_SIZE, pos.x + TILE_SIZE * 0.46, yCenter - 0.10, pos.z);
+          }
+
+          // 심연 구멍(' ' 또는 '#')과 맞닿은 플랫폼 가장자리에 시야 개방형 강철 안전 난간(Handrail) 설치
+          const checkVoid = (c, r) => {
+            const t = this.getTileChar(c, r);
+            return t === '#' || t === ' ';
+          };
+          const railH = 1.08;
+          const halfT = TILE_SIZE * 0.47;
+
+          // 북쪽 난간
+          if (checkVoid(col, row - 1)) {
+            addBoxTo(ch3RailingGeos, TILE_SIZE, 0.06, 0.06, pos.x, yCenter + railH, pos.z - halfT);
+            addBoxTo(ch3GirderGeos, TILE_SIZE, 0.05, 0.05, pos.x, yCenter + railH * 0.52, pos.z - halfT);
+            addBoxTo(ch3GirderGeos, 0.07, railH, 0.07, pos.x - halfT + 0.1, yCenter + railH / 2, pos.z - halfT);
+            addBoxTo(ch3GirderGeos, 0.07, railH, 0.07, pos.x + halfT - 0.1, yCenter + railH / 2, pos.z - halfT);
+          }
+          // 남쪽 난간
+          if (checkVoid(col, row + 1)) {
+            addBoxTo(ch3RailingGeos, TILE_SIZE, 0.06, 0.06, pos.x, yCenter + railH, pos.z + halfT);
+            addBoxTo(ch3GirderGeos, TILE_SIZE, 0.05, 0.05, pos.x, yCenter + railH * 0.52, pos.z + halfT);
+            addBoxTo(ch3GirderGeos, 0.07, railH, 0.07, pos.x - halfT + 0.1, yCenter + railH / 2, pos.z + halfT);
+            addBoxTo(ch3GirderGeos, 0.07, railH, 0.07, pos.x + halfT - 0.1, yCenter + railH / 2, pos.z + halfT);
+          }
+          // 서쪽 난간
+          if (checkVoid(col - 1, row)) {
+            addBoxTo(ch3RailingGeos, 0.06, 0.06, TILE_SIZE, pos.x - halfT, yCenter + railH, pos.z);
+            addBoxTo(ch3GirderGeos, 0.05, 0.05, TILE_SIZE, pos.x - halfT, yCenter + railH * 0.52, pos.z);
+            addBoxTo(ch3GirderGeos, 0.07, railH, 0.07, pos.x - halfT, yCenter + railH / 2, pos.z - halfT + 0.1);
+            addBoxTo(ch3GirderGeos, 0.07, railH, 0.07, pos.x - halfT, yCenter + railH / 2, pos.z + halfT - 0.1);
+          }
+          // 동쪽 난간
+          if (checkVoid(col + 1, row)) {
+            addBoxTo(ch3RailingGeos, 0.06, 0.06, TILE_SIZE, pos.x + halfT, yCenter + railH, pos.z);
+            addBoxTo(ch3GirderGeos, 0.05, 0.05, TILE_SIZE, pos.x + halfT, yCenter + railH * 0.52, pos.z);
+            addBoxTo(ch3GirderGeos, 0.07, railH, 0.07, pos.x + halfT, yCenter + railH / 2, pos.z - halfT + 0.1);
+            addBoxTo(ch3GirderGeos, 0.07, railH, 0.07, pos.x + halfT, yCenter + railH / 2, pos.z + halfT - 0.1);
+          }
         } else {
-          // 챕터 1 / 챕터 3 기존 평면 타일 지오메트리
+          // 챕터 1 기존 평면 타일 지오메트리
           const f = baseFloorGeo.clone();
           const fMat = new THREE.Matrix4();
           fMat.multiply(new THREE.Matrix4().makeTranslation(pos.x, 0, pos.z));
@@ -638,6 +805,27 @@ export class Map3D {
       floorWaterGeos.forEach(g => g.dispose());
     }
 
+    if (floorGrateGeos.length > 0) {
+      const mergedGrate = BufferGeometryUtils.mergeGeometries(floorGrateGeos, false);
+      const grateMesh = new THREE.Mesh(mergedGrate, this.materials.floorGrate);
+      this.mapGroup.add(grateMesh);
+      floorGrateGeos.forEach(g => g.dispose());
+    }
+
+    if (ch3GirderGeos.length > 0) {
+      const mergedGirder = BufferGeometryUtils.mergeGeometries(ch3GirderGeos, false);
+      const girderMesh = new THREE.Mesh(mergedGirder, this.materials.doorFrame);
+      this.mapGroup.add(girderMesh);
+      ch3GirderGeos.forEach(g => g.dispose());
+    }
+
+    if (ch3RailingGeos.length > 0) {
+      const mergedRail = BufferGeometryUtils.mergeGeometries(ch3RailingGeos, false);
+      const railMesh = new THREE.Mesh(mergedRail, this.materials.hazardRailing || this.materials.lampOrangeFixture);
+      this.mapGroup.add(railMesh);
+      ch3RailingGeos.forEach(g => g.dispose());
+    }
+
     if (ceilingGeos.length > 0) {
       const mergedCeiling = BufferGeometryUtils.mergeGeometries(ceilingGeos, false);
       const ceilMat = isCh3 ? this.materials.ceilingRock : (isCh2 ? this.materials.ceilingBrick : this.materials.ceiling);
@@ -649,14 +837,20 @@ export class Map3D {
     baseWallGeo.dispose();
     baseFloorGeo.dispose();
 
+    // 챕터 3 전용: 도넛 심연 구멍, 중앙 거대 기둥, 외벽 및 추락 엘리베이터 아키텍처 생성
+    if (isCh3) {
+      this.buildChapter3AbyssArchitecture();
+    }
+
     // 카메라 번호순 정렬 (1 -> 2 -> 3 -> 4)
     this.cctvConfigs.sort((a, b) => a.id - b.id);
 
-    // 챕터 2: 동적 전등 조명 풀(Light Pool) 구성 (개별 28개 PointLight 대신 플레이어 인근 3개만 동적 활성화하여 GPU 부하 90% 절감)
+    // 챕터 2 & 3: 동적 전등 조명 풀(Light Pool) 구성
     this.lampLightPool = [];
-    if (isCh2) {
+    if (isCh2 || isCh3) {
+      const poolColor = isCh3 ? 0xff6622 : 0xff8c28;
       for (let i = 0; i < 3; i++) {
-        const pLight = new THREE.PointLight(0xff8c28, 0, 16.0, 1.6);
+        const pLight = new THREE.PointLight(poolColor, 0, 18.0, 1.5);
         this.mapGroup.add(pLight);
         this.lampLightPool.push(pLight);
       }
@@ -678,9 +872,10 @@ export class Map3D {
    */
   buildTacticalMapBoard() {
     const isCh2 = this.chapterId === 'chapter2';
-    // 스폰 지점 서쪽 벽면 앞 위치
-    const mapTileCol = 20;
-    const mapTileRow = isCh2 ? 16 : 8;
+    const isCh3 = this.chapterId === 'chapter3';
+    // 스폰 지점 서쪽 위치
+    const mapTileCol = isCh3 ? 18 : 20;
+    const mapTileRow = isCh3 ? 5 : (isCh2 ? 16 : 8);
     const wallWorld = tileToWorld(mapTileCol, mapTileRow);
     const baseY = this.getFloorHeightAt(wallWorld.x, wallWorld.z);
 
@@ -691,6 +886,18 @@ export class Map3D {
     const boardY = baseY + 1.62;
     boardGroup.position.set(boardX, boardY, boardZ);
     boardGroup.rotation.y = Math.PI / 2; // 동쪽을 바라봄
+
+    if (isCh3) {
+      // 천장이나 벽이 없는 25층 도넛 철창 플랫폼 위에 자립할 수 있도록 지지 기둥 추가
+      for (const lx of [-1.15, 1.15]) {
+        const leg = new THREE.Mesh(
+          new THREE.BoxGeometry(0.10, 1.65, 0.14),
+          this.materials.doorFrame
+        );
+        leg.position.set(lx, -0.82, 0);
+        boardGroup.add(leg);
+      }
+    }
 
     // 1. 외곽 강철 베젤 하우징 프레임
     const frameGeo = new THREE.BoxGeometry(2.7, 1.65, 0.12);
@@ -879,7 +1086,18 @@ export class Map3D {
     // 4. 구역 라벨 표시
     ctx.font = 'bold 12px monospace';
     ctx.textAlign = 'center';
-    if (isCh2) {
+    if (this.chapterId === 'chapter3') {
+      ctx.fillStyle = '#ffab40';
+      ctx.fillText('25F 상부 곤돌라 승강장 [HOLD UNTIL 100%]', gridOffsetX + 24 * cellW, gridOffsetY + 5 * cellH);
+      ctx.fillText('24F 서측 플랫폼', gridOffsetX + 8 * cellW, gridOffsetY + 8 * cellH);
+      ctx.fillText('24F 동측 플랫폼', gridOffsetX + 40 * cellW, gridOffsetY + 8 * cellH);
+      ctx.fillStyle = '#ff6e40';
+      ctx.fillText('23F 중앙 기둥 코어 링 [CORE]', gridOffsetX + 24 * cellW, gridOffsetY + 15 * cellH);
+      ctx.fillText('22F 남서 하단', gridOffsetX + 9 * cellW, gridOffsetY + 23 * cellH);
+      ctx.fillText('22F 남동 하단', gridOffsetX + 39 * cellW, gridOffsetY + 23 * cellH);
+      ctx.fillStyle = '#ff5252';
+      ctx.fillText('21F 최하층 심연 관측 플랫폼', gridOffsetX + 24 * cellW, gridOffsetY + 26 * cellH);
+    } else if (isCh2) {
       ctx.fillStyle = '#ffcc80';
       ctx.fillText('중앙 저류 펌프실 [CORE]', gridOffsetX + 24 * cellW, gridOffsetY + 14 * cellH - 12);
       ctx.fillText('← 고대 벽돌 아치 회랑', gridOffsetX + 12 * cellW, gridOffsetY + 14 * cellH);
@@ -1259,6 +1477,58 @@ export class Map3D {
   }
 
   buildCCTVConsole(x, z, baseY = 0) {
+    if (this.chapterId === 'chapter3') {
+      // [챕터 3 전용] 상호작용(E) 없이도 멀리서 실시간 재가동 퍼센트(%)가 한눈에 보이는 초대형 디지털 모니터 타워
+      const group = new THREE.Group();
+      group.position.set(x, baseY, z);
+
+      // 하단 중장비 제어 기단
+      const basePedestal = new THREE.Mesh(
+        new THREE.BoxGeometry(2.6, 1.15, 0.95),
+        this.materials.doorFrame
+      );
+      basePedestal.position.y = 0.575;
+      group.add(basePedestal);
+
+      // 상단 대형 전광판 하우징 (가로 2.8m x 세로 1.75m)
+      const housing = new THREE.Mesh(
+        new THREE.BoxGeometry(2.85, 1.80, 0.36),
+        this.materials.wall
+      );
+      housing.position.set(0, 2.02, -0.05);
+      group.add(housing);
+
+      // 실시간 CanvasTexture 생성
+      const canvas = document.createElement('canvas');
+      canvas.width = 640;
+      canvas.height = 400;
+      const tex = new THREE.CanvasTexture(canvas);
+      const screenMat = new THREE.MeshBasicMaterial({ map: tex });
+
+      // 앞면(+Z)과 뒷면(-Z) 양면 스크린 배치로 어디서든 퍼센트 확인 가능
+      const frontScreen = new THREE.Mesh(new THREE.PlaneGeometry(2.66, 1.62), screenMat);
+      frontScreen.position.set(0, 2.02, 0.14);
+      group.add(frontScreen);
+
+      const backScreen = new THREE.Mesh(new THREE.PlaneGeometry(2.66, 1.62), screenMat);
+      backScreen.position.set(0, 2.02, -0.24);
+      backScreen.rotation.y = Math.PI;
+      group.add(backScreen);
+
+      this.gondolaMonitor = {
+        canvas,
+        tex,
+        lastPct: -1,
+        lastBoost: -1,
+        lastReady: null
+      };
+      this.updateGondolaMonitor(0, 0, false);
+
+      this.mapGroup.add(group);
+      this.propColliders.push({ x, z, r: 1.05 });
+      return;
+    }
+
     const group = new THREE.Group();
     group.position.set(x, baseY, z);
 
@@ -1294,13 +1564,272 @@ export class Map3D {
     this.propColliders.push({ x, z, r: 0.78 });
   }
 
+  /**
+   * 챕터 3: 25층 곤돌라 옆 대형 모니터에 실시간 재가동 진행률(0% ~ 100%)을 렌더링합니다.
+   */
+  updateGondolaMonitor(percent = 0, boostCount = 0, isReady = false) {
+    if (!this.gondolaMonitor) return;
+    const roundedPct = Math.min(100, Math.max(0, Math.floor(percent)));
+    if (
+      this.gondolaMonitor.lastPct === roundedPct &&
+      this.gondolaMonitor.lastBoost === boostCount &&
+      this.gondolaMonitor.lastReady === isReady
+    ) {
+      return;
+    }
+    this.gondolaMonitor.lastPct = roundedPct;
+    this.gondolaMonitor.lastBoost = boostCount;
+    this.gondolaMonitor.lastReady = isReady;
+
+    const { canvas, tex } = this.gondolaMonitor;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+
+    // 배경
+    ctx.fillStyle = isReady ? '#061f12' : '#140a06';
+    ctx.fillRect(0, 0, w, h);
+
+    // 외곽 테두리
+    const mainColor = isReady ? '#33ff88' : (roundedPct >= 70 ? '#ffcc33' : '#ff6622');
+    ctx.strokeStyle = mainColor;
+    ctx.lineWidth = 6;
+    ctx.strokeRect(10, 10, w - 20, h - 20);
+
+    // 상단 타이틀 바
+    ctx.fillStyle = mainColor;
+    ctx.fillRect(18, 18, w - 36, 44);
+    ctx.fillStyle = '#0a0a0a';
+    ctx.font = 'bold 24px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(
+      isReady ? 'EVAC GONDOLA // ONLINE & READY' : '25F GONDOLA REBOOT // SYSTEM MONITOR',
+      w / 2,
+      48
+    );
+
+    // 초대형 퍼센트 숫자 표시
+    ctx.fillStyle = mainColor;
+    ctx.font = 'bold 138px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(roundedPct + '%', w / 2, 205);
+
+    // 진행률 게이지 바
+    const barX = 44;
+    const barY = 235;
+    const barW = w - 88;
+    const barH = 42;
+    ctx.strokeStyle = mainColor;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(barX, barY, barW, barH);
+
+    const fillW = Math.floor((barW - 10) * (roundedPct / 100));
+    ctx.fillStyle = mainColor;
+    ctx.fillRect(barX + 5, barY + 5, fillW, barH - 10);
+
+    // 하단 보조 상태 안내
+    ctx.fillStyle = '#e8dfd8';
+    ctx.font = 'bold 22px monospace';
+    if (isReady) {
+      ctx.fillText('[ 재가동 100% 완료! 곤돌라에 즉시 탑승하십시오 ]', w / 2, 322);
+      ctx.fillStyle = '#33ff88';
+      ctx.fillText('STATUS: WINCH LOCK RELEASED - DOORS OPEN', w / 2, 360);
+    } else {
+      ctx.fillText('[ 100% 완료까지 심연의 괴물로부터 생존하십시오 ]', w / 2, 322);
+      ctx.fillStyle = '#ffaa44';
+      ctx.font = 'bold 20px monospace';
+      ctx.fillText('하층 보조 동력 가속기 연결: ' + boostCount + ' / 4 (속도 증폭)', w / 2, 360);
+    }
+
+    tex.needsUpdate = true;
+  }
+
+  /**
+   * 챕터 3 전용: 도넛 모양의 80m 심연 구멍, 중앙 거대 코어 기둥, 외벽, 층별 네온 사인, 추락 엘리베이터 구축
+   */
+  buildChapter3AbyssArchitecture() {
+    const abyssGroup = new THREE.Group();
+    const centerWorld = tileToWorld(24, 15);
+    const cx = centerWorld.x;
+    const cz = centerWorld.z;
+
+    // 1. 정중앙 거대 코어 기둥 (Central Core Megapillar: 반지름 5.2m, 높이 Y = -75m ~ +38m)
+    const pillarH = 113;
+    const pillarCenterY = -18.5;
+    const corePillar = new THREE.Mesh(
+      new THREE.CylinderGeometry(5.2, 5.6, pillarH, 12),
+      this.materials.wallRock
+    );
+    corePillar.position.set(cx, pillarCenterY, cz);
+    abyssGroup.add(corePillar);
+
+    // 중앙 기둥 외벽을 타고 올라가는 8줄의 시뻘건 지열 발광 파이프 및 층별 강철 플랜지 링
+    const pipeMat = new THREE.MeshBasicMaterial({ color: 0xff3b14 });
+    const pipeGeo = new THREE.CylinderGeometry(0.24, 0.24, pillarH, 8);
+    for (let i = 0; i < 8; i++) {
+      const ang = (i * Math.PI) / 4;
+      const pipe = new THREE.Mesh(pipeGeo, pipeMat);
+      pipe.position.set(cx + Math.cos(ang) * 5.38, pillarCenterY, cz + Math.sin(ang) * 5.38);
+      abyssGroup.add(pipe);
+    }
+
+    const ringHeights = [-55, -40, -25, -12, 0, 3, 6, 9, 12, 18, 26];
+    for (const ry of ringHeights) {
+      const ring = new THREE.Mesh(
+        new THREE.CylinderGeometry(5.85, 5.85, 0.65, 12),
+        this.materials.doorFrame
+      );
+      ring.position.set(cx, ry, cz);
+      abyssGroup.add(ring);
+    }
+
+    // 2. 도넛 바깥쪽을 둘러싼 거대 원통형 수직 갱도 암벽 (Outer Cavern Wall: 반지름 64m)
+    const outerWallMat = this.materials.wallRock.clone();
+    outerWallMat.side = THREE.BackSide;
+    const outerWall = new THREE.Mesh(
+      new THREE.CylinderGeometry(64, 64, pillarH, 24, 1, true),
+      outerWallMat
+    );
+    outerWall.position.set(cx, pillarCenterY, cz);
+    abyssGroup.add(outerWall);
+
+    // 3. 지하 -65m 심연 밑바닥 마그마/지열 증기 글로우 층 (발밑 철창 너머로 보이는 시뻘건 심연)
+    const abyssFloorMat = new THREE.MeshBasicMaterial({
+      color: 0x4a0902,
+      side: THREE.DoubleSide
+    });
+    const abyssFloor = new THREE.Mesh(
+      new THREE.CircleGeometry(64, 24),
+      abyssFloorMat
+    );
+    abyssFloor.rotation.x = -Math.PI / 2;
+    abyssFloor.position.set(cx, -65, cz);
+    abyssGroup.add(abyssFloor);
+
+    // 심연 중앙 마그마 코어 글로우 링
+    const magmaRing = new THREE.Mesh(
+      new THREE.RingGeometry(5.6, 26.0, 24),
+      new THREE.MeshBasicMaterial({ color: 0xaa1e08, side: THREE.DoubleSide })
+    );
+    magmaRing.rotation.x = -Math.PI / 2;
+    magmaRing.position.set(cx, -64.5, cz);
+    abyssGroup.add(magmaRing);
+
+    // 4. 25F ~ 21F 각 층을 직관적으로 식별할 수 있는 대형 홀로그램/네온 층수 표지판
+    const floorSigns = [
+      { label: '25F // TOP GONDOLA DECK', y: 14.8, x: cx, z: tileToWorld(24, 7).z + 1.2, rotY: 0, color: '#ffaa22' },
+      { label: '24F // WEST UPPER PLATFORM', y: 11.6, x: tileToWorld(11, 7).x + 1.2, z: tileToWorld(11, 7).z, rotY: Math.PI / 2, color: '#ff7722' },
+      { label: '24F // EAST UPPER PLATFORM', y: 11.6, x: tileToWorld(37, 7).x - 1.2, z: tileToWorld(37, 7).z, rotY: -Math.PI / 2, color: '#ff7722' },
+      { label: '23F // CENTRAL PILLAR RING', y: 8.6, x: cx, z: tileToWorld(24, 11).z - 1.0, rotY: Math.PI, color: '#ff5522' },
+      { label: '22F // LOWER COOLANT DECK', y: 5.6, x: tileToWorld(12, 23).x + 1.2, z: tileToWorld(12, 23).z, rotY: Math.PI / 2, color: '#ff4422' },
+      { label: '21F // ABYSS BOTTOM DECK', y: 2.8, x: cx, z: tileToWorld(24, 23).z - 1.2, rotY: Math.PI, color: '#ff2222' }
+    ];
+
+    for (const s of floorSigns) {
+      const sCanvas = document.createElement('canvas');
+      sCanvas.width = 512;
+      sCanvas.height = 96;
+      const sCtx = sCanvas.getContext('2d');
+      sCtx.fillStyle = 'rgba(18, 10, 6, 0.92)';
+      sCtx.fillRect(0, 0, 512, 96);
+      sCtx.strokeStyle = s.color;
+      sCtx.lineWidth = 5;
+      sCtx.strokeRect(4, 4, 504, 88);
+      sCtx.fillStyle = s.color;
+      sCtx.font = 'bold 30px monospace';
+      sCtx.textAlign = 'center';
+      sCtx.fillText(s.label, 256, 58);
+
+      const sTex = new THREE.CanvasTexture(sCanvas);
+      const sMat = new THREE.MeshBasicMaterial({ map: sTex, side: THREE.DoubleSide });
+      const signMesh = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 0.8), sMat);
+      signMesh.position.set(s.x, s.y, s.z);
+      signMesh.rotation.y = s.rotY;
+      abyssGroup.add(signMesh);
+    }
+
+    // 5. 25층 스폰 지점(col 24, row 6): 케이블이 끊어져 추락/불시착한 인트로 강철 케이지 엘리베이터
+    const elevPos = tileToWorld(24, 6);
+    const elevBaseY = this.getFloorHeightAt(elevPos.x, elevPos.z);
+    const elevGroup = new THREE.Group();
+    elevGroup.position.set(elevPos.x, elevBaseY, elevPos.z);
+
+    // 케이지 바닥 및 천장 프레임
+    const cageFloor = new THREE.Mesh(
+      new THREE.BoxGeometry(2.4, 0.14, 2.4),
+      this.materials.doorFrame
+    );
+    cageFloor.position.y = 0.07;
+    elevGroup.add(cageFloor);
+
+    const cageRoof = new THREE.Mesh(
+      new THREE.BoxGeometry(2.4, 0.16, 2.4),
+      this.materials.doorFrame
+    );
+    cageRoof.position.y = 2.65;
+    elevGroup.add(cageRoof);
+
+    // 케이지 네 모서리 기둥 및 측면 철창살 (앞뒤는 출입이 자유롭도록 개방)
+    for (const ex of [-1.12, 1.12]) {
+      for (const ez of [-1.12, 1.12]) {
+        const post = new THREE.Mesh(
+          new THREE.BoxGeometry(0.10, 2.65, 0.10),
+          this.materials.hazardRailing || this.materials.doorFrame
+        );
+        post.position.set(ex, 1.325, ez);
+        elevGroup.add(post);
+      }
+      // 좌/우 측면 보호 창살
+      for (const bz of [-0.7, -0.25, 0.25, 0.7]) {
+        const bar = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.025, 0.025, 2.55, 6),
+          this.materials.doorFrame
+        );
+        bar.position.set(ex, 1.325, bz);
+        elevGroup.add(bar);
+      }
+    }
+
+    // 케이지 상단 끊어진 호이스트 케이블과 비상 적색 경고등
+    const cable = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.04, 0.04, 24, 6),
+      this.materials.doorFrame
+    );
+    cable.position.set(0, 14.6, 0);
+    elevGroup.add(cable);
+
+    const emergencyBulb = new THREE.Mesh(
+      new THREE.SphereGeometry(0.11, 8, 8),
+      this.materials.ledRed
+    );
+    emergencyBulb.position.set(0, 2.52, 0);
+    elevGroup.add(emergencyBulb);
+
+    abyssGroup.add(elevGroup);
+    this.introElevatorGroup = elevGroup;
+    this.introElevatorBaseY = elevBaseY;
+
+    this.mapGroup.add(abyssGroup);
+  }
+
   buildCeilingLamp(x, z, col = 0, row = 0) {
     const isCh2 = this.chapterId === 'chapter2';
     const isCh3 = this.chapterId === 'chapter3';
     const group = new THREE.Group();
     const inLowPipe = isCh2 && this.isWaterTile(col, row);
-    const lampY = isCh2 ? (inLowPipe ? 3.12 : 4.18) : (WALL_HEIGHT - 0.06);
+    const floorY = isCh3 ? this.getFloorHeightAt(x, z) : 0;
+    const lampY = isCh3 ? (floorY + 3.15) : (isCh2 ? (inLowPipe ? 3.12 : 4.18) : (WALL_HEIGHT - 0.06));
     group.position.set(x, lampY, z);
+
+    if (isCh3) {
+      // 천장이 없는 도넛 플랫폼 위에 세워진 철제 가로등 지주 폴대
+      const pole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.05, 0.07, 3.15, 6),
+        this.materials.doorFrame
+      );
+      pole.position.set(0, -1.575, -0.45);
+      group.add(pole);
+    }
 
     const fixtureMat = isCh3
       ? this.materials.lampMineFixture
@@ -1543,20 +2072,22 @@ export class Map3D {
       }
     }
 
-    // 챕터 2: 플레이어 반경 20m 내 가장 가까운 전등 최대 3개에 동적 PointLight 할당 (셰이더 계산량 90% 절감)
-    if (this.chapterId === 'chapter2' && playerPos && this.lampLightPool && this.lampLightPool.length > 0) {
-      let b0 = null, d0 = 400; // 20m^2
-      let b1 = null, d1 = 400;
-      let b2 = null, d2 = 400;
+    // 챕터 2 & 3: 플레이어 반경 내 가장 가까운 전등 최대 3개에 동적 PointLight 할당
+    if ((this.chapterId === 'chapter2' || this.chapterId === 'chapter3') && playerPos && this.lampLightPool && this.lampLightPool.length > 0) {
+      let b0 = null, d0 = 550;
+      let b1 = null, d1 = 550;
+      let b2 = null, d2 = 550;
       const px = playerPos.x;
+      const py = playerPos.y || 0;
       const pz = playerPos.z;
       const nLamps = this.ceilingLamps.length;
 
       for (let i = 0; i < nLamps; i++) {
         const l = this.ceilingLamps[i];
         const dx = l.x - px;
+        const dy = (l.y || 0) - py;
         const dz = l.z - pz;
-        const dSq = dx * dx + dz * dz;
+        const dSq = dx * dx + dy * dy + dz * dz;
         if (dSq < d0) {
           b2 = b1; d2 = d1;
           b1 = b0; d1 = d0;
@@ -1592,6 +2123,7 @@ export class Map3D {
     const centerCol = Math.floor((x + this.halfMapW) / TILE_SIZE);
     const centerRow = Math.floor((z + this.halfMapH) / TILE_SIZE);
     const isCh2 = this.chapterId === 'chapter2';
+    const isCh3 = this.chapterId === 'chapter3';
 
     for (let dr = -1; dr <= 1; dr++) {
       for (let dc = -1; dc <= 1; dc++) {
@@ -1599,8 +2131,8 @@ export class Map3D {
         const r = centerRow + dr;
         const ch = this.getTileChar(c, r);
 
-        // 챕터 2에서는 경사로('M')나 사다리('H')를 거치지 않고 LOW(0.0m) <-> HIGH(1.40m) 단차를 직접 넘는 것을 차단
-        const isElevationCliff = isCh2 && (dr !== 0 || dc !== 0) && !this.canStepBetweenTiles(centerCol, centerRow, c, r);
+        // 챕터 2/3에서는 경사로나 계단을 거치지 않고 층간 절벽 단차를 직접 넘는 것을 차단
+        const isElevationCliff = (isCh2 || isCh3) && (dr !== 0 || dc !== 0) && !this.canStepBetweenTiles(centerCol, centerRow, c, r);
 
         if (ch === '#' || ch === ' ' || isElevationCliff) {
           const tileMinX = c * TILE_SIZE - this.halfMapW;

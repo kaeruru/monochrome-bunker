@@ -74,22 +74,22 @@ const CANDIDATE_SPAWN_SPOTS_CH2 = [
   { col: 3,  row: 18, zone: '서측 원통 배수관 (서남 방수 보관함)', isLocker: true }
 ];
 
-// 챕터 3 (심연 지열 갱도) 전용 후보 스폰 지점 풀 (14개 시설 지점)
+// 챕터 3 (수직 도넛 심연 갱도 24F~21F) 전용 후보 스폰 지점 풀 (14개 다층 플랫폼 지점)
 const CANDIDATE_SPAWN_SPOTS_CH3 = [
-  { col: 7,  row: 4,  zone: '제1 굴착 발파 구역 (발파용 캐비닛)', isLocker: true },
-  { col: 8,  row: 5,  zone: '제1 굴착 발파 구역 (굴착기 선반)', isLocker: false },
-  { col: 14, row: 10, zone: '지질 코어 보관소 (시료 보관함)', isLocker: true },
-  { col: 3,  row: 16, zone: '지열 발전 터빈실 (터빈 정비대)', isLocker: false },
-  { col: 12, row: 15, zone: '갱도 보안 초소 (비상 사물함)', isLocker: true },
-  { col: 7,  row: 23, zone: '광석 분쇄소 (광석 분류 캐비닛)', isLocker: true },
-  { col: 15, row: 21, zone: '지열 증기 보일러실 (압력 제어함)', isLocker: true },
-  { col: 23, row: 22, zone: '광차 레일 환승 허브 (환승 공구함)', isLocker: true },
-  { col: 29, row: 14, zone: '지질 통신실 (통신 장비 선반)', isLocker: true },
-  { col: 37, row: 4,  zone: '화약 저장고 (폭약 방호 금고)', isLocker: true },
-  { col: 34, row: 11, zone: '환풍 통풍탑 (환기 모터 선반)', isLocker: false },
-  { col: 43, row: 14, zone: '심부 시추실 (시추 코어 캐비닛)', isLocker: true },
-  { col: 37, row: 21, zone: '중장비 정비고 (정비 자재함)', isLocker: true },
-  { col: 31, row: 25, zone: '폐쇄 채굴 갱도 (버려진 광차 선반)', isLocker: false }
+  { col: 6,  row: 5,  zone: '24층 서측 상부 플랫폼 (북단 캐비닛)', isLocker: true },
+  { col: 9,  row: 9,  zone: '24층 서측 상부 플랫폼 (지열 선반)', isLocker: false },
+  { col: 41, row: 5,  zone: '24층 동측 상부 플랫폼 (고압 캐비닛)', isLocker: true },
+  { col: 38, row: 9,  zone: '24층 동측 상부 플랫폼 (밸브 선반)', isLocker: false },
+  { col: 6,  row: 16, zone: '23층 서측 중단 플랫폼 (시추 보급함)', isLocker: true },
+  { col: 41, row: 16, zone: '23층 동측 중단 플랫폼 (터빈 정비함)', isLocker: true },
+  { col: 20, row: 12, zone: '23층 중앙 기둥 순환 링 (북서 선반)', isLocker: false },
+  { col: 28, row: 18, zone: '23층 중앙 기둥 순환 링 (남동 캐비닛)', isLocker: true },
+  { col: 6,  row: 22, zone: '22층 남서 하부 플랫폼 (냉각수 캐비닛)', isLocker: true },
+  { col: 10, row: 25, zone: '22층 남서 하부 플랫폼 (펌프 선반)', isLocker: false },
+  { col: 41, row: 22, zone: '22층 남동 하부 플랫폼 (파쇄기 캐비닛)', isLocker: true },
+  { col: 38, row: 25, zone: '22층 남동 하부 플랫폼 (광석 선반)', isLocker: false },
+  { col: 19, row: 26, zone: '21층 최하층 대플랫폼 (서측 비상 금고)', isLocker: true },
+  { col: 29, row: 26, zone: '21층 최하층 대플랫폼 (동측 시추 선반)', isLocker: false }
 ];
 
 function createSeededRandom(s) {
@@ -243,23 +243,24 @@ export class InteractionAndEscapeSystem {
     this.isEscapeOpen = false;
     this.isGameCleared = false;
     this.isBlackout = false;
+    this.gondolaProgress = 0;
     this.autoBlackoutTimer = 65 + Math.random() * 20;
 
     const isCh2 = this.map.chapterId === 'chapter2';
     const isCh3 = this.map.chapterId === 'chapter3';
 
-    // 1. 중앙 코어 부품 장착 슬롯 4개 생성 (챕터 2는 중앙 배수 펌프실 (24,14), 챕터 1/3은 기동장 (24,6))
-    this.buildCentralCoreReceptors(24, isCh2 ? 14 : 6);
+    // 1. 중앙 코어 부품 장착 슬롯 4개 생성 (챕터 3는 23층 중앙 기둥 링 (24,12), 챕터 2는 (24,14), 챕터 1은 (24,6))
+    this.buildCentralCoreReceptors(24, isCh3 ? 12 : (isCh2 ? 14 : 6));
 
-    // 2. 북쪽 벽 비상 탈출 엘리베이터 게이트 생성
+    // 2. 북쪽 벽 비상 탈출 엘리베이터/곤돌라 게이트 생성
     this.buildEscapeGate(21, isCh2 ? 11 : 3);
 
     // 3. 북동쪽 부품 위치 스캔 단말기 생성
     this.buildScannerTerminal(27, isCh2 ? 11 : 3);
 
-    // 4. 주 배전반(차단기 레버 3개) 생성 (챕터 1: 전기실 (16,20), 챕터 3: 지열 발전 터빈실 (3,14), 챕터 2는 침수)
+    // 4. 주 배전반(차단기 레버 3개) 생성 (챕터 1: 전기실 (16,20), 챕터 3: 21층 최하층 대플랫폼 (24,27))
     if (isCh3) {
-      this.buildElectricalBreakerPanel(3, 14);
+      this.buildElectricalBreakerPanel(24, 27);
     } else if (!isCh2) {
       this.buildElectricalBreakerPanel(16, 20);
     }
@@ -267,8 +268,8 @@ export class InteractionAndEscapeSystem {
     // 5. 14개 후보 스팟 중 무작위 셔플하여 필수 코어 부품 4개 + 조명탄 배치
     this.spawnRandomizedItemsAndLockers(seed);
 
-    // 6. 스폰 지점 바로 옆 보급 상자에 기본 조명탄 1개 배치 (시작하자마자 1인칭 파지 테스트 가능!)
-    const starterPos = tileToWorld(22, isCh2 ? 16 : 8);
+    // 6. 스폰 지점 바로 옆 보급 상자에 기본 조명탄 1개 배치
+    const starterPos = tileToWorld(22, isCh3 ? 5 : (isCh2 ? 16 : 8));
     const starterTopY = this.buildSupplyCrateProp(starterPos.x, starterPos.z);
     this.spawnWorldItem('flare', starterPos.x, starterTopY + 0.06, starterPos.z, '내부 보급 상자', 'starter_flare');
 
@@ -971,9 +972,19 @@ export class InteractionAndEscapeSystem {
     sound.playCoreInsert(this.coreState.totalInstalled, this.coreState.maxTotal);
     this.syncViewModelAndHUD();
 
+    const isCh3 = this.map.chapterId === 'chapter3';
+    if (isCh3) {
+      this.gondolaProgress = Math.min(100, (this.gondolaProgress || 0) + 15);
+    }
     const nowAllFilled = this.coreState.socketMeshes.length > 0 && this.coreState.socketMeshes.every(s => s.filled);
-    if (this.coreState.totalInstalled >= this.coreState.maxTotal || nowAllFilled) {
+    if (this.coreState.totalInstalled >= this.coreState.maxTotal || nowAllFilled || (isCh3 && this.gondolaProgress >= 100)) {
+      if (isCh3) this.gondolaProgress = 100;
       this.unlockEscapeGate();
+    } else if (isCh3) {
+      this.notifyToast(
+        `[BOOST ONLINE] ${meta.name} 결합! 곤돌라 충전 +15% 즉시 가속 (현재 ${Math.floor(this.gondolaProgress)}%, 가속기 ${this.coreState.totalInstalled}/4)`,
+        'success'
+      );
     } else {
       this.notifyToast(
         `[CORE ONLINE] ${meta.name} 결합 완료 (진행도: ${this.coreState.totalInstalled} / ${this.coreState.maxTotal})`,
@@ -1160,7 +1171,7 @@ export class InteractionAndEscapeSystem {
       }
     }
 
-    // 6. 비상 탈출구 게이트
+    // 6. 비상 탈출구 게이트 / 25층 비상 곤돌라
     if (this.escapeGate) {
       const dx = px - this.escapeGate.x;
       const dz = pz - this.escapeGate.z;
@@ -1171,9 +1182,15 @@ export class InteractionAndEscapeSystem {
         foundItem = null;
         foundLocker = null;
         keyText = '[ E / ESCAPE ]';
-        descText = this.isEscapeOpen
-          ? '비상 탈출 게이트 진입 (탈출 완료)'
-          : ('비상 탈출 게이트 잠김 (코어 부품 ' + this.coreState.totalInstalled + '/' + this.coreState.maxTotal + ' 필요)');
+        if (this.map.chapterId === 'chapter3') {
+          descText = this.isEscapeOpen
+            ? '25층 비상 탈출 곤돌라 탑승 (탈출 완료)'
+            : ('비상 곤돌라 재가동 중 (' + Math.floor(this.gondolaProgress || 0) + '% / 100% - 완료까지 버티십시오)');
+        } else {
+          descText = this.isEscapeOpen
+            ? '비상 탈출 게이트 진입 (탈출 완료)'
+            : ('비상 탈출 게이트 잠김 (코어 부품 ' + this.coreState.totalInstalled + '/' + this.coreState.maxTotal + ' 필요)');
+        }
       }
     }
 
@@ -1245,9 +1262,16 @@ export class InteractionAndEscapeSystem {
 
     if (target.type === 'escape_gate') {
       if (!this.isEscapeOpen) {
+        const isCh3 = this.map.chapterId === 'chapter3';
         const allFilled = this.coreState.socketMeshes.length > 0 && this.coreState.socketMeshes.every(s => s.filled);
-        if (this.coreState.totalInstalled >= this.coreState.maxTotal || allFilled) {
+        if (this.coreState.totalInstalled >= this.coreState.maxTotal || allFilled || (isCh3 && (this.gondolaProgress || 0) >= 100)) {
           this.unlockEscapeGate();
+        } else if (isCh3) {
+          this.notifyToast(
+            `[REBOOTING] 비상 곤돌라가 아직 재가동 중입니다! (현재 ${Math.floor(this.gondolaProgress || 0)}% / 100% - 옆 모니터를 확인하며 버티십시오)`,
+            'warn'
+          );
+          return false;
         } else {
           this.notifyToast(
             `[LOCKED] 탈출 게이트가 잠겨 있습니다. 중앙 코어에 부품 4개를 먼저 결합하십시오. (${this.coreState.totalInstalled}/4)`,
@@ -1272,8 +1296,37 @@ export class InteractionAndEscapeSystem {
   update(dt) {
     this.time += dt;
 
-    // 1. 자동 정전 타이머 (챕터 1 전용 긴장감 주기적 정전 이벤트; 챕터 2는 전기실 미존재로 비활성화)
-    if (this.map.chapterId !== 'chapter2' && !this.isBlackout && !this.isGameCleared) {
+    // [챕터 3 전용] 25층 비상 곤돌라 실시간 퍼센트(0% -> 100%) 충전 및 대형 모니터 동기화
+    if (this.map.chapterId === 'chapter3' && !this.isGameCleared) {
+      if (!this.isEscapeOpen && !this.isBlackout && !this.map.isIntroPlaying) {
+        const prevInt = Math.floor(this.gondolaProgress || 0);
+        // 기본 초당 0.78% 충전 (약 128초) + 23F 코어에 부품 결합 시 개당 +0.45%/s 가속!
+        const chargeRate = 0.78 + (this.coreState.totalInstalled || 0) * 0.45;
+        this.gondolaProgress = Math.min(100, (this.gondolaProgress || 0) + dt * chargeRate);
+        const curInt = Math.floor(this.gondolaProgress);
+
+        if (curInt !== prevInt) {
+          this.updateObjectiveHUD();
+          if (curInt === 25 || curInt === 50 || curInt === 75 || curInt === 90) {
+            this.notifyToast(
+              `[GONDOLA SYSTEM] 25층 비상 곤돌라 재가동 ${curInt}% 완료! 심연의 괴물로부터 계속 버티십시오!`,
+              'info'
+            );
+          }
+        }
+
+        if (this.gondolaProgress >= 100 && !this.isEscapeOpen) {
+          this.gondolaProgress = 100;
+          this.unlockEscapeGate();
+        }
+      }
+      if (this.map.updateGondolaMonitor) {
+        this.map.updateGondolaMonitor(this.gondolaProgress || 0, this.coreState.totalInstalled || 0, this.isEscapeOpen);
+      }
+    }
+
+    // 1. 자동 정전 타이머 (챕터 1 / 3 긴장감 주기적 정전 이벤트; 챕터 2는 전기실 미존재로 비활성화)
+    if (this.map.chapterId !== 'chapter2' && !this.isBlackout && !this.isGameCleared && !this.map.isIntroPlaying) {
       this.autoBlackoutTimer -= dt;
       if (this.autoBlackoutTimer <= 0) {
         this.autoBlackoutTimer = 75 + Math.random() * 25;
@@ -1369,7 +1422,12 @@ export class InteractionAndEscapeSystem {
     const escapeStatusEl = document.getElementById('obj-escape-status');
 
     if (coreProgressEl) {
-      coreProgressEl.textContent = `코어 부품 수집: ${this.coreState.totalInstalled} / ${this.coreState.maxTotal}`;
+      if (this.map && this.map.chapterId === 'chapter3') {
+        const pct = Math.min(100, Math.floor(this.gondolaProgress || 0));
+        coreProgressEl.textContent = `비상 곤돌라 재가동: ${pct}% (가속기: ${this.coreState.totalInstalled}/4)`;
+      } else {
+        coreProgressEl.textContent = `코어 부품 수집: ${this.coreState.totalInstalled} / ${this.coreState.maxTotal}`;
+      }
     }
 
     if (powerStatusEl) {

@@ -255,7 +255,8 @@ export class MonsterAI {
 
     const startVent = this.activeVentNodes[this.currentVentIdx % count];
     const wPos = tileToWorld(startVent.col, startVent.row);
-    this.pos.set(wPos.x, 4.4, wPos.z);
+    const lurkY = this.chapterId === 'chapter3' ? -24.0 : 4.4;
+    this.pos.set(wPos.x, lurkY, wPos.z);
     this.monster.root.position.copy(this.pos);
     this.state = 'VENT_LURK';
     this.stateTimer = 0;
@@ -608,10 +609,12 @@ export class MonsterAI {
         gratePivot.add(slat);
       }
 
-      // 4. 천장 환기구 덕트 그릴 (위쪽 천장에서도 벤트 위치가 보이도록 배치)
-      const ceilVent = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.08, 1.0), frameMat);
-      ceilVent.position.set(0, WALL_HEIGHT - 0.05, 0);
-      ventGroup.add(ceilVent);
+      // 4. 천장 환기구 덕트 그릴 (천장이 없는 챕터 3 도넛 심연 맵에서는 생략)
+      if (this.chapterId !== 'chapter3') {
+        const ceilVent = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.08, 1.0), frameMat);
+        ceilVent.position.set(0, WALL_HEIGHT - 0.05, 0);
+        ventGroup.add(ceilVent);
+      }
 
       this.ventMeshes.push({
         group: ventGroup,
@@ -851,9 +854,14 @@ export class MonsterAI {
    */
   canSeePlayer(playerPos, flashlightOn, isBlackout) {
     const isCh2 = this.chapterId === 'chapter2';
+    const isCh3 = this.chapterId === 'chapter3';
     if (isCh2 && this.map && this.map.getFloorHeightAt) {
       const playerFootY = this.map.getFloorHeightAt(playerPos.x, playerPos.z);
       if (playerFootY >= 0.65) return false;
+    }
+    if (isCh3 && this.map && this.map.getFloorHeightAt) {
+      const playerFootY = this.map.getFloorHeightAt(playerPos.x, playerPos.z);
+      if (Math.abs(playerFootY - this.pos.y) > 4.2) return false;
     }
 
     const dx = playerPos.x - this.pos.x;
@@ -1258,6 +1266,7 @@ export class MonsterAI {
    */
   update(dt, playerPos, playerCamera, flashlightOn, isSprinting, isMoving) {
     if (this.interactionSystem && this.interactionSystem.isGameCleared) return;
+    if (this.map && this.map.isIntroPlaying) return;
 
     if (this.isRemoteControlled) {
       const prevX = this.pos.x;
@@ -1393,28 +1402,29 @@ export class MonsterAI {
     switch (this.state) {
       case 'VENT_LURK': {
         animMode = 'stalk';
+        const isCh3 = this.chapterId === 'chapter3';
         const fromNode = this.activeVentNodes[this.currentVentIdx % this.activeVentNodes.length];
         const toNode = this.activeVentNodes[this.targetVentIdx % this.activeVentNodes.length];
         const fromW = tileToWorld(fromNode.col, fromNode.row);
         const toW = tileToWorld(toNode.col, toNode.row);
 
         const segDist = Math.max(1.0, Math.hypot(toW.x - fromW.x, toW.z - fromW.z));
-        const ventSpeed = 7.2; // 환기구 내부 이동 속도 (m/s)
+        const ventSpeed = isCh3 ? 9.0 : 7.2; // 챕터 3 심연 구멍 내부 이동 속도 가속
         this.ventProgress += (ventSpeed * dt) / segDist;
 
-        // 천장 위(y=4.4m)에서 이동하여 씬 광원 개수(NUM_POINT_LIGHTS) 변화를 원천 방지!
+        // 챕터 1: 천장 위(y=4.4m), 챕터 3: 철창 바닥 아래 보이지 않는 깊은 심연 구멍(y=-24.0m)에서 이동
         const curX = THREE.MathUtils.lerp(fromW.x, toW.x, Math.min(1, this.ventProgress));
         const curZ = THREE.MathUtils.lerp(fromW.z, toW.z, Math.min(1, this.ventProgress));
-        this.pos.set(curX, 4.4, curZ);
+        this.pos.set(curX, isCh3 ? -24.0 : 4.4, curZ);
         this.targetYaw = Math.atan2(toW.x - fromW.x, toW.z - fromW.z);
 
-        // 천장 환기구 철판 쾅쾅거리는 소리 재생
+        // 천장 환기구 또는 심연 철골 기둥을 타고 울리는 쾅쾅거리는 금속 진동음 재생
         this.ventClankTimer -= dt;
         if (this.ventClankTimer <= 0) {
           this.ventClankTimer = 0.68 + Math.random() * 0.35;
           const d = Math.hypot(playerPos.x - curX, playerPos.z - curZ);
-          if (d < 25.0) {
-            const vVol = Math.pow(1 - d / 25.0, 1.5) * 0.36;
+          if (d < 28.0) {
+            const vVol = Math.pow(1 - d / 28.0, 1.5) * 0.38;
             sound.playVentClank(vVol);
           }
         }
@@ -1428,12 +1438,15 @@ export class MonsterAI {
             this.targetVentIdx = this.pickNextVentIndex(this.currentVentIdx, playerPos);
             this.updateBioSignHUD();
           } else {
-            // 목표 환기구 도착 -> 그릴 뚜껑을 열고 지상으로 출현!
+            // 목표 지점 도착 -> 챕터 3에서는 심연 구멍 아래에서 플랫폼 위로 수직 돌진 상승!
             this.state = 'VENT_EMERGE';
             this.stateTimer = 1.25;
             const d = Math.hypot(playerPos.x - toW.x, playerPos.z - toW.z);
-            if (d < 26.0) {
-              sound.playVentGrate(Math.max(0.08, (1 - d / 26.0) * 0.42));
+            if (d < 30.0) {
+              sound.playVentGrate(Math.max(0.10, (1 - d / 30.0) * 0.48));
+            }
+            if (isCh3 && d < 24.0 && this.callbacks.onToast) {
+              this.callbacks.onToast(`[ABYSS SURGE] 발밑 깊은 심연 구멍에서 괴물이 ${toNode.zone || '플랫폼'} 위로 수직 돌진해 올라옵니다!`, 'danger');
             }
             this.updateBioSignHUD();
           }
@@ -1442,7 +1455,8 @@ export class MonsterAI {
       }
 
       case 'VENT_EMERGE': {
-        animMode = 'idle';
+        const isCh3 = this.chapterId === 'chapter3';
+        animMode = isCh3 ? 'chase' : 'idle';
         this.stateTimer -= dt;
         const vm = this.ventMeshes[this.currentVentIdx];
         const groundY = vm && vm.y !== undefined ? vm.y : (this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0);
@@ -1452,9 +1466,11 @@ export class MonsterAI {
           this.pos.x = vm.x;
           this.pos.z = vm.z;
         }
-        // 천장/바닥 환기구에서 지면(groundY)으로 부드럽게 착지
+        // 챕터 3: 발밑 심연 구멍(groundY - 22.0m)에서 철창 플랫폼(groundY)으로 수직 상승 돌진!
+        // 챕터 1: 천장 환기구(groundY + 2.4m)에서 지면(groundY)으로 착지
         const ratio = 1.0 - Math.max(0, this.stateTimer / 1.25);
-        this.pos.y = THREE.MathUtils.lerp(groundY + 2.4, groundY, Math.min(1, ratio * 1.2));
+        const startY = isCh3 ? (groundY - 22.0) : (groundY + 2.4);
+        this.pos.y = THREE.MathUtils.lerp(startY, groundY, Math.min(1, ratio * 1.15));
 
         if (this.stateTimer <= 0) {
           this.pos.y = groundY;
@@ -1469,7 +1485,11 @@ export class MonsterAI {
             Math.random() < 0.6
           ) {
             this.sabotageCooldown = 80;
-            this.interactionSystem.triggerBlackout('전기실 환기구에서 출현한 괴물이 주 배전반을 습격하여 정전이 발생했습니다!');
+            this.interactionSystem.triggerBlackout(
+              isCh3
+                ? '심연에서 치솟은 괴물이 수직 갱도 주 배전 케이블을 끊어 정전이 발생했습니다!'
+                : '전기실 환기구에서 출현한 괴물이 주 배전반을 습격하여 정전이 발생했습니다!'
+            );
           }
 
           if (this.investigateTarget) {
@@ -1488,6 +1508,7 @@ export class MonsterAI {
       }
 
       case 'VENT_ENTER': {
+        const isCh3 = this.chapterId === 'chapter3';
         animMode = 'idle';
         this.stateTimer -= dt;
         const vm = this.ventMeshes[this.currentVentIdx];
@@ -1496,11 +1517,12 @@ export class MonsterAI {
           vm.gratePivot.rotation.x = THREE.MathUtils.lerp(vm.gratePivot.rotation.x, -1.2, dt * 8);
         }
         const ratio = 1.0 - Math.max(0, this.stateTimer / 1.1);
-        this.pos.y = THREE.MathUtils.lerp(groundY, groundY + 3.2, Math.min(1, ratio));
+        const endY = isCh3 ? (groundY - 22.0) : (groundY + 3.2);
+        this.pos.y = THREE.MathUtils.lerp(groundY, endY, Math.min(1, ratio));
 
         if (this.stateTimer <= 0) {
           if (vm) vm.gratePivot.rotation.x = 0;
-          this.pos.y = 4.4;
+          this.pos.y = isCh3 ? -24.0 : 4.4;
           this.state = 'VENT_LURK';
           this.ventHopsRemaining = 1 + Math.floor(Math.random() * 2);
           this.targetVentIdx = this.pickNextVentIndex(this.currentVentIdx, playerPos);
