@@ -288,18 +288,24 @@ function createTacticalArmAndHand(isLeft, sleeveMat, gloveMat, armorMat) {
   fingersGroup.rotation.z = isLeft ? -0.15 : 0.15;
   armRoot.add(fingersGroup);
 
-  // 엄지손가락 (Thumb) - 2단 관절
+  // 엄지손가락 (Thumb) - 2단 관절: 손잡이/아이템을 단단히 감싸쥐는 전술 파지
   const thumbBase = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.020, 0.032), gloveMat);
-  thumbBase.position.set(isLeft ? -0.036 : 0.036, 0.010, -0.012);
-  thumbBase.rotation.set(0.18, isLeft ? -0.55 : 0.55, isLeft ? -0.32 : 0.32);
+  if (isLeft) {
+    thumbBase.position.set(-0.036, 0.010, -0.012);
+    thumbBase.rotation.set(0.25, -0.65, -0.35);
+  } else {
+    // 오른손: 아이템 상단을 단단히 누르며 감싸는 파지
+    thumbBase.position.set(0.034, 0.008, -0.015);
+    thumbBase.rotation.set(0.38, 0.78, 0.42);
+  }
   fingersGroup.add(thumbBase);
 
   const thumbTip = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.018, 0.026), gloveMat);
   thumbTip.position.set(0, -0.006, -0.026);
-  thumbTip.rotation.x = 0.45;
+  thumbTip.rotation.x = isLeft ? 0.55 : 0.75;
   thumbBase.add(thumbTip);
 
-  // 4개 손가락 (검지, 중지, 약지, 소지) - 각각 3단 관절로 자연스러운 파지 형태
+  // 4개 손가락 (검지, 중지, 약지, 소지) - 각각 3단 관절로 원형 파지(Tight Grip Loop)
   const fingerOffsets = isLeft
     ? [-0.022, -0.007, 0.008, 0.023] // 검지 -> 소지
     : [0.022, 0.007, -0.008, -0.023];
@@ -310,22 +316,22 @@ function createTacticalArmAndHand(isLeft, sleeveMat, gloveMat, armorMat) {
     const fx = fingerOffsets[i];
     const fl = fingerLengths[i];
 
-    // 기저 마디 (Base Phalanx)
+    // 기저 마디 (Base Phalanx) - 아이템을 향해 아래/안쪽으로 깊게 꺾임
     const joint1 = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.016, fl), gloveMat);
     joint1.position.set(fx, 0.002, -0.040);
-    joint1.rotation.x = 0.42 + i * 0.04;
+    joint1.rotation.x = isLeft ? (0.65 + i * 0.04) : (0.88 + i * 0.05);
     fingersGroup.add(joint1);
 
-    // 중간 마디 (Middle Phalanx)
+    // 중간 마디 (Middle Phalanx) - 아이템 둘레를 감싸안음
     const joint2 = new THREE.Mesh(new THREE.BoxGeometry(0.013, 0.014, fl * 0.85), gloveMat);
     joint2.position.set(0, -0.006, -fl * 0.85);
-    joint2.rotation.x = 0.55;
+    joint2.rotation.x = isLeft ? 0.85 : 1.15;
     joint1.add(joint2);
 
-    // 끝 마디 (Distal Phalanx)
+    // 끝 마디 (Distal Phalanx) - 손바닥 안쪽으로 확실히 말려들어가 꽉 쥠
     const joint3 = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.013, fl * 0.70), gloveMat);
     joint3.position.set(0, -0.005, -fl * 0.70);
-    joint3.rotation.x = 0.45;
+    joint3.rotation.x = isLeft ? 0.65 : 0.85;
     joint2.add(joint3);
   }
 
@@ -550,9 +556,9 @@ export class FirstPersonViewModel {
     this.rightArmGroup.add(rightArmData.armRoot);
     this.rightArmData = rightArmData;
 
-    // 2. 들고 있는 3D 아이템이 장착되는 앵커
+    // 2. 들고 있는 3D 아이템이 장착되는 앵커 (손바닥 중심 및 굽혀진 손가락 관절 고리 안쪽에 정확히 밀착)
     this.heldItemAnchor = new THREE.Group();
-    this.heldItemAnchor.position.set(-0.010, 0.065, -0.060);
+    this.heldItemAnchor.position.set(-0.005, 0.008, -0.048);
     this.rightArmGroup.add(this.heldItemAnchor);
 
     this.itemPool = {};
@@ -560,21 +566,21 @@ export class FirstPersonViewModel {
     for (const type of itemTypes) {
       const { group, updateItemAnim } = buildItemMesh3D(type);
       if (type === 'energy_cell') {
-        group.scale.setScalar(0.68);
-        group.rotation.set(0.18, -0.45, 0.08);
-        group.position.set(0, 0.02, 0);
+        group.scale.setScalar(0.64);
+        group.rotation.set(0.15, -0.42, 0.06);
+        group.position.set(0, 0.002, 0.005);
       } else if (type === 'security_keycard') {
-        group.scale.setScalar(0.76);
-        group.rotation.set(-0.28, -0.38, 0.12);
-        group.position.set(0, 0.015, 0.01);
-      } else if (type === 'coolant_valve') {
         group.scale.setScalar(0.72);
-        group.rotation.set(0.22, -0.52, 0.15);
-        group.position.set(-0.01, 0.025, 0);
+        group.rotation.set(-0.16, -0.34, 0.08);
+        group.position.set(0, 0.004, 0.006);
+      } else if (type === 'coolant_valve') {
+        group.scale.setScalar(0.66);
+        group.rotation.set(0.18, -0.46, 0.12);
+        group.position.set(-0.006, 0.006, 0.004);
       } else if (type === 'flare') {
-        group.scale.setScalar(0.78);
-        group.rotation.set(0.28, -0.2, 0.12);
-        group.position.set(0, 0.03, 0);
+        group.scale.setScalar(0.72);
+        group.rotation.set(0.24, -0.16, 0.10);
+        group.position.set(0, -0.004, 0.012);
       }
       group.visible = false;
       this.heldItemAnchor.add(group);

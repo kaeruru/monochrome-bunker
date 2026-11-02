@@ -343,8 +343,14 @@ class MonochromeBunker3D {
         if (this.monsterAI) {
           this.monsterAI.isRemoteControlled = !info.isHost;
         }
-        if (info.mapId && info.mapId !== this.activeChapterId) {
-          this.loadChapter(info.mapId);
+        const targetMap = info.mapId || (this.networkManager ? this.networkManager.mapId : null) || 'chapter2';
+        this.selectedChapterId = targetMap;
+        this.selectedCoopMapId = targetMap;
+        if (this.networkManager) {
+          this.networkManager.mapId = targetMap;
+        }
+        if (targetMap !== this.activeChapterId) {
+          this.loadChapter(targetMap);
         }
         if (info.matchSeed) {
           this.matchSeed = info.matchSeed;
@@ -378,17 +384,26 @@ class MonochromeBunker3D {
         this.updateRoomRoster();
       },
       onGameStarted: (msg) => {
+        const targetMap = msg.mapId || (this.networkManager ? this.networkManager.mapId : null) || this.selectedCoopMapId || 'chapter2';
+        this.selectedChapterId = targetMap;
+        this.selectedCoopMapId = targetMap;
+        if (this.networkManager) {
+          this.networkManager.mapId = targetMap;
+        }
         if (msg.matchSeed) {
           this.matchSeed = msg.matchSeed;
         }
-        if (msg.mapId && msg.mapId !== this.activeChapterId) {
-          this.loadChapter(msg.mapId);
+        if (targetMap !== this.activeChapterId) {
+          this.loadChapter(targetMap);
         }
         this.showGameToast('[MISSION LAUNCH] 전 대원 작전 구역으로 일제히 투입됩니다!', 'success');
-        this.deployMission();
+        this.deployMission(targetMap);
       },
       onMapChanged: (mapId) => {
-        if (this.networkManager) this.networkManager.mapId = mapId;
+        const targetMap = mapId || 'chapter2';
+        this.selectedChapterId = targetMap;
+        this.selectedCoopMapId = targetMap;
+        if (this.networkManager) this.networkManager.mapId = targetMap;
         this.updateRoomRoster();
       },
       onRoomError: (err) => {
@@ -1387,7 +1402,8 @@ class MonochromeBunker3D {
     if (this.btnHostRoom) {
       this.btnHostRoom.addEventListener('click', () => {
         this.callsign = (this.callsignInput?.value || 'OPERATIVE-01').trim();
-        const mapToHost = this.selectedCoopMapId || this.selectedChapterId || 'chapter1';
+        const mapToHost = this.selectedCoopMapId || this.selectedChapterId || 'chapter2';
+        if (this.networkManager) this.networkManager.mapId = mapToHost;
         this.networkManager.createRoom(this.callsign, this.suitColor, '', mapToHost);
       });
     }
@@ -1424,7 +1440,8 @@ class MonochromeBunker3D {
           this.showGameToast('[NET] 작전 개시 명령은 지휘관(호스트)만 하달할 수 있습니다.', 'warn');
           return;
         }
-        const mapToLaunch = this.selectedCoopMapId || this.activeChapterId || 'chapter2';
+        const mapToLaunch = this.selectedCoopMapId || (this.networkManager ? this.networkManager.mapId : null) || this.selectedChapterId || 'chapter2';
+        if (this.networkManager) this.networkManager.mapId = mapToLaunch;
         this.networkManager.startGame(mapToLaunch);
       });
     }
@@ -1642,7 +1659,7 @@ class MonochromeBunker3D {
     }
   }
 
-  deployMission() {
+  deployMission(forcedChapterId = null) {
     if (this.isDeploying) return;
     this.isDeploying = true;
 
@@ -1650,7 +1667,13 @@ class MonochromeBunker3D {
       this.gameSetupModalEl.classList.add('hidden');
     }
 
-    const targetChapter = this.selectedChapterId || 'chapter2';
+    const targetChapter = forcedChapterId
+      || (this.networkManager?.roomId ? this.networkManager.mapId : null)
+      || this.selectedCoopMapId
+      || this.selectedChapterId
+      || 'chapter2';
+    this.selectedChapterId = targetChapter;
+    this.selectedCoopMapId = targetChapter;
     this.callsign = (this.callsignInput?.value || 'OPERATIVE-01').trim();
 
     // 전술 로딩 스크린 생성 및 깔끔한 진입 애니메이션

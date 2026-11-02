@@ -144,6 +144,7 @@ export class NetworkManager {
           this.roomId = msg.roomId;
           this.playerId = msg.playerId;
           this.isHost = msg.isHost;
+          this.mapId = msg.mapId || 'chapter2';
 
           console.log(`[NET] Joined room: ${this.roomId} as ${this.isHost ? 'HOST' : 'CLIENT'}`);
 
@@ -162,7 +163,7 @@ export class NetworkManager {
               roomId: this.roomId,
               playerId: this.playerId,
               isHost: this.isHost,
-              mapId: msg.mapId || 'chapter1',
+              mapId: this.mapId,
               matchSeed: this.matchSeed,
               players: msg.players
             });
@@ -198,6 +199,9 @@ export class NetworkManager {
           if (msg.matchSeed) {
             this.matchSeed = msg.matchSeed;
           }
+          if (msg.mapId) {
+            this.mapId = msg.mapId;
+          }
           if (this.callbacks.onGameStarted) {
             this.callbacks.onGameStarted(msg);
           }
@@ -205,6 +209,9 @@ export class NetworkManager {
         }
 
         case 'map_changed': {
+          if (msg.mapId) {
+            this.mapId = msg.mapId;
+          }
           if (this.callbacks.onMapChanged) {
             this.callbacks.onMapChanged(msg.mapId);
           }
