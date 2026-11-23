@@ -229,12 +229,36 @@ export class MonsterAI {
     this.waterEdgeFrustrationTimer = 0;
     this.chaseWindupTimer = 0;
     this.ch3SurgeData = null;
+    this.ch3PillarCenter = tileToWorld(24, 15);
+    this.ch3PillarRadius = 5.98;
+    this.ch3PillarY = -52.0;
+    this.ch3PillarAngle = Math.PI;
+    this.ch3PillarTargetAngle = Math.PI;
+    this.ch3LastAnnouncedTier = -1;
+    this.ch3StrikeCooldown = 6.0;
+    this.ch3StrikeData = null;
     if (this.monster?.root) {
       this.monster.root.rotation.x = 0;
       this.monster.root.rotation.z = 0;
     }
     this.isPlayerSnared = false;
     this.snareEscapeProgress = 0;
+
+    if (this.chapterId === 'chapter3') {
+      const cx = this.ch3PillarCenter.x;
+      const cz = this.ch3PillarCenter.z;
+      const r = this.ch3PillarRadius;
+      this.pos.set(cx + Math.sin(this.ch3PillarAngle) * r, this.ch3PillarY, cz + Math.cos(this.ch3PillarAngle) * r);
+      this.yaw = this.ch3PillarAngle + Math.PI;
+      this.targetYaw = this.yaw;
+      this.monster.root.position.copy(this.pos);
+      this.monster.root.rotation.y = this.yaw;
+      this.state = 'PILLAR_CLIMB';
+      this.stateTimer = 0;
+      this.setHeartCoreColor(0xff5518);
+      this.updateBioSignHUD();
+      return;
+    }
 
     if (this.chapterId === 'chapter2') {
       this.buildChapter2TrioNodes();
@@ -727,6 +751,11 @@ export class MonsterAI {
    */
   notifyPlayerSound(px, pz, hearingRadius, soundLabel = '소음') {
     if (this.isKillingPlayer || this.state === 'STUNNED' || this.state === 'CHASE') return;
+    if (this.chapterId === 'chapter3') {
+      const angle = Math.atan2(px - this.ch3PillarCenter.x, pz - this.ch3PillarCenter.z);
+      this.ch3PillarTargetAngle = angle;
+      return;
+    }
 
     const isCh2 = this.chapterId === 'chapter2';
     const inWater = this.map && this.map.isWaterAt ? this.map.isWaterAt(px, pz) : false;
@@ -818,26 +847,41 @@ export class MonsterAI {
     }
     if (!this.interactionSystem || !this.interactionSystem.activeFlares) return false;
 
+    const isCh3 = this.chapterId === 'chapter3';
     for (const flare of this.interactionSystem.activeFlares) {
       if (flare.life <= 0) continue;
       const fx = flare.mesh.position.x;
+      const fy = flare.mesh.position.y;
       const fz = flare.mesh.position.z;
-      const dist = Math.hypot(fx - this.pos.x, fz - this.pos.z);
+      const dist = isCh3
+        ? Math.hypot(fx - this.pos.x, fy - this.pos.y, fz - this.pos.z)
+        : Math.hypot(fx - this.pos.x, fz - this.pos.z);
 
-      if (dist <= 6.2 && this.hasGridLineOfSight(this.pos.x, this.pos.z, fx, fz)) {
+      const maxRadius = isCh3 ? 9.5 : 6.2;
+      if (dist <= maxRadius && (isCh3 || this.hasGridLineOfSight(this.pos.x, this.pos.z, fx, fz))) {
         // 조명탄 섬광에 의해 괴물 실명/스턴!
         this.state = 'STUNNED';
         this.stateTimer = 4.5;
-        this.stunCooldown = 11.0; // 연속 무한 스턴 방지(벤트 도주 시간 확보)
+        this.stunCooldown = 11.0;
         this.path = [];
         this.bashingDoor = null;
+        if (isCh3) {
+          this.ch3PillarY = Math.max(-52.0, (this.ch3PillarY || 0) - 10.0);
+          this.ch3StrikeData = null;
+          this.ch3StrikeCooldown = 8.0;
+        }
         this.setHeartCoreColor(0x55ffff);
         sound.playMonsterStun(0.48);
         if (this.callbacks.onFlareRetaliation) {
           this.callbacks.onFlareRetaliation();
         }
         if (this.callbacks.onToast) {
-          this.callbacks.onToast('[COUNTERMEASURE] 조명탄의 강렬한 섬광이 괴물의 시각 센서를 마비시켰습니다! (4.5초 스턴)', 'success');
+          this.callbacks.onToast(
+            isCh3
+              ? '[COUNTERMEASURE] 조명탄 섬광에 의해 지열 골리앗이 중앙 기둥 아래로 추락했습니다! (4.5초 스턴)'
+              : '[COUNTERMEASURE] 조명탄의 강렬한 섬광이 괴물의 시각 센서를 마비시켰습니다! (4.5초 스턴)',
+            'success'
+          );
         }
         this.updateBioSignHUD();
         return true;
@@ -1382,6 +1426,7 @@ export class MonsterAI {
       }
 
       const prevX = this.pos.x;
+      const prevY = this.pos.y;
       const prevZ = this.pos.z;
       // 비-호스트 멀티플레이 클라이언트: 무거운 AI 길찾기/레이캐스트를 건너뛰고 부드러운 위치/회전 보간 및 로컬 위협/피습 판정 처리
       this.pos.lerp(this.targetSyncPos, Math.min(1, dt * 14));
@@ -1390,9 +1435,18 @@ export class MonsterAI {
       while (diff < -Math.PI) diff += Math.PI * 2;
       this.yaw += diff * Math.min(1, dt * 14);
 
-      const actualDist = Math.hypot(this.pos.x - prevX, this.pos.z - prevZ);
+      const actualDist = Math.hypot(
+        this.pos.x - prevX,
+        this.chapterId === 'chapter3' ? (this.pos.y - prevY) : 0,
+        this.pos.z - prevZ
+      );
       this.monster.root.position.copy(this.pos);
       this.monster.root.rotation.y = this.yaw;
+      this.monster.root.rotation.x = THREE.MathUtils.lerp(
+        this.monster.root.rotation.x,
+        (this.chapterId === 'chapter3' && this.syncAnimMode === 'climb') ? -0.18 : 0,
+        dt * 8
+      );
       this.monster.root.visible = !(this.chapterId === 'chapter1' && this.state === 'VENT_LURK');
       this.monster.update(dt, this.syncAnimMode || 'stalk', actualDist);
 
@@ -1416,28 +1470,31 @@ export class MonsterAI {
         this.snareEntity.update(dt, this.syncSnareAnimMode || 'stalk');
       }
 
-      const distToPlayer = Math.hypot(playerPos.x - this.pos.x, playerPos.z - this.pos.z);
-      const maxHearDist = 26.0;
+      const isCh3 = this.chapterId === 'chapter3';
+      const distToPlayer = isCh3
+        ? Math.hypot(playerPos.x - this.pos.x, playerPos.y - this.pos.y, playerPos.z - this.pos.z)
+        : Math.hypot(playerPos.x - this.pos.x, playerPos.z - this.pos.z);
+      const maxHearDist = isCh3 ? 34.0 : 26.0;
       const spatialVol = Math.max(0, Math.pow(1 - Math.min(distToPlayer, maxHearDist) / maxHearDist, 1.6)) * 0.48;
       this.monster.soundVolume = (this.state === 'VENT_LURK') ? 0 : spatialVol;
 
       if (this.vignetteEl) {
         if (this.state !== 'VENT_LURK' && distToPlayer < 14.0) {
           const threat = Math.pow(1 - distToPlayer / 14.0, 1.5);
-          const redAlpha = (this.state === 'CHASE' ? 0.42 : 0.22) * threat;
+          const redAlpha = (this.state === 'CHASE' || this.state === 'PILLAR_LOCK' || this.state === 'PILLAR_LUNGE' ? 0.42 : 0.22) * threat;
           this.vignetteEl.style.boxShadow = `inset 0 0 ${90 + threat * 50}px rgba(${Math.floor(180 * threat)}, 0, 0, ${0.92 + redAlpha * 0.08})`;
         } else {
           this.vignetteEl.style.boxShadow = 'inset 0 0 90px rgba(0, 0, 0, 0.95)';
         }
       }
 
-      // 비-호스트 로컬 피습 판정 (동기화된 CHASE 괴물 또는 매복자 악어와 실제 접촉 시)
+      // 비-호스트 로컬 피습 판정 (동기화된 CHASE / PILLAR_LUNGE 괴물 또는 매복자 악어와 접촉 시)
       const playerFootY = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(playerPos.x, playerPos.z) : 0;
-      if (this.state === 'CHASE' && this.monster.root.visible) {
+      if ((this.state === 'CHASE' || this.state === 'PILLAR_LUNGE') && this.monster.root.visible) {
         const isCh2 = this.chapterId === 'chapter2';
-        const catchRadius = isCh2 ? 1.55 : 1.65;
+        const catchRadius = isCh3 ? 1.95 : (isCh2 ? 1.55 : 1.65);
         const elevDiff = Math.abs(this.pos.y - playerFootY);
-        const canCatchElev = isCh2 ? (elevDiff < 1.65) : (elevDiff < 0.95);
+        const canCatchElev = isCh3 ? (elevDiff < 2.2) : (isCh2 ? (elevDiff < 1.65) : (elevDiff < 0.95));
         if (distToPlayer < catchRadius && canCatchElev) {
           this.triggerPlayerKill(playerPos, playerCamera);
           return;
@@ -1579,9 +1636,12 @@ export class MonsterAI {
     // 3. 점화된 조명탄(Flare)에 의한 스턴 체크
     this.checkFlareStun();
 
-    // 4. 플레이어와의 거리 기반 입체 음향 볼륨 계산
-    const distToPlayer = Math.hypot(playerPos.x - this.pos.x, playerPos.z - this.pos.z);
-    const maxHearDist = 26.0;
+    // 4. 플레이어와의 거리 기반 입체 음향 볼륨 계산 (챕터 3는 수직 높이 포함 3D 거리)
+    const isCh3 = this.chapterId === 'chapter3';
+    const distToPlayer = isCh3
+      ? Math.hypot(playerPos.x - this.pos.x, playerPos.y - this.pos.y, playerPos.z - this.pos.z)
+      : Math.hypot(playerPos.x - this.pos.x, playerPos.z - this.pos.z);
+    const maxHearDist = isCh3 ? 34.0 : 26.0;
     const spatialVol = Math.max(0, Math.pow(1 - Math.min(distToPlayer, maxHearDist) / maxHearDist, 1.6)) * 0.48;
     this.monster.soundVolume = (this.state === 'VENT_LURK') ? 0 : spatialVol;
 
@@ -1589,7 +1649,7 @@ export class MonsterAI {
     if (this.vignetteEl) {
       if (this.state !== 'VENT_LURK' && distToPlayer < 14.0) {
         const threat = Math.pow(1 - distToPlayer / 14.0, 1.5);
-        const redAlpha = (this.state === 'CHASE' ? 0.42 : 0.22) * threat;
+        const redAlpha = (this.state === 'CHASE' || this.state === 'PILLAR_LOCK' || this.state === 'PILLAR_LUNGE' ? 0.42 : 0.22) * threat;
         this.vignetteEl.style.boxShadow = `inset 0 0 ${90 + threat * 50}px rgba(${Math.floor(180 * threat)}, 0, 0, ${0.92 + redAlpha * 0.08})`;
       } else {
         this.vignetteEl.style.boxShadow = 'inset 0 0 90px rgba(0, 0, 0, 0.95)';
@@ -1597,6 +1657,12 @@ export class MonsterAI {
     }
 
     const isBlackout = this.interactionSystem ? this.interactionSystem.isBlackout : false;
+
+    if (isCh3) {
+      this.updateChapter3PillarBoss(dt, playerPos, playerCamera, targets, isBlackout, distToPlayer);
+      return;
+    }
+
     let animMode = 'idle';
 
     // -------------------------------------------------------------------------
@@ -2196,6 +2262,297 @@ export class MonsterAI {
   }
 
   /**
+   * 제3장 전용 중앙 거대 코어 기둥 수직 등반 보스 AI (지열 골리앗)
+   * - 복도를 쫓아다니는 방식이 아니라 심연 -52m에서부터 중앙 거대 기둥 외벽을 타고 점차 위로 기어오릅니다.
+   * - 기둥 위에서 시야가 확보된 대원을 포착(PILLAR_LOCK)한 뒤 기둥에서 직선 일격(PILLAR_LUNGE)을 가하고
+   *   다시 기둥으로 복귀(PILLAR_RETRACT)하여 등반을 이어갑니다.
+   */
+  updateChapter3PillarBoss(dt, playerPos, playerCamera, targets, isBlackout, distToPlayer) {
+    const cx = this.ch3PillarCenter.x;
+    const cz = this.ch3PillarCenter.z;
+    const R = this.ch3PillarRadius;
+    const frameStartY = this.pos.y;
+    const frameStartX = this.pos.x;
+    const frameStartZ = this.pos.z;
+
+    if (this.ch3StrikeCooldown > 0) this.ch3StrikeCooldown -= dt;
+
+    const gondolaPct = this.interactionSystem ? (this.interactionSystem.gondolaProgress || 0) : 0;
+    const progRatio = Math.min(1.0, Math.max(0, gondolaPct / 100));
+    const baseCeilingY = THREE.MathUtils.lerp(-18.0, 13.4, Math.pow(progRatio, 0.85));
+    const speedScale = this.difficulty === 'easy' ? 0.82 : (this.difficulty === 'hard' ? 1.24 : 1.0);
+
+    let animMode = 'climb';
+
+    // 가장 가깝거나 손전등/질주로 노출된 대원 방향 산출
+    let focusTarget = targets[0];
+    let bestScore = Infinity;
+    for (let i = 0; i < targets.length; i++) {
+      const t = targets[i];
+      const d = Math.hypot(t.pos.x - cx, t.pos.z - cz);
+      const score = d - (t.flashlightOn ? 4.5 : 0) - (t.isSprinting ? 3.5 : 0);
+      if (score < bestScore) {
+        bestScore = score;
+        focusTarget = t;
+      }
+    }
+    this.ch3PillarTargetAngle = Math.atan2(focusTarget.pos.x - cx, focusTarget.pos.z - cz);
+
+    switch (this.state) {
+      case 'STUNNED': {
+        animMode = 'attack';
+        this.stateTimer -= dt;
+        const targetPosX = cx + Math.sin(this.ch3PillarAngle) * R;
+        const targetPosZ = cz + Math.cos(this.ch3PillarAngle) * R;
+        this.pos.x = THREE.MathUtils.lerp(this.pos.x, targetPosX, Math.min(1, dt * 8));
+        this.pos.z = THREE.MathUtils.lerp(this.pos.z, targetPosZ, Math.min(1, dt * 8));
+        this.pos.y = THREE.MathUtils.lerp(this.pos.y, this.ch3PillarY, Math.min(1, dt * 5));
+        this.targetYaw = this.ch3PillarAngle + Math.sin(this.stateTimer * 12) * 0.4;
+
+        if (this.stateTimer <= 0) {
+          this.state = 'PILLAR_CLIMB';
+          this.setHeartCoreColor(0xff5518);
+          this.updateBioSignHUD();
+        }
+        break;
+      }
+
+      case 'PILLAR_LOCK': {
+        animMode = 'attack';
+        this.stateTimer -= dt;
+        // 기둥에서 타깃을 향해 몸을 돌려 포효하며 조준
+        let angDiff = this.ch3PillarTargetAngle - this.ch3PillarAngle;
+        while (angDiff > Math.PI) angDiff -= Math.PI * 2;
+        while (angDiff < -Math.PI) angDiff += Math.PI * 2;
+        this.ch3PillarAngle += angDiff * Math.min(1, dt * 2.2);
+
+        this.pos.set(
+          cx + Math.sin(this.ch3PillarAngle) * R,
+          this.ch3PillarY,
+          cz + Math.cos(this.ch3PillarAngle) * R
+        );
+        this.targetYaw = Math.atan2(focusTarget.pos.x - this.pos.x, focusTarget.pos.z - this.pos.z);
+
+        const targetFootY = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(focusTarget.pos.x, focusTarget.pos.z) : 0;
+        const distToCenter = Math.hypot(focusTarget.pos.x - cx, focusTarget.pos.z - cz);
+        const canSeeTarget = this.hasGridLineOfSight(this.pos.x, this.pos.z, focusTarget.pos.x, focusTarget.pos.z);
+        const hiddenLow = !canSeeTarget || (!focusTarget.flashlightOn && !focusTarget.isMoving && distToCenter > 10.5);
+
+        if (hiddenLow && this.stateTimer < 1.1) {
+          this.state = 'PILLAR_CLIMB';
+          this.ch3StrikeCooldown = 3.5;
+          this.setHeartCoreColor(0xff5518);
+          break;
+        }
+
+        if (this.stateTimer <= 0) {
+          // 기둥에서 목표를 향해 직선 일격 도약 개시
+          const dx = focusTarget.pos.x - cx;
+          const dz = focusTarget.pos.z - cz;
+          const dHoriz = Math.max(0.1, Math.hypot(dx, dz));
+          const maxStrikeRadius = 15.0;
+          const clampedRadius = Math.min(dHoriz, maxStrikeRadius);
+          const landX = cx + (dx / dHoriz) * clampedRadius;
+          const landZ = cz + (dz / dHoriz) * clampedRadius;
+
+          this.ch3StrikeData = {
+            startX: this.pos.x,
+            startY: this.pos.y,
+            startZ: this.pos.z,
+            landX,
+            landY: targetFootY,
+            landZ,
+            yaw: Math.atan2(landX - this.pos.x, landZ - this.pos.z)
+          };
+          this.state = 'PILLAR_LUNGE';
+          this.stateTimer = 0.85;
+          this.targetYaw = this.ch3StrikeData.yaw;
+          sound.playMonsterScreech(0.65);
+          this.updateBioSignHUD();
+        }
+        break;
+      }
+
+      case 'PILLAR_LUNGE': {
+        animMode = 'chase';
+        this.stateTimer -= dt;
+        const data = this.ch3StrikeData;
+        if (!data) {
+          this.state = 'PILLAR_CLIMB';
+          break;
+        }
+        const totalT = 0.85;
+        const ratio = Math.max(0, Math.min(1.0, 1.0 - this.stateTimer / totalT));
+        const ease = 1.0 - Math.pow(1.0 - ratio, 2.2);
+
+        this.pos.x = THREE.MathUtils.lerp(data.startX, data.landX, ease);
+        this.pos.z = THREE.MathUtils.lerp(data.startZ, data.landZ, ease);
+        this.pos.y = THREE.MathUtils.lerp(data.startY, data.landY, ease) + Math.sin(ratio * Math.PI) * 1.4;
+        this.targetYaw = data.yaw;
+
+        // 로컬 플레이어 접촉 판정
+        const localFootY = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(playerPos.x, playerPos.z) : 0;
+        const dLocal = Math.hypot(playerPos.x - this.pos.x, playerPos.z - this.pos.z);
+        if (dLocal < 1.95 && Math.abs(this.pos.y - localFootY) < 2.2) {
+          this.triggerPlayerKill(playerPos, playerCamera);
+          return;
+        }
+
+        if (this.stateTimer <= 0) {
+          sound.playDoorBash(0.88);
+          if (this.callbacks.onScreenShake) {
+            const shakeDist = Math.hypot(playerPos.x - this.pos.x, playerPos.y - this.pos.y, playerPos.z - this.pos.z);
+            const intensity = Math.max(0, 1.0 - shakeDist / 24.0) * 0.14;
+            if (intensity > 0.01) this.callbacks.onScreenShake(intensity, 0.42);
+          }
+          this.state = 'PILLAR_RETRACT';
+          this.stateTimer = 0.9;
+          this.setHeartCoreColor(0xffaa33);
+        }
+        break;
+      }
+
+      case 'PILLAR_RETRACT': {
+        animMode = 'climb';
+        this.stateTimer -= dt;
+        const totalT = 0.9;
+        const ratio = Math.max(0, Math.min(1.0, 1.0 - this.stateTimer / totalT));
+        const anchorX = cx + Math.sin(this.ch3PillarAngle) * R;
+        const anchorZ = cz + Math.cos(this.ch3PillarAngle) * R;
+        const startPos = this.ch3StrikeData || { landX: this.pos.x, landY: this.pos.y, landZ: this.pos.z };
+
+        this.pos.x = THREE.MathUtils.lerp(startPos.landX, anchorX, ratio);
+        this.pos.z = THREE.MathUtils.lerp(startPos.landZ, anchorZ, ratio);
+        this.pos.y = THREE.MathUtils.lerp(startPos.landY, this.ch3PillarY, ratio);
+        this.targetYaw = this.ch3PillarAngle + Math.PI;
+
+        if (this.stateTimer <= 0) {
+          this.ch3StrikeData = null;
+          this.ch3StrikeCooldown = this.difficulty === 'hard' ? 4.2 : (this.difficulty === 'easy' ? 7.2 : 5.6);
+          this.state = 'PILLAR_CLIMB';
+          this.setHeartCoreColor(0xff5518);
+          this.updateBioSignHUD();
+        }
+        break;
+      }
+
+      case 'PILLAR_CLIMB':
+      default: {
+        this.state = 'PILLAR_CLIMB';
+        animMode = 'climb';
+
+        // 1. 기둥 외벽을 따라 점진적으로 상승 (목표 고도까지 꾸준한 등반)
+        const riseSpeed = 1.25 * speedScale;
+        if (this.ch3PillarY < baseCeilingY) {
+          this.ch3PillarY = Math.min(baseCeilingY, this.ch3PillarY + riseSpeed * dt);
+        } else {
+          // 최상층(25F) 부근 도달 시 기둥 상단에서 미세 숨고르기 부유
+          this.ch3PillarY = Math.min(13.5, Math.max(-18.0, this.ch3PillarY));
+        }
+
+        // 2. 기둥 둘레를 천천히 회전하며 소음/손전등 대원 방향으로 접근
+        let angDiff = this.ch3PillarTargetAngle - this.ch3PillarAngle;
+        while (angDiff > Math.PI) angDiff -= Math.PI * 2;
+        while (angDiff < -Math.PI) angDiff += Math.PI * 2;
+        this.ch3PillarAngle += Math.sign(angDiff) * Math.min(Math.abs(angDiff), 0.45 * speedScale * dt);
+
+        this.pos.set(
+          cx + Math.sin(this.ch3PillarAngle) * R,
+          this.ch3PillarY,
+          cz + Math.cos(this.ch3PillarAngle) * R
+        );
+        this.targetYaw = this.ch3PillarAngle + Math.PI;
+
+        // 3. 거대 기둥 금속 진동음 (등을 타고 오르는 묵직한 클랭크)
+        this.ventClankTimer -= dt;
+        if (this.ventClankTimer <= 0) {
+          this.ventClankTimer = 0.95 + Math.random() * 0.4;
+          if (distToPlayer < 36.0) {
+            const vVol = Math.pow(1 - distToPlayer / 36.0, 1.4) * 0.42;
+            sound.playVentClank(vVol);
+          }
+        }
+
+        // 4. 층별 상승 알림 및 진동
+        const tiers = [
+          { y: -26, msg: '[ABYSS RISING] 중앙 거대 기둥 심연 아래에서 거대한 생체 열원이 상승하고 있습니다...' },
+          { y: -10, msg: '[ABYSS RISING] 지열 골리앗이 하층부(-10m) 기둥 외벽까지 기어올랐습니다!' },
+          { y: 0, msg: '[21F BREACH] 지열 골리앗이 21층(0m) 기둥 높이에 도달했습니다!' },
+          { y: 5.5, msg: '[23F RING] 지열 골리앗이 23층 중앙 코어 링 높이(6m)까지 기어올랐습니다!' },
+          { y: 11.2, msg: '[25F APEX ALERT] 지열 골리앗이 최상층 곤돌라 승강장 높이(12m)에 도달했습니다!' }
+        ];
+        for (let ti = 0; ti < tiers.length; ti++) {
+          if (ti > this.ch3LastAnnouncedTier && this.ch3PillarY >= tiers[ti].y) {
+            this.ch3LastAnnouncedTier = ti;
+            if (this.callbacks.onToast) {
+              this.callbacks.onToast(tiers[ti].msg, ti >= 3 ? 'danger' : 'warn');
+            }
+            if (this.callbacks.onScreenShake) {
+              this.callbacks.onScreenShake(0.06 + ti * 0.015, 0.45);
+            }
+          }
+        }
+
+        // 5. 21층~23층 통과 시 중앙 동력 케이블 정전 습격
+        if (
+          this.ch3PillarY >= 0 &&
+          this.sabotageCooldown <= 0 &&
+          this.interactionSystem &&
+          !this.interactionSystem.isBlackout &&
+          Math.random() < 0.018 * dt * 60
+        ) {
+          this.sabotageCooldown = 85;
+          this.interactionSystem.triggerBlackout('거대 기둥을 기어오른 괴물이 중앙 동력 케이블을 절단하여 정전이 발생했습니다!');
+        }
+
+        // 6. 노출된 대원 포착 검사 -> PILLAR_LOCK
+        if (this.ch3StrikeCooldown <= 0 && this.ch3PillarY >= -3.5) {
+          for (let i = 0; i < targets.length; i++) {
+            const t = targets[i];
+            const tFootY = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(t.pos.x, t.pos.z) : 0;
+            const dCenter = Math.hypot(t.pos.x - cx, t.pos.z - cz);
+            const yDiff = Math.abs(this.ch3PillarY - tFootY);
+            const inShaftZone = (dCenter <= 15.0 && yDiff <= 4.5) || (this.ch3PillarY >= 10.5 && tFootY >= 10.5 && dCenter <= 19.5 && t.flashlightOn);
+            if (inShaftZone && this.hasGridLineOfSight(this.pos.x, this.pos.z, t.pos.x, t.pos.z)) {
+              this.state = 'PILLAR_LOCK';
+              this.stateTimer = this.difficulty === 'hard' ? 1.65 : (this.difficulty === 'easy' ? 2.5 : 2.1);
+              this.ch3PillarTargetAngle = Math.atan2(t.pos.x - cx, t.pos.z - cz);
+              this.setHeartCoreColor(0xff2211);
+              sound.playMonsterScreech(0.55);
+              if (this.callbacks.onToast) {
+                this.callbacks.onToast('[PILLAR LOCK] 기둥 위의 지열 골리앗이 당신을 포착했습니다! 손전등을 끄고 엄폐하거나 조명탄을 던지십시오!', 'danger');
+              }
+              this.updateBioSignHUD();
+              break;
+            }
+          }
+        }
+        break;
+      }
+    }
+
+    let angleDiff = this.targetYaw - this.yaw;
+    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+    this.yaw += angleDiff * Math.min(1, dt * 10);
+
+    const verticalAndHorizDist = Math.hypot(
+      this.pos.x - frameStartX,
+      this.pos.y - frameStartY,
+      this.pos.z - frameStartZ
+    );
+    this.lastAnimMode = animMode;
+    this.monster.root.position.copy(this.pos);
+    this.monster.root.rotation.y = this.yaw;
+    this.monster.root.rotation.x = THREE.MathUtils.lerp(
+      this.monster.root.rotation.x,
+      animMode === 'climb' ? -0.18 : 0,
+      dt * 8
+    );
+    this.monster.update(dt, animMode, verticalAndHorizDist);
+  }
+
+  /**
    * 제2장 수로 삼두 괴수 중 보조 포식자 2종(#2 매복자 악어, #3 맹글 악어) 업데이트
    * - 매복자 악어: 수로를 유유히 헤엄쳐 순찰(LURK_PATROL)하거나 입구에 잠복(LURK_WAIT)하며, 2.35m 내 접근 시 100% 즉시 1인칭 안면 점프스케어 처형 발동!
    * - 맹글 악어: 천장 배관을 삐걱거리며 기어서 순찰(SNARE_CRAWL)하거나 매달려(SNARE_CEILING) 정전기 잡음을 내며, 머리 위에서 낙하하여 결박!
@@ -2631,7 +2988,17 @@ export class MonsterAI {
     this.isKillingPlayer = false;
     this.state = 'POST_KILL';
     this.postKillTimer = 3.6;
-    this.postKillTargetYaw = this.yaw + Math.PI * 0.85;
+    if (this.chapterId === 'chapter3' && this.ch3PillarCenter) {
+      const ang = Math.atan2(this.pos.x - this.ch3PillarCenter.x, this.pos.z - this.ch3PillarCenter.z);
+      this.pos.set(
+        this.ch3PillarCenter.x + Math.sin(ang) * (this.ch3PillarRadius || 5.98),
+        this.ch3PillarY || 0,
+        this.ch3PillarCenter.z + Math.cos(ang) * (this.ch3PillarRadius || 5.98)
+      );
+      this.postKillTargetYaw = ang + Math.PI;
+    } else {
+      this.postKillTargetYaw = this.yaw + Math.PI * 0.85;
+    }
     this.setHeartCoreColor(0x992200);
   }
 }

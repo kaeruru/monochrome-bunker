@@ -2931,7 +2931,13 @@ class MonochromeBunker3D {
       );
 
       // 업적 03: 침묵의 보폭 (손전등 소등 & 비질주 & 미발각 상태 120초 생존)
-      if (!this.flashlightOn && !isActivelySprinting && this.monsterAI.state !== 'CHASE') {
+      if (
+        !this.flashlightOn &&
+        !isActivelySprinting &&
+        this.monsterAI.state !== 'CHASE' &&
+        this.monsterAI.state !== 'PILLAR_LOCK' &&
+        this.monsterAI.state !== 'PILLAR_LUNGE'
+      ) {
         this.silentStrideTimer = (this.silentStrideTimer || 0) + dt;
         if (this.silentStrideTimer >= 120) {
           this.unlockAchievement('silent_stride');
@@ -2943,6 +2949,7 @@ class MonochromeBunker3D {
       // 6-2. 괴물 거리 비례 서스펜스 텐션(심장 박동음) & 전등/손전등 지지직 점멸 전조 연출
       const distToMonster = Math.hypot(
         this.playerPos.x - this.monsterAI.pos.x,
+        this.activeChapterId === 'chapter3' ? (this.playerPos.y - this.monsterAI.pos.y) : 0,
         this.playerPos.z - this.monsterAI.pos.z
       );
       const isVisible = this.monsterAI.hasGridLineOfSight

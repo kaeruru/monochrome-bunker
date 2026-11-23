@@ -1360,6 +1360,35 @@ export class MonsterEntity {
 
       this.animateWeightedLeg(this.leftLeg, 0.3, 0.22, false);
       this.animateWeightedLeg(this.rightLeg, Math.PI + 0.3, 0.22, false);
+    } else if (mode === 'climb') {
+      // 중앙 거대 기둥을 양팔과 다리로 번갈아 움켜쥐고 기어오르는 등반 모션
+      const stepDist = typeof moveDist === 'number' ? moveDist : dt * 2.2;
+      this.walkCyclePhase = (this.walkCyclePhase || 0) + (stepDist / 0.85) * Math.PI;
+      const phaseL = this.walkCyclePhase;
+      const phaseR = phaseL + Math.PI;
+      const climbIdx = Math.floor((phaseL + Math.PI / 2) / Math.PI);
+      if (this.enableSound && climbIdx !== this.lastStepIndex && stepDist > 0.0005) {
+        this.lastStepIndex = climbIdx;
+        sound.playMonsterFootstep(this.soundVolume, false);
+      }
+
+      this.pelvisGroup.position.set(0, 1.12 + Math.sin(phaseL * 2) * 0.05, 0);
+      this.pelvisGroup.rotation.z = Math.sin(phaseL) * 0.09;
+      this.pelvisGroup.rotation.y = Math.cos(phaseL) * 0.12;
+      this.thoraxGroup.rotation.x = 0.28 + Math.sin(phaseL * 2) * 0.06;
+      this.thoraxGroup.rotation.y = -Math.sin(phaseL) * 0.14;
+      this.thoraxGroup.rotation.z = Math.sin(phaseL) * 0.07;
+
+      this.leftArm.shoulderGroup.rotation.x = -2.15 + Math.sin(phaseL) * 0.58;
+      this.leftArm.shoulderGroup.rotation.z = -0.32;
+      this.leftArm.elbowGroup.rotation.x = -0.85 - Math.cos(phaseL) * 0.24;
+
+      this.rightArm.shoulderGroup.rotation.x = -2.15 + Math.sin(phaseR) * 0.58;
+      this.rightArm.shoulderGroup.rotation.z = 0.32;
+      this.rightArm.elbowGroup.rotation.x = -0.85 - Math.cos(phaseR) * 0.24;
+
+      this.animateWeightedLeg(this.leftLeg, phaseR, 0.72, false, true);
+      this.animateWeightedLeg(this.rightLeg, phaseL, 0.72, false, true);
     } else {
       // 대기(Idle): 낮게 도사린 채 흉곽을 들썩이며 경련하는 모션
       this.pelvisGroup.position.y = 1.14 + Math.sin(t * 2.0) * 0.025;
