@@ -167,6 +167,14 @@ export class NetworkManager {
               isHost: this.isHost,
               mapId: this.mapId,
               matchSeed: this.matchSeed,
+              isBlackout: Boolean(msg.isBlackout),
+              isStarted: Boolean(msg.isStarted),
+              isEscaped: Boolean(msg.isEscaped),
+              gondolaProgress: msg.gondolaProgress || 0,
+              pickedItems: msg.pickedItems || [],
+              openedLockers: msg.openedLockers || [],
+              installedCoreParts: msg.installedCoreParts || [],
+              doors: msg.doors || [],
               players: msg.players
             });
           }
@@ -240,6 +248,9 @@ export class NetworkManager {
           if (rp) {
             rp.targetPos.set(msg.x, msg.y - 1.72, msg.z);
             rp.targetYaw = msg.yaw;
+            if (typeof msg.pitch === 'number') {
+              rp.targetPitch = msg.pitch;
+            }
             rp.isMoving = msg.isMoving;
             rp.isSprinting = msg.isSprinting;
             rp.isMovingBackward = Boolean(msg.isMovingBackward);
@@ -273,6 +284,36 @@ export class NetworkManager {
           break;
         }
 
+        case 'gondola_sync': {
+          if (!this.isHost && this.callbacks.onGondolaSync) {
+            this.callbacks.onGondolaSync(msg.progress, msg.isEscapeOpen);
+          }
+          break;
+        }
+
+        case 'escape_success': {
+          if (this.callbacks.onRemoteEscape) {
+            this.callbacks.onRemoteEscape(msg.callsign);
+          }
+          break;
+        }
+
+        case 'match_restarted': {
+          if (msg.matchSeed) this.matchSeed = msg.matchSeed;
+          if (msg.mapId) this.mapId = msg.mapId;
+          if (this.callbacks.onMatchRestarted) {
+            this.callbacks.onMatchRestarted(msg);
+          }
+          break;
+        }
+
+        case 'chat_radio': {
+          if (this.callbacks.onRadioChat) {
+            this.callbacks.onRadioChat(msg.sender, msg.text);
+          }
+          break;
+        }
+
         case 'item_pickup': {
           if (msg.playerId && msg.playerId === this.playerId) break;
           if (this.callbacks.onItemPickupSync) {
@@ -284,7 +325,7 @@ export class NetworkManager {
         case 'item_drop': {
           if (msg.playerId && msg.playerId === this.playerId) break;
           if (this.callbacks.onItemDropSync) {
-            this.callbacks.onItemDropSync(msg.item, msg.x, msg.z);
+            this.callbacks.onItemDropSync(msg.item, msg.x, msg.z, Boolean(msg.ignited));
           }
           break;
         }
@@ -339,8 +380,18 @@ export class NetworkManager {
           if (this.callbacks.onHostPromoted) {
             this.callbacks.onHostPromoted();
           }
+          if (this.callbacks.onHostChanged) {
+            this.callbacks.onHostChanged(this.playerId);
+          }
           if (this.callbacks.onToast) {
             this.callbacks.onToast('[NET] 귀하가 작전 지휘관(호스트)으로 승격되었습니다. 괴물 AI 통제 권한을 획득합니다.', 'success');
+          }
+          break;
+        }
+
+        case 'host_changed': {
+          if (this.callbacks.onHostChanged) {
+            this.callbacks.onHostChanged(msg.hostId);
           }
           break;
         }
@@ -484,17 +535,45 @@ export class NetworkManager {
     );
   }
 
+  disposeObject3D(root) {
+    if (!root) return;
+    root.traverse((obj) => {
+      if (obj.geometry && typeof obj.geometry.dispose === 'function') {
+        try { obj.geometry.dispose(); } catch (_) {}
+      }
+      if (obj.material) {
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        for (const m of mats) {
+          if (m.map && typeof m.map.dispose === 'function') {
+            try { m.map.dispose(); } catch (_) {}
+          }
+          if (typeof m.dispose === 'function') {
+            try { m.dispose(); } catch (_) {}
+          }
+        }
+      }
+    });
+  }
+
   removeRemotePlayer(playerId) {
     const rp = this.remotePlayers.get(playerId);
     if (rp) {
+      if (rp.nameplateData?.texture) {
+        try { rp.nameplateData.texture.dispose(); } catch (_) {}
+      }
       this.scene.remove(rp.entity.root);
+      this.disposeObject3D(rp.entity.root);
       this.remotePlayers.delete(playerId);
     }
   }
 
   cleanupRemotePlayers() {
     for (const [_, rp] of this.remotePlayers) {
+      if (rp.nameplateData?.texture) {
+        try { rp.nameplateData.texture.dispose(); } catch (_) {}
+      }
       this.scene.remove(rp.entity.root);
+      this.disposeObject3D(rp.entity.root);
     }
     this.remotePlayers.clear();
   }
@@ -583,13 +662,14 @@ export class NetworkManager {
     }));
   }
 
-  sendItemDrop(item, x, z) {
+  sendItemDrop(item, x, z, ignited = false) {
     if (!this.isConnected || !this.ws || !this.roomId) return;
     this.ws.send(JSON.stringify({
       type: 'item_drop',
       item,
       x,
-      z
+      z,
+      ignited: Boolean(ignited)
     }));
   }
 
@@ -611,13 +691,13 @@ export class NetworkManager {
     }));
   }
 
-  sendMonsterSync(state, pos, yaw, animMode, targetVent, currentVent) {
+  sendMonsterSync(state, pos, yaw, animMode, targetVent, currentVent, trioData = null) {
     if (!this.isConnected || !this.ws || !this.roomId || !this.isHost) return;
     const now = performance.now();
     if (now - this.lastMonsterSyncTime < this.monsterSyncInterval) return;
     this.lastMonsterSyncTime = now;
 
-    this.ws.send(JSON.stringify({
+    const payload = {
       type: 'monster_sync',
       state,
       pos: {
@@ -629,6 +709,66 @@ export class NetworkManager {
       animMode,
       targetVent,
       currentVent
+    };
+    if (trioData) {
+      if (trioData.lurker) {
+        payload.lurker = {
+          pos: {
+            x: Math.round(trioData.lurker.pos.x * 100) / 100,
+            y: Math.round(trioData.lurker.pos.y * 100) / 100,
+            z: Math.round(trioData.lurker.pos.z * 100) / 100
+          },
+          yaw: Math.round(trioData.lurker.yaw * 100) / 100,
+          state: trioData.lurker.state,
+          animMode: trioData.lurker.animMode || 'idle'
+        };
+      }
+      if (trioData.snare) {
+        payload.snare = {
+          pos: {
+            x: Math.round(trioData.snare.pos.x * 100) / 100,
+            y: Math.round(trioData.snare.pos.y * 100) / 100,
+            z: Math.round(trioData.snare.pos.z * 100) / 100
+          },
+          yaw: Math.round(trioData.snare.yaw * 100) / 100,
+          state: trioData.snare.state,
+          animMode: trioData.snare.animMode || 'stalk'
+        };
+      }
+    }
+    this.ws.send(JSON.stringify(payload));
+  }
+
+  sendGondolaSync(progress, isEscapeOpen) {
+    if (!this.isConnected || !this.ws || !this.roomId || !this.isHost) return;
+    this.ws.send(JSON.stringify({
+      type: 'gondola_sync',
+      progress: Math.round(progress * 10) / 10,
+      isEscapeOpen: Boolean(isEscapeOpen)
+    }));
+  }
+
+  sendEscapeSuccess(callsign) {
+    if (!this.isConnected || !this.ws || !this.roomId) return;
+    this.ws.send(JSON.stringify({
+      type: 'escape_success',
+      callsign
+    }));
+  }
+
+  sendRestartMatch() {
+    if (!this.isConnected || !this.ws || !this.roomId || !this.isHost) return;
+    this.ws.send(JSON.stringify({
+      type: 'restart_match'
+    }));
+  }
+
+  sendRadioChat(text, sender = null) {
+    if (!this.isConnected || !this.ws || !this.roomId || !text) return;
+    this.ws.send(JSON.stringify({
+      type: 'chat_radio',
+      sender: sender || this.callsign,
+      text
     }));
   }
 

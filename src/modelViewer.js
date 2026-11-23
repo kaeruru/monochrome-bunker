@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {
   MonsterEntity,
+  GeoGoliathEntity,
   PlayerCharacterEntity,
   CrawlerCrocodileEntity,
   LurkerCrocodileEntity,
@@ -56,7 +57,7 @@ export class ModelShowcaseViewer {
           <button id="btn-mv-sound" class="ed-btn primary">[AUDIO: ON] 괴물 사운드</button>
           <button id="btn-mv-autorotate" class="ed-btn primary">[ROTATE: ON] 자동 회전</button>
           <button id="btn-mv-lighting" class="ed-btn">[LIGHT: STUDIO] 스튜디오</button>
-          <button id="btn-mv-close" class="ed-btn close">게임으로 복귀 [M / ESC]</button>
+          <button id="btn-mv-close" class="ed-btn close">게임으로 복귀 [ESC]</button>
         </div>
       </div>
 
@@ -79,6 +80,7 @@ export class ModelShowcaseViewer {
           <button class="tool-btn mv-target-btn" data-target="crawler">[#1 SCP-682] 메인 악어 괴수</button>
           <button class="tool-btn mv-target-btn" data-target="lurker">[#2 LURKER] 매복자 악어</button>
           <button class="tool-btn mv-target-btn" data-target="snare">[#3 SNARE] 맹글 악어</button>
+          <button class="tool-btn mv-target-btn" data-target="goliath">[CH.3 GOLIATH] 지열 골리앗</button>
         </div>
 
         <div class="mv-tool-group">
@@ -152,6 +154,7 @@ export class ModelShowcaseViewer {
 
     // 모델 인스턴스 생성
     this.monster = new MonsterEntity();
+    this.goliath = new GeoGoliathEntity();
     this.scp096 = new Scp096Entity();
     this.crawler = new CrawlerCrocodileEntity();
     this.lurker = new LurkerCrocodileEntity();
@@ -159,6 +162,7 @@ export class ModelShowcaseViewer {
     this.playerModel = new PlayerCharacterEntity('동료 대원 #02', false, 'hazmat');
 
     this.scene.add(this.monster.root);
+    this.scene.add(this.goliath.root);
     this.scene.add(this.scp096.root);
     this.scene.add(this.crawler.root);
     this.scene.add(this.lurker.root);
@@ -183,10 +187,11 @@ export class ModelShowcaseViewer {
 
   applyViewTarget(target) {
     this.viewTarget = target;
-    const isMonsterSound = this.isOpen && this.soundEnabled && target === 'monster';
+    const isMonsterSound = this.isOpen && this.soundEnabled && (target === 'monster' || target === 'goliath');
     const isScp096Sound = this.isOpen && this.soundEnabled && (target === 'scp096' || target === 'compare');
     const isCrawlerSound = this.isOpen && this.soundEnabled && (target === 'crawler' || target === 'trio');
-    this.monster.enableSound = isMonsterSound;
+    this.monster.enableSound = isMonsterSound && target === 'monster';
+    if (this.goliath) this.goliath.enableSound = isMonsterSound && target === 'goliath';
     if (this.scp096) this.scp096.enableSound = isScp096Sound;
     if (this.crawler) this.crawler.enableSound = isCrawlerSound;
 
@@ -194,6 +199,7 @@ export class ModelShowcaseViewer {
     const descEl = document.getElementById('mv-info-desc');
 
     this.monster.root.visible = false;
+    if (this.goliath) this.goliath.root.visible = false;
     if (this.scp096) this.scp096.root.visible = false;
     this.crawler.root.visible = false;
     this.lurker.root.visible = false;
@@ -244,6 +250,18 @@ export class ModelShowcaseViewer {
       if (descEl) {
         descEl.textContent =
           '배수관 천장에 거꾸로 매달려 기괴한 라디오 전파 잡음을 내는 고철 괴수입니다. 거꾸로 달린 악어 해골 옆에 전선 목으로 매달린 두 번째 부서진 내골격 머리와 2개의 포획 작살 팔로 플레이어를 결박하고 #1 스토커 악어를 불러모읍니다.';
+      }
+    } else if (target === 'goliath') {
+      if (this.goliath) {
+        this.goliath.root.visible = true;
+        this.goliath.root.position.set(0, 0, 0);
+      }
+      this.orbitDist = 3.6;
+      this.orbitCenterY = 1.45;
+      if (titleEl) titleEl.textContent = '[CH.3 GOLIATH] 제3장 심연 지열 골리앗 (3.05m)';
+      if (descEl) {
+        descEl.textContent =
+          '수직 도넛 심연 갱도의 지열 기둥을 타고 솟구쳐 오르는 거대 마그마-엔도스켈레톤 보스입니다. 등뼈의 지열 방열 가시와 작열하는 심장 코어로 어둠 속에서도 압도적인 존재감을 드러냅니다.';
       }
     } else if (target === 'monster') {
       this.monster.root.visible = true;
@@ -512,6 +530,9 @@ export class ModelShowcaseViewer {
     // 괴물 및 캐릭터 애니메이션 업데이트
     if (this.monster && this.monster.root.visible) {
       this.monster.update(dt, this.animState);
+    }
+    if (this.goliath && this.goliath.root.visible) {
+      this.goliath.update(dt, this.animState);
     }
     if (this.scp096 && this.scp096.root.visible) {
       this.scp096.update(dt, this.animState);

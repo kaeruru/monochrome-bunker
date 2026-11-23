@@ -281,9 +281,29 @@ function createSculptedBioLimb(points, rStart, rEnd, opts = {}) {
 //   전갈식 오버헤드 꼬리 공격)과 실시간 괴물 사운드(발소리, 심장 박동, 괴성 포효)가 연동됩니다.
 // ============================================================================
 export class MonsterEntity {
-  constructor() {
-    this.mats = getMaterials();
+  constructor(opts = {}) {
+    const baseMats = getMaterials();
+    this.mats = {
+      ...baseMats,
+      heartCoreMat: baseMats.heartCoreMat.clone()
+    };
+    if (opts.coreHex !== undefined) {
+      this.mats.heartCoreMat.emissive.setHex(opts.coreHex);
+    }
+    if (opts.exoHex !== undefined) {
+      this.mats.exoChitin = baseMats.exoChitin.clone();
+      this.mats.exoChitin.color.setHex(opts.exoHex);
+    }
+    if (opts.steelHex !== undefined) {
+      this.mats.endoSteel = baseMats.endoSteel.clone();
+      this.mats.endoSteel.color.setHex(opts.steelHex);
+    }
+    this.heartLightHex = opts.heartLightHex !== undefined ? opts.heartLightHex : 0xdbe8ff;
+
     this.root = new THREE.Group();
+    if (opts.scale) {
+      this.root.scale.setScalar(opts.scale);
+    }
     this.time = Math.random() * 10;
     this.animMode = 'stalk';
     this.lastMode = 'stalk';
@@ -429,7 +449,7 @@ export class MonsterEntity {
     }
 
     // 심장 코어에서 뿜어져 나오는 은은한 내부 조명 (갈비뼈 그림자를 드리움)
-    this.heartLight = new THREE.PointLight(0xdbe8ff, 2.2, 3.2, 1.8);
+    this.heartLight = new THREE.PointLight(this.heartLightHex, 2.2, 3.2, 1.8);
     this.heartGroup.add(this.heartLight);
 
     // 심장 코어를 척추와 갈비뼈에 매달아 고정하는 6가닥의 동맥/전선 케이블
@@ -1391,6 +1411,51 @@ export class MonsterEntity {
   }
 }
 
+/**
+ * 제3장(심연 수직 갱도) 전용 보스: [지열 골리앗 (GeoGoliathEntity)]
+ * - 심연 25층~21층 철골 기둥을 타고 솟구쳐 오르는 거대 용암-엔도스켈레톤 개체
+ * - 등뼈에 솟아오른 지열 방열 가시(Thermal Dorsal Spines)와 작열하는 마그마 코어 탑재
+ */
+export class GeoGoliathEntity extends MonsterEntity {
+  constructor() {
+    super({
+      coreHex: 0xff4500,
+      exoHex: 0x341912,
+      steelHex: 0x261a17,
+      heartLightHex: 0xff4500,
+      scale: 1.16
+    });
+    this.buildGeothermalSpines();
+  }
+
+  buildGeothermalSpines() {
+    if (!this.thoraxGroup) return;
+    const spineMat = new THREE.MeshLambertMaterial({
+      color: 0x1a0804,
+      emissive: 0xff3b14,
+      emissiveIntensity: 0.75
+    });
+    const spinePositions = [
+      { y: 0.25, z: -0.14, len: 0.34, rx: -0.65 },
+      { y: 0.50, z: -0.12, len: 0.44, rx: -0.58 },
+      { y: 0.74, z: -0.04, len: 0.48, rx: -0.45 },
+      { y: 0.94, z: 0.10, len: 0.38, rx: -0.35 }
+    ];
+    for (const sp of spinePositions) {
+      for (const side of [-1, 1]) {
+        const shard = new THREE.Mesh(
+          new THREE.ConeGeometry(0.048, sp.len, 5),
+          spineMat
+        );
+        shard.position.set(side * 0.11, sp.y, sp.z);
+        shard.rotation.x = sp.rx;
+        shard.rotation.z = side * -0.26;
+        this.thoraxGroup.add(shard);
+      }
+    }
+  }
+}
+
 // ============================================================================
 // 1-A-2. 제1장(벙커) 대체 추격자: [SCP-096 샤이 가이 (Scp096Entity)]
 // - 저용량 단일 SkinnedMesh GLB 에셋 (public/models/scp-096.glb - 약 890KB)
@@ -1525,7 +1590,7 @@ export class Scp096Entity {
       if (this.enableSound && (mode === 'chase' || mode === 'attack')) {
         sound.playMonsterScreech(this.soundVolume * 1.15);
       } else if (this.enableSound && mode === 'jumpscare') {
-        sound.playMonsterJumpscare();
+        sound.playJumpscare(this.soundVolume ? Math.max(0.45, this.soundVolume) : 0.7);
       }
 
       if (mode === 'jumpscare') {
@@ -1575,7 +1640,7 @@ export class Scp096Entity {
       if (this.growlTimer <= 0) {
         this.growlTimer = 3.5 + Math.random() * 4.5;
         if (this.enableSound && (mode === 'idle' || isStalk)) {
-          sound.playMonsterGrowl(this.soundVolume * 0.7);
+          sound.playMonsterStalkGrowl(this.soundVolume * 0.7);
         }
       }
     }
@@ -2731,46 +2796,48 @@ export function getTintedSoldierTexture(suitColorKey = 'steel') {
     return suitTextureCache.get(key);
   }
 
-  const texLoader = new THREE.TextureLoader();
-  const baseTex = texLoader.load('/models/Trooper.png', (tex) => {
-    tex.colorSpace = THREE.SRGBColorSpace;
-    tex.magFilter = THREE.NearestFilter;
-    tex.minFilter = THREE.NearestMipmapLinearFilter;
-    tex.generateMipmaps = true;
-  });
+  const canvas = document.createElement('canvas');
+  canvas.width = 4;
+  canvas.height = 4;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#2a3340';
+  ctx.fillRect(0, 0, 4, 4);
 
-  suitTextureCache.set(key, baseTex);
+  const canvasTex = new THREE.CanvasTexture(canvas);
+  canvasTex.colorSpace = THREE.SRGBColorSpace;
+  canvasTex.magFilter = THREE.NearestFilter;
+  canvasTex.minFilter = THREE.NearestMipmapLinearFilter;
+  canvasTex.generateMipmaps = true;
+
+  suitTextureCache.set(key, canvasTex);
 
   loadRawTrooperImage().then((img) => {
     if (!img) return;
 
-    const canvas = document.createElement('canvas');
     canvas.width = img.width || 256;
     canvas.height = img.height || 256;
-    const ctx = canvas.getContext('2d');
     ctx.drawImage(img, 0, 0);
 
-    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imgData.data;
-
-    const preset = SUIT_COLORS[key] || SUIT_COLORS.steel;
-    const tintColor = new THREE.Color(preset.tintHex || 0xffffff);
-    const tr = tintColor.r * 255;
-    const tg = tintColor.g * 255;
-    const tb = tintColor.b * 255;
-
     const isSteel = (key === 'steel');
+    if (!isSteel) {
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imgData.data;
 
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
+      const preset = SUIT_COLORS[key] || SUIT_COLORS.steel;
+      const tintColor = new THREE.Color(preset.tintHex || 0xffffff);
+      const tr = tintColor.r * 255;
+      const tg = tintColor.g * 255;
+      const tb = tintColor.b * 255;
 
-      // UV 맵 정밀 분리 필터:
-      // 방독면(Lens, Mask)과 벨트, 버클은 무채색(b - max(r,g) <= 3)이므로 절대 수정되지 않습니다.
-      // 순수 네이비 블루 전투복 직물(b > r + 5 && b > g + 2 && b >= 20)만 선별 마스킹합니다.
-      if (b > r + 5 && b > g + 2 && b >= 20) {
-        if (!isSteel) {
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+
+        // UV 맵 정밀 분리 필터:
+        // 방독면(Lens, Mask)과 벨트, 버클은 무채색(b - max(r,g) <= 3)이므로 절대 수정되지 않습니다.
+        // 순수 네이비 블루 전투복 직물(b > r + 5 && b > g + 2 && b >= 20)만 선별 마스킹합니다.
+        if (b > r + 5 && b > g + 2 && b >= 20) {
           const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
           const factor = lum / 0.18; // 원본 원단 기본 휘도 기준
           data[i]     = Math.min(255, Math.max(0, Math.round(tr * factor * 0.88)));
@@ -2778,24 +2845,14 @@ export function getTintedSoldierTexture(suitColorKey = 'steel') {
           data[i + 2] = Math.min(255, Math.max(0, Math.round(tb * factor * 0.88)));
         }
       }
+
+      ctx.putImageData(imgData, 0, 0);
     }
 
-    ctx.putImageData(imgData, 0, 0);
-
-    const canvasTex = new THREE.CanvasTexture(canvas);
-    canvasTex.colorSpace = THREE.SRGBColorSpace;
-    canvasTex.magFilter = THREE.NearestFilter;
-    canvasTex.minFilter = THREE.NearestMipmapLinearFilter;
-    canvasTex.generateMipmaps = true;
     canvasTex.needsUpdate = true;
-
-    suitTextureCache.set(key, canvasTex);
-
-    baseTex.image = canvas;
-    baseTex.needsUpdate = true;
   });
 
-  return baseTex;
+  return canvasTex;
 }
 
 export function getSoldierTexture() {

@@ -65,6 +65,7 @@ export class FPSControls {
     this.isHudEditing = false;
     this.draggingHudItem = null;
     this.hudDragOffset = { x: 0, y: 0 };
+    this.onHudEditorClose = null;
 
     // 저장된 터치 설정 불러오기
     this.touchConfig = {
@@ -572,8 +573,9 @@ export class FPSControls {
     });
   }
 
-  openHudEditor() {
+  openHudEditor(onClose = null) {
     this.isHudEditing = true;
+    this.onHudEditorClose = onClose;
     this.unlock();
     const touchUI = document.getElementById('touch-controls');
     if (touchUI) {
@@ -599,6 +601,11 @@ export class FPSControls {
     const editOverlay = document.getElementById('hud-edit-overlay');
     if (editOverlay) {
       editOverlay.classList.add('hidden');
+    }
+    if (typeof this.onHudEditorClose === 'function') {
+      const cb = this.onHudEditorClose;
+      this.onHudEditorClose = null;
+      cb();
     }
   }
 

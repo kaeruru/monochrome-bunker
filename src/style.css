@@ -19,6 +19,11 @@
   -webkit-touch-callout: none;
 }
 
+input, textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 html, body {
   width: 100%;
   height: 100%;
@@ -39,6 +44,7 @@ html, body {
   position: relative;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   background-color: #000;
 }
@@ -197,17 +203,30 @@ html, body {
 }
 
 .hud-btn {
-  background: rgba(18, 22, 26, 0.88);
-  border: 1px solid rgba(255, 255, 255, 0.28);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  background: rgba(10, 12, 16, 0.84);
+  border: 1px solid rgba(255, 255, 255, 0.24);
   color: #e0e6ed;
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.8px;
-  padding: 5px 11px;
+  padding: 5px 10px;
   cursor: pointer;
-  border-radius: 2px;
+  border-radius: 3px;
   font-family: inherit;
-  transition: all 0.12s ease;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition: all 0.14s ease;
+}
+
+.hud-btn-svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  opacity: 0.88;
 }
 
 .hud-btn:hover {
@@ -328,22 +347,22 @@ html, body {
 
 /* 인게임 알림 토스트 - 상단 군용 전술 HUD 텔레메트리 바 */
 #game-toast {
-  position: absolute;
-  top: 24px;
+  position: fixed;
+  top: 56px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(10, 15, 20, 0.88);
+  background: rgba(10, 15, 20, 0.92);
   border: 1px solid rgba(85, 204, 238, 0.32);
   border-left: 3px solid #38bdf8;
   color: #e2f4ff;
   padding: 6px 18px;
   border-radius: 2px;
-  font-family: 'Share Tech Mono', monospace, -apple-system, sans-serif;
+  font-family: 'Share Tech Mono', 'Pretendard', 'Noto Sans KR', monospace, sans-serif;
   font-size: 11.5px;
   font-weight: 600;
   line-height: 1.4;
   letter-spacing: 0.6px;
-  z-index: 35;
+  z-index: 20000;
   pointer-events: none;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -380,6 +399,88 @@ html, body {
   background: rgba(8, 26, 16, 0.9);
   color: #d1fae5;
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.75), inset 0 0 12px rgba(16, 185, 129, 0.12);
+}
+
+/* 협동 스쿼드 무전 채팅 HUD */
+#radio-chat-box {
+  position: absolute;
+  left: 16px;
+  bottom: 18px;
+  width: 290px;
+  max-width: 40vw;
+  background: rgba(8, 12, 16, 0.78);
+  border: 1px solid rgba(85, 204, 238, 0.25);
+  border-left: 2px solid #55ccee;
+  border-radius: 2px;
+  padding: 6px 8px;
+  z-index: 24;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  pointer-events: auto;
+  backdrop-filter: blur(4px);
+}
+
+.radio-chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  color: #8fa6ba;
+}
+
+.radio-badge {
+  color: #55ccee;
+  font-weight: 700;
+}
+
+.radio-chat-log {
+  max-height: 92px;
+  overflow-y: auto;
+  touch-action: pan-y;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.radio-msg-line {
+  color: #dce6ef;
+  word-break: break-word;
+}
+
+.radio-msg-sender {
+  color: #6eed9e;
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+.radio-chat-input-row {
+  display: flex;
+  gap: 4px;
+}
+
+#radio-chat-input {
+  flex: 1;
+  min-width: 0;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(85, 204, 238, 0.4);
+  color: #ffffff;
+  font-size: 11px;
+  padding: 4px 6px;
+  border-radius: 2px;
+  outline: none;
+}
+
+@media (max-width: 900px) {
+  #radio-chat-box {
+    top: 150px;
+    bottom: auto;
+    left: 12px;
+    width: 220px;
+  }
 }
 
 /* 하단 중앙 3슬롯 인벤토리 & 스태미나 통합 HUD */
@@ -497,7 +598,7 @@ html, body {
   background: #ff4444;
 }
 
-/* 모바일/태블릿 가상 터치 컨트롤러 (인체공학적 부채꼴 배치 & 완전 커스텀 지원) */
+/* 모바일/태블릿 가상 터치 컨트롤러 (로비 모던 글래스 & SVG 아이콘 디자인) */
 #touch-controls {
   position: absolute;
   top: 0;
@@ -505,8 +606,8 @@ html, body {
   width: 100%;
   height: 100%;
   pointer-events: none;
-  z-index: 20;
-  opacity: var(--touch-opacity, 0.85);
+  z-index: 26;
+  opacity: var(--touch-opacity, 0.88);
   transition: opacity 0.2s ease;
 }
 
@@ -520,13 +621,14 @@ html, body {
   user-select: none;
   -webkit-user-select: none;
   touch-action: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
-/* 1. 좌측 가상 조이스틱 (다크 택티컬 매트 HUD 리모델링) */
+/* 1. 좌측 가상 조이스틱 (모던 옵시디언 글래스 + 미세 방위 틱) */
 #joystick-zone {
   position: absolute;
-  bottom: 28px;
-  left: 28px;
+  bottom: 24px;
+  left: 24px;
   width: var(--joystick-size, 130px);
   height: var(--joystick-size, 130px);
   cursor: pointer;
@@ -536,245 +638,290 @@ html, body {
 #joystick-base {
   width: 100%;
   height: 100%;
-  background: radial-gradient(circle, rgba(20, 24, 28, 0.45) 0%, rgba(8, 10, 12, 0.78) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.20);
+  background: radial-gradient(circle at 50% 35%, rgba(22, 28, 36, 0.56) 0%, rgba(10, 12, 16, 0.82) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 50%;
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.65), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  transition: border-color 0.15s ease, background 0.15s ease;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.68), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
 }
 
-/* 정밀 전술 내측 점선 링 (Tactical Inner Ring) */
+/* 정교한 내측 서클 링 */
 #joystick-base::before {
   content: '';
   position: absolute;
-  width: 62%;
-  height: 62%;
+  width: 58%;
+  height: 58%;
   border-radius: 50%;
-  border: 1px dashed rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   pointer-events: none;
 }
 
-/* 베이스 정중앙 센터 마커 */
-#joystick-base::after {
-  content: '';
+.joystick-ticks {
   position: absolute;
-  width: 6px;
-  height: 62%;
-  border-left: 1px solid rgba(255, 255, 255, 0.1);
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.28);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
   pointer-events: none;
+  transition: stroke 0.15s ease;
 }
 
 #joystick-base.active {
-  border-color: rgba(255, 255, 255, 0.42);
-  background: radial-gradient(circle, rgba(28, 34, 42, 0.6) 0%, rgba(10, 14, 18, 0.88) 100%);
+  border-color: rgba(85, 204, 238, 0.65);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.75), 0 0 18px rgba(85, 204, 238, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+#joystick-base.active .joystick-ticks {
+  stroke: rgba(85, 204, 238, 0.55);
 }
 
 #joystick-thumb {
   width: calc(var(--joystick-size, 130px) * 0.36);
   height: calc(var(--joystick-size, 130px) * 0.36);
-  background: radial-gradient(circle, rgba(220, 230, 240, 0.32) 0%, rgba(80, 95, 110, 0.35) 75%, rgba(18, 22, 28, 0.75) 100%);
-  border: 1.5px solid rgba(255, 255, 255, 0.5);
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.22) 0%, rgba(30, 38, 48, 0.72) 100%);
+  border: 1.5px solid rgba(255, 255, 255, 0.52);
   border-radius: 50%;
   position: absolute;
   pointer-events: none;
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.32);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: border-color 0.1s ease, transform 0.04s ease-out;
+  transition: border-color 0.12s ease, transform 0.04s ease-out, box-shadow 0.12s ease;
 }
 
-/* 썸스틱 정중앙 백색 마이크로 도트 */
 #joystick-thumb::after {
   content: '';
-  width: 5px;
-  height: 5px;
-  background: rgba(255, 255, 255, 0.85);
+  width: 6px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.82);
   border-radius: 50%;
   pointer-events: none;
+  transition: background 0.12s ease, box-shadow 0.12s ease;
 }
 
 #joystick-thumb.active {
-  border-color: rgba(255, 255, 255, 0.9);
-  background: radial-gradient(circle, rgba(240, 248, 255, 0.45) 0%, rgba(100, 115, 130, 0.45) 75%, rgba(25, 30, 38, 0.85) 100%);
+  border-color: #55ccee;
+  background: linear-gradient(155deg, rgba(85, 204, 238, 0.32) 0%, rgba(20, 28, 36, 0.85) 100%);
+  box-shadow: 0 4px 18px rgba(85, 204, 238, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 
-.joystick-caption {
-  text-align: center;
-  font-size: 10px;
-  font-weight: 700;
-  font-family: 'Share Tech Mono', monospace;
-  color: rgba(255, 255, 255, 0.38);
-  margin-top: 6px;
-  letter-spacing: 2px;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+#joystick-thumb.active::after {
+  background: #55ccee;
+  box-shadow: 0 0 8px #55ccee;
 }
 
-/* 2. 우측 터치 액션 버튼군 (인체공학적 부채꼴 배치 기본 좌표) */
+/* 2. 우측 터치 액션 버튼군 (모던 로비 글래스 스쿼클 + 순수 SVG 아이콘) */
 .touch-btn {
   position: absolute;
   width: var(--touch-btn-size, 60px);
   height: var(--touch-btn-size, 60px);
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(24, 28, 34, 0.88) 0%, rgba(10, 12, 16, 0.94) 100%);
-  border: 1.2px solid rgba(255, 255, 255, 0.24);
-  color: #e4e7eb;
+  border-radius: 16px;
+  background: linear-gradient(155deg, rgba(20, 25, 32, 0.82) 0%, rgba(10, 12, 16, 0.92) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #e4e9f0;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.65), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
-  transition: transform 0.08s ease, background 0.12s ease, border-color 0.12s ease;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.62), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: transform 0.08s ease, background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, color 0.15s ease, opacity 0.15s ease;
   z-index: 25;
+  padding: 0;
 }
 
-.touch-btn .btn-sub {
-  font-size: 9px;
-  font-family: 'Share Tech Mono', monospace;
-  color: rgba(255, 255, 255, 0.45);
-  line-height: 1;
-  letter-spacing: 0.5px;
+.touch-btn .touch-svg {
+  width: 44%;
+  height: 44%;
+  min-width: 22px;
+  min-height: 22px;
+  pointer-events: none;
+  transition: transform 0.12s ease, filter 0.15s ease;
 }
 
-.touch-btn .btn-label {
-  font-size: 11px;
-  font-weight: 700;
-  font-family: 'Chakra Petch', sans-serif;
-  letter-spacing: 0.8px;
-  margin-top: 1px;
-}
-
-.touch-btn:active, .touch-btn.active {
+.touch-btn:active {
+  transform: scale(0.92);
   background: rgba(255, 255, 255, 0.88);
-  color: #05070a;
+  color: #07090d;
   border-color: #ffffff;
-  transform: scale(0.94);
-  box-shadow: 0 2px 10px rgba(255, 255, 255, 0.25);
+  box-shadow: 0 2px 14px rgba(255, 255, 255, 0.28);
 }
 
-.touch-btn:active .btn-sub, .touch-btn.active .btn-sub {
-  color: #05070a;
+.touch-btn.active {
+  background: linear-gradient(155deg, rgba(28, 42, 54, 0.9) 0%, rgba(12, 18, 26, 0.95) 100%);
+  border-color: #55ccee;
+  color: #55ccee;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.65), 0 0 14px rgba(85, 204, 238, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 
-/* 주 상호작용(USE) 버튼 - 엄지손가락 기본 위치에 대형 강조 배치 */
+/* 듀얼 모드 SVG 토글 (손전등 ↔ 소나, 드랍 ↔ 조명탄) */
+#btn-touch-flashlight .icon-pulse {
+  display: none;
+}
+
+#btn-touch-flashlight.mode-pulse .icon-light {
+  display: none;
+}
+
+#btn-touch-flashlight.mode-pulse .icon-pulse {
+  display: block;
+}
+
+.touch-cooldown-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 24px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(10, 14, 18, 0.96);
+  border: 1px solid #55ccee;
+  color: #55ccee;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+
+#btn-touch-drop .icon-flare {
+  display: none;
+}
+
+#btn-touch-drop.mode-flare .icon-drop {
+  display: none;
+}
+
+#btn-touch-drop.mode-flare .icon-flare {
+  display: block;
+  color: #ffab40;
+  filter: drop-shadow(0 0 6px rgba(255, 171, 64, 0.55));
+}
+
+#btn-touch-drop.mode-flare {
+  border-color: rgba(255, 171, 64, 0.62);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.62), 0 0 14px rgba(255, 171, 64, 0.22), inset 0 1px 0 rgba(255, 220, 170, 0.2);
+}
+
+/* 주 상호작용 버튼 - 엄지 기본 위치에 대형 스쿼클 강조 배치 */
 #btn-touch-interact {
-  bottom: 28px;
-  right: 28px;
+  bottom: 24px;
+  right: 24px;
   width: var(--touch-interact-size, 72px);
   height: var(--touch-interact-size, 72px);
-  border: 1.6px solid rgba(255, 255, 255, 0.45);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.75), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  border-radius: 20px;
+  border: 1.4px solid rgba(255, 255, 255, 0.42);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.72), inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 
-#btn-touch-interact .btn-label {
-  font-size: 13px;
-  font-weight: 800;
-  color: #ffffff;
+#btn-touch-interact .touch-svg {
+  width: 46%;
+  height: 46%;
 }
 
-#btn-touch-interact:active {
-  background: #ffffff;
-  color: #000;
-}
-
-#btn-touch-interact:active .btn-label {
-  color: #000;
+#btn-touch-interact.active {
+  background: linear-gradient(155deg, rgba(255, 255, 255, 0.94) 0%, rgba(215, 232, 244, 0.92) 100%);
+  color: #070a0f;
+  border-color: #ffffff;
+  box-shadow: 0 8px 28px rgba(85, 204, 238, 0.42), 0 0 18px rgba(255, 255, 255, 0.35);
 }
 
 /* 달리기(SPRINT) 버튼 - 상호작용 바로 위 */
 #btn-touch-sprint {
-  bottom: 116px;
-  right: 30px;
+  bottom: 112px;
+  right: 26px;
 }
 
-/* 손전등(LIGHT) 버튼 - 상호작용 좌측 */
+/* 손전등/소나(LIGHT/PULSE) 버튼 - 상호작용 좌측 */
 #btn-touch-flashlight {
-  bottom: 30px;
-  right: 116px;
+  bottom: 26px;
+  right: 112px;
 }
 
-/* 조명탄 점화 및 아이템 버리기(DROP) 버튼 - 상호작용 대각선 위 */
+/* 조명탄 점화 및 아이템 버리기(DROP/FLARE) 버튼 - 상호작용 대각선 위 */
 #btn-touch-drop {
-  bottom: 110px;
-  right: 110px;
-  border-color: rgba(255, 180, 70, 0.4);
-}
-
-#btn-touch-drop .btn-label {
-  color: #ffaa33;
+  bottom: 106px;
+  right: 106px;
 }
 
 /* CCTV 보안 관제 버튼 - 달리기 위 */
 #btn-touch-cctv {
-  bottom: 190px;
-  right: 32px;
-  width: calc(var(--touch-btn-size, 60px) * 0.9);
-  height: calc(var(--touch-btn-size, 60px) * 0.9);
+  bottom: 186px;
+  right: 28px;
+  width: calc(var(--touch-btn-size, 60px) * 0.88);
+  height: calc(var(--touch-btn-size, 60px) * 0.88);
+  border-radius: 14px;
 }
 
 /* 전술 작전 지도(MAP) 버튼 - CCTV 좌측 */
 #btn-touch-map {
-  bottom: 190px;
-  right: 104px;
-  width: calc(var(--touch-btn-size, 60px) * 0.9);
-  height: calc(var(--touch-btn-size, 60px) * 0.9);
-  border-color: rgba(255, 255, 255, 0.32);
-}
-
-#btn-touch-map .btn-label {
-  color: #dbe4ee;
+  bottom: 186px;
+  right: 96px;
+  width: calc(var(--touch-btn-size, 60px) * 0.88);
+  height: calc(var(--touch-btn-size, 60px) * 0.88);
+  border-radius: 14px;
 }
 
 /* 좌우 스왑 모드 (왼손잡이 / 오른손잡이 반전) */
 #touch-controls.swap-hands #joystick-zone {
   left: auto;
-  right: 28px;
+  right: 24px;
 }
 
 #touch-controls.swap-hands #btn-touch-interact {
   right: auto;
-  left: 28px;
+  left: 24px;
 }
 
 #touch-controls.swap-hands #btn-touch-sprint {
   right: auto;
-  left: 30px;
+  left: 26px;
 }
 
 #touch-controls.swap-hands #btn-touch-flashlight {
   right: auto;
-  left: 116px;
+  left: 112px;
 }
 
 #touch-controls.swap-hands #btn-touch-drop {
   right: auto;
-  left: 110px;
+  left: 106px;
 }
 
 #touch-controls.swap-hands #btn-touch-map {
   right: auto;
-  left: 104px;
+  left: 96px;
 }
 
 #touch-controls.swap-hands #btn-touch-cctv {
   right: auto;
-  left: 32px;
+  left: 28px;
 }
 
 /* HUD 자유 편집 / 재배치 모드 활성화 시 스타일 */
 #touch-controls.hud-editing {
   opacity: 1 !important;
   z-index: 95;
+}
+
+#touch-controls.hud-editing .touch-btn {
+  display: flex !important;
 }
 
 #touch-controls.hud-editing .hud-touch-item {
@@ -1097,6 +1244,7 @@ html, body {
   inset: 0;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   background: #080a0c;
   z-index: 10005;
   display: flex;
@@ -1146,6 +1294,7 @@ html, body {
 
 .mv-Viewport {
   flex: 1;
+  min-height: 0;
   position: relative;
   width: 100%;
   height: 100%;
@@ -1168,6 +1317,7 @@ html, body {
   position: absolute;
   top: 14px;
   left: 16px;
+  right: 16px;
   max-width: 520px;
   background: rgba(10, 14, 18, 0.88);
   border: 1px solid rgba(255, 255, 255, 0.25);
@@ -1236,8 +1386,13 @@ html, body {
   color: #ffffff;
 }
 
-.ed-btn.close {
+.ed-btn.close,
+.ed-btn.secondary {
   background: #2a3036;
+}
+
+.ed-btn.secondary:hover {
+  background: #3a424a;
 }
 
 .tool-btn {
@@ -1273,6 +1428,7 @@ html, body {
   left: 0;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   background: rgba(3, 6, 4, 0.9);
   z-index: 150;
   display: flex;
@@ -1580,11 +1736,14 @@ body.in-death-sequence #bottom-center-hud,
   border-radius: 2px;
   padding: 28px 32px;
   max-width: 580px;
+  max-height: 92dvh;
+  overflow-y: auto;
+  touch-action: pan-y;
   width: 100%;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  font-family: 'Rajdhani', sans-serif;
+  font-family: 'Rajdhani', 'Pretendard', 'Noto Sans KR', sans-serif;
 }
 
 .tactical-death-stamp {
@@ -1772,34 +1931,18 @@ body.in-death-sequence #bottom-center-hud,
   background: rgba(10, 30, 20, 0.4);
 }
 
-/* ==========================================================================
-   작전 투입 전 게임 환경 & 멀티플레이어 설정 모달 (Tactical Setup Lobby)
-   ========================================================================== */
-#game-setup-modal {
-  position: fixed;
-  inset: 0;
-  z-index: 10000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  user-select: none;
-}
-
-#game-setup-modal.hidden {
-  display: none !important;
-}
-
 /* ============================================================================
    MINIMALIST HORROR MAIN MENU & DIALOG SYSTEM (LOST TUNNEL STYLE)
    ============================================================================ */
 #game-setup-modal {
   position: fixed;
   inset: 0;
-  z-index: 100;
+  z-index: 500;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #f0f2f5;
+  user-select: none;
 }
 
 #game-setup-modal.hidden {
@@ -2132,9 +2275,7 @@ body.in-death-sequence #bottom-center-hud,
 .chapter-subtext {
   font-size: 11px;
   color: #a8b0ba;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.4;
 }
 
 /* 메인 실행 버튼 */
@@ -2211,6 +2352,48 @@ body.in-death-sequence #bottom-center-hud,
   border-radius: 50%;
   background: #55ccee;
   box-shadow: 0 0 8px #55ccee;
+}
+
+.status-pill {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 2px;
+  letter-spacing: 0.6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+  color: #cbd5e1;
+}
+
+.status-pill.online {
+  border-color: rgba(68, 221, 136, 0.5);
+  background: rgba(16, 185, 129, 0.14);
+  color: #6eed9e;
+}
+
+.status-pill.offline {
+  border-color: rgba(148, 163, 184, 0.35);
+  background: rgba(148, 163, 184, 0.1);
+  color: #94a3b8;
+}
+
+.status-pill.warning {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: rgba(245, 158, 11, 0.12);
+  color: #fcd34d;
+}
+
+.field-help-text {
+  font-size: 11px;
+  line-height: 1.45;
+  color: #8b96a4;
+  margin-top: 2px;
+}
+
+.chapter-tab.danger.active {
+  color: #ff8a80;
+  border-color: rgba(255, 82, 82, 0.65);
 }
 
 .btn-minimal-submit {
@@ -2307,6 +2490,7 @@ body.in-death-sequence #bottom-center-hud,
   gap: 4px;
   max-height: 80px;
   overflow-y: auto;
+  touch-action: pan-y;
 }
 
 .minimal-field {
@@ -2429,6 +2613,7 @@ body.in-death-sequence #bottom-center-hud,
   gap: 8px;
   max-height: 290px;
   overflow-y: auto;
+  touch-action: pan-y;
   padding-right: 4px;
   margin-bottom: 14px;
 }
@@ -2496,17 +2681,72 @@ body.in-death-sequence #bottom-center-hud,
 }
 
 @media (max-width: 900px) {
+  #game-hud {
+    padding: 7px 10px;
+    gap: 6px;
+  }
+  .hud-center {
+    display: none;
+  }
+  #location-text {
+    font-size: 11.5px;
+    padding: 3px 8px;
+  }
+  .hud-btn {
+    padding: 6px 8px;
+    border-radius: 8px;
+  }
+  .hud-btn-text {
+    display: none;
+  }
+  .hud-ping-badge {
+    padding: 4px 7px;
+    font-size: 10px;
+  }
+  #objective-panel {
+    top: 46px;
+    left: 10px;
+    padding: 5px 9px;
+    max-width: 220px;
+    border-radius: 6px;
+  }
+  .obj-line {
+    font-size: 11px;
+  }
+  #bottom-center-hud {
+    bottom: 10px;
+    gap: 5px;
+  }
+  .inv-slot {
+    width: 60px;
+    height: 36px;
+    border-radius: 6px;
+  }
+  .slot-name {
+    font-size: 10px;
+    max-width: 54px;
+  }
+  #stamina-hud {
+    width: 192px;
+    padding: 4px 7px;
+    border-radius: 6px;
+  }
+  .stamina-label {
+    font-size: 9px;
+  }
   .menu-screen-layout {
     flex-direction: column;
     height: auto;
-    max-height: 94vh;
+    max-height: 94dvh;
     overflow-y: auto;
+    touch-action: pan-y;
     padding: 20px 16px;
     gap: 24px;
   }
   .menu-sidebar, .menu-card-panel {
     width: 100%;
     max-width: 100%;
+    height: auto;
   }
   .menu-game-title {
     font-size: 38px;
@@ -2519,6 +2759,56 @@ body.in-death-sequence #bottom-center-hud,
   .menu-nav-item {
     font-size: 17px;
   }
+  .tactical-death-stamp {
+    position: static;
+    align-self: flex-start;
+    margin-bottom: 4px;
+  }
+  .tactical-death-actions {
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 600px) {
+  #joystick-zone {
+    bottom: 16px;
+    left: 14px;
+  }
+  #btn-touch-interact {
+    bottom: 16px;
+    right: 14px;
+  }
+  #btn-touch-sprint {
+    bottom: 96px;
+    right: 16px;
+  }
+  #btn-touch-flashlight {
+    bottom: 18px;
+    right: 94px;
+  }
+  #btn-touch-drop {
+    bottom: 92px;
+    right: 92px;
+  }
+  #btn-touch-cctv {
+    bottom: 164px;
+    right: 18px;
+  }
+  #btn-touch-map {
+    bottom: 164px;
+    right: 82px;
+  }
+  #touch-controls.swap-hands #joystick-zone { left: auto; right: 14px; }
+  #touch-controls.swap-hands #btn-touch-interact { right: auto; left: 14px; }
+  #touch-controls.swap-hands #btn-touch-sprint { right: auto; left: 16px; }
+  #touch-controls.swap-hands #btn-touch-flashlight { right: auto; left: 94px; }
+  #touch-controls.swap-hands #btn-touch-drop { right: auto; left: 92px; }
+  #touch-controls.swap-hands #btn-touch-cctv { right: auto; left: 18px; }
+  #touch-controls.swap-hands #btn-touch-map { right: auto; left: 82px; }
+  #bottom-center-hud {
+    bottom: 88px;
+    transform: translateX(-50%) scale(0.9);
+  }
 }
 
 /* ============================================================================
@@ -2530,6 +2820,7 @@ body.in-death-sequence #bottom-center-hud,
   left: 0;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   z-index: 60;
   display: flex;
   align-items: center;
@@ -2553,7 +2844,9 @@ body.in-death-sequence #bottom-center-hud,
   z-index: 2;
   width: 94vw;
   max-width: 1060px;
-  max-height: 94vh;
+  max-height: 94dvh;
+  overflow-y: auto;
+  touch-action: pan-y;
   display: flex;
   flex-direction: column;
   background: linear-gradient(180deg, rgba(14, 20, 28, 0.96) 0%, rgba(9, 13, 18, 0.98) 100%);
@@ -2569,6 +2862,8 @@ body.in-death-sequence #bottom-center-hud,
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
   border-bottom: 1px solid rgba(85, 204, 238, 0.2);
   padding-bottom: 10px;
 }

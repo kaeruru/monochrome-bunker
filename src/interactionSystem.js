@@ -141,6 +141,7 @@ export class InteractionAndEscapeSystem {
 
     // 정전(블랙아웃) & 전기실 배전반 상태
     this.isBlackout = false;
+    this.blackoutStartTime = 0;
     this.blackoutTransitionTimer = 0;
     this.breakerState = {
       x: 0,
@@ -243,6 +244,7 @@ export class InteractionAndEscapeSystem {
     this.isEscapeOpen = false;
     this.isGameCleared = false;
     this.isBlackout = false;
+    this.blackoutStartTime = 0;
     this.gondolaProgress = 0;
     this.autoBlackoutTimer = 65 + Math.random() * 20;
 
@@ -720,6 +722,7 @@ export class InteractionAndEscapeSystem {
   triggerBlackout(reasonText = '괴물이 주 전력망을 습격하여 시설 전체가 정전되었습니다!') {
     if (this.map.chapterId === 'chapter2' || this.isBlackout || this.isGameCleared) return;
     this.isBlackout = true;
+    this.blackoutStartTime = performance.now();
     this.blackoutTransitionTimer = 0.85;
     this.blackoutCount++;
 
@@ -743,10 +746,11 @@ export class InteractionAndEscapeSystem {
     this.map.setBlackoutState(true);
     sound.setBlackout(true);
 
+    const breakerZoneLabel = this.map.chapterId === 'chapter3' ? '21층 최하층 배전반' : '전기실 배전반';
     if (this.callbacks.onBlackoutChange) {
       this.callbacks.onBlackoutChange(true);
     }
-    this.notifyToast(`[ALERT] ${reasonText} 전기실 배전반 차단기 레버(0/3)를 수동 복구하십시오.`, 'danger');
+    this.notifyToast(`[ALERT] ${reasonText} ${breakerZoneLabel} 차단기 레버(0/3)를 수동 복구하십시오.`, 'danger');
     this.updateObjectiveHUD();
   }
 
@@ -777,6 +781,10 @@ export class InteractionAndEscapeSystem {
       } else {
         // 3/3 복구 완료!
         this.isBlackout = false;
+        const blackoutDurationSec = this.blackoutStartTime > 0
+          ? (performance.now() - this.blackoutStartTime) / 1000
+          : null;
+        this.blackoutStartTime = 0;
         sound.playPowerRestore();
         sound.setBlackout(false);
         this.map.setBlackoutState(false);
@@ -792,9 +800,10 @@ export class InteractionAndEscapeSystem {
         }
 
         if (this.callbacks.onBlackoutChange) {
-          this.callbacks.onBlackoutChange(false);
+          this.callbacks.onBlackoutChange(false, blackoutDurationSec);
         }
-        this.notifyToast('[RESTORED] 주 전력 복구 완료. 조명, 방호문 및 CCTV 통제 시스템이 재가동되었습니다.', 'success');
+        const breakerZoneLabel = this.map.chapterId === 'chapter3' ? '21층 최하층' : '전기실';
+        this.notifyToast(`[RESTORED] 주 전력 복구 완료. (${breakerZoneLabel}) 조명, 방호문 및 제어 시스템이 재가동되었습니다.`, 'success');
       }
       this.updateObjectiveHUD();
     }
@@ -831,6 +840,27 @@ export class InteractionAndEscapeSystem {
         this.spawnWorldItem(lk.hiddenItemType, lk.x, (lk.baseY || 0) + 0.96, lk.z + 0.05, lk.zoneName, itemId);
       }
       lk.hiddenItemType = null;
+    }
+  }
+
+  applyRemoteItemPickup(itemId) {
+    const idx = this.worldItems.findIndex(w => w.id === itemId);
+    if (idx !== -1) {
+      const item = this.worldItems[idx];
+      this.group.remove(item.mesh);
+      this.worldItems.splice(idx, 1);
+    }
+  }
+
+  applyRemoteGondolaSync(progress, isEscapeOpen = false) {
+    if (!this.map || this.map.chapterId !== 'chapter3') return;
+    this.gondolaProgress = Math.max(0, Math.min(100, Number(progress) || 0));
+    if (isEscapeOpen && !this.isEscapeOpen) {
+      this.unlockEscapeGate();
+    }
+    this.updateObjectiveHUD();
+    if (this.map.updateGondolaMonitor) {
+      this.map.updateGondolaMonitor(this.gondolaProgress, this.coreState.totalInstalled || 0, this.isEscapeOpen);
     }
   }
 
@@ -894,8 +924,8 @@ export class InteractionAndEscapeSystem {
       const meta = ITEM_METADATA[heldType];
       this.notifyToast(`[DROPPED] ${meta.name}을(를) 바닥에 내려놓았습니다.`, 'info');
     }
-    if (this.callbacks.onItemDrop && heldType !== 'flare') {
-      this.callbacks.onItemDrop(heldType, dropX, dropZ);
+    if (this.callbacks.onItemDrop) {
+      this.callbacks.onItemDrop(heldType, dropX, dropZ, heldType === 'flare');
     }
     return true;
   }
@@ -1327,6 +1357,9 @@ export class InteractionAndEscapeSystem {
 
         if (curInt !== prevInt) {
           this.updateObjectiveHUD();
+          if (this.callbacks.onGondolaProgress) {
+            this.callbacks.onGondolaProgress(this.gondolaProgress, this.isEscapeOpen);
+          }
           if (curInt === 25 || curInt === 50 || curInt === 75 || curInt === 90) {
             this.notifyToast(
               `[GONDOLA SYSTEM] 25층 비상 곤돌라 재가동 ${curInt}% 완료! 심연의 괴물로부터 계속 버티십시오!`,
@@ -1338,6 +1371,9 @@ export class InteractionAndEscapeSystem {
         if (this.gondolaProgress >= 100 && !this.isEscapeOpen) {
           this.gondolaProgress = 100;
           this.unlockEscapeGate();
+          if (this.callbacks.onGondolaProgress) {
+            this.callbacks.onGondolaProgress(100, true);
+          }
         }
       }
       if (this.map.updateGondolaMonitor) {
@@ -1350,7 +1386,10 @@ export class InteractionAndEscapeSystem {
       this.autoBlackoutTimer -= dt;
       if (this.autoBlackoutTimer <= 0) {
         this.autoBlackoutTimer = 75 + Math.random() * 25;
-        this.triggerBlackout('괴물이 전기실 배전 선로를 파손하여 시설 전체가 정전되었습니다.');
+        const reason = this.map.chapterId === 'chapter3'
+          ? '심연의 괴물이 21층 하층 지열 배전 선로를 파손하여 갱도 전체가 정전되었습니다.'
+          : '괴물이 전기실 배전 선로를 파손하여 시설 전체가 정전되었습니다.';
+        this.triggerBlackout(reason);
       }
     }
 
@@ -1391,6 +1430,17 @@ export class InteractionAndEscapeSystem {
       f.life -= dt;
       if (f.life <= 0) {
         this.group.remove(f.mesh);
+        f.mesh.traverse((c) => {
+          if (c.geometry) {
+            try { c.geometry.dispose(); } catch (_) {}
+          }
+          if (c.material) {
+            const mats = Array.isArray(c.material) ? c.material : [c.material];
+            for (const m of mats) {
+              try { m.dispose(); } catch (_) {}
+            }
+          }
+        });
         this.activeFlares.splice(i, 1);
       } else {
         const fade = Math.min(1.0, f.life / 5.0);
@@ -1427,10 +1477,8 @@ export class InteractionAndEscapeSystem {
     const dropBtn = document.getElementById('btn-touch-drop');
     if (dropBtn) {
       dropBtn.style.display = heldType ? 'flex' : 'none';
-      const labelEl = dropBtn.querySelector('.btn-label');
-      if (labelEl) {
-        labelEl.textContent = heldType === 'flare' ? 'IGNITE [Q]' : 'DROP [Q]';
-      }
+      dropBtn.classList.toggle('mode-flare', heldType === 'flare');
+      dropBtn.title = heldType === 'flare' ? '조명탄 점화 투척 [Q]' : '아이템 내려놓기 [Q]';
     }
 
     this.updateObjectiveHUD();
@@ -1452,7 +1500,8 @@ export class InteractionAndEscapeSystem {
 
     if (powerStatusEl) {
       if (this.isBlackout) {
-        powerStatusEl.textContent = `전력 차단: 배전반 복구 필요 (${this.breakerState.leversPulled}/3)`;
+        const breakerLabel = this.map && this.map.chapterId === 'chapter3' ? '21F 배전반' : '전기실 배전반';
+        powerStatusEl.textContent = `전력 차단: ${breakerLabel} 복구 필요 (${this.breakerState.leversPulled}/3)`;
         powerStatusEl.classList.remove('hidden');
         powerStatusEl.classList.add('danger');
       } else {
@@ -1464,7 +1513,9 @@ export class InteractionAndEscapeSystem {
 
     if (escapeStatusEl) {
       if (this.isEscapeOpen) {
-        escapeStatusEl.textContent = '비상 탈출 해치: 개방됨 (북쪽 벽)';
+        escapeStatusEl.textContent = (this.map && this.map.chapterId === 'chapter3')
+          ? '비상 곤돌라: 탑승 가능 (25층 북쪽 승강장)'
+          : '비상 탈출 해치: 개방됨 (북쪽 벽)';
         escapeStatusEl.classList.remove('hidden');
         escapeStatusEl.classList.add('ready');
       } else {

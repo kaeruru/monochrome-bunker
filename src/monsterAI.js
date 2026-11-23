@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {
   MonsterEntity,
+  GeoGoliathEntity,
   CrawlerCrocodileEntity,
   LurkerCrocodileEntity,
   SnareMangleEntity,
@@ -68,6 +69,12 @@ export class MonsterAI {
     this.stalkerEntity.enableSound = false;
     this.stalkerEntity.soundVolume = 0.0;
     this.rootGroup.add(this.stalkerEntity.root);
+
+    this.geoGoliathEntity = new GeoGoliathEntity();
+    this.geoGoliathEntity.enableSound = false;
+    this.geoGoliathEntity.soundVolume = 0.0;
+    this.geoGoliathEntity.root.visible = false;
+    this.rootGroup.add(this.geoGoliathEntity.root);
 
     this.scp096Entity = new Scp096Entity();
     this.scp096Entity.enableSound = false;
@@ -196,6 +203,13 @@ export class MonsterAI {
     this.targetSyncPos = new THREE.Vector3(0, -10, 0);
     this.targetSyncYaw = 0;
     this.syncAnimMode = 'stalk';
+    this.targetLurkerPos = new THREE.Vector3(0, -10, 0);
+    this.targetLurkerYaw = 0;
+    this.syncLurkerAnimMode = 'idle';
+    this.targetSnarePos = new THREE.Vector3(0, -10, 0);
+    this.targetSnareYaw = 0;
+    this.syncSnareAnimMode = 'stalk';
+    this._aliveTargets = [];
 
     this.resetForNewMatch();
   }
@@ -310,6 +324,19 @@ export class MonsterAI {
     }
     if (data.currentVent !== undefined) this.currentVentIdx = data.currentVent;
     if (data.targetVent !== undefined) this.targetVentIdx = data.targetVent;
+
+    if (data.lurker) {
+      if (data.lurker.pos) this.targetLurkerPos.set(data.lurker.pos.x, data.lurker.pos.y, data.lurker.pos.z);
+      if (data.lurker.yaw !== undefined) this.targetLurkerYaw = data.lurker.yaw;
+      if (data.lurker.state) this.lurkerState = data.lurker.state;
+      if (data.lurker.animMode) this.syncLurkerAnimMode = data.lurker.animMode;
+    }
+    if (data.snare) {
+      if (data.snare.pos) this.targetSnarePos.set(data.snare.pos.x, data.snare.pos.y, data.snare.pos.z);
+      if (data.snare.yaw !== undefined) this.targetSnareYaw = data.snare.yaw;
+      if (data.snare.state) this.snareState = data.snare.state;
+      if (data.snare.animMode) this.syncSnareAnimMode = data.snare.animMode;
+    }
     this.updateBioSignHUD();
   }
 
@@ -321,29 +348,32 @@ export class MonsterAI {
       this.activeVentNodes = [...chapterConfig.ventNodes];
     }
 
-    // 챕터별 전용 괴물 모델 전환 (챕터 1: 스토커/SCP-096, 챕터 2: 수로 삼두 괴수)
+    // 챕터별 전용 괴물 모델 전환 (챕터 1: 스토커/SCP-096, 챕터 2: 수로 삼두 괴수, 챕터 3: 지열 골리앗)
     const ch1Skin = (typeof localStorage !== 'undefined' && localStorage.getItem('mb_ch1_monster')) || 'original';
+    this.stalkerEntity.root.visible = false;
+    this.scp096Entity.root.visible = false;
+    if (this.geoGoliathEntity) this.geoGoliathEntity.root.visible = false;
+    this.crawlerEntity.root.visible = false;
+    this.lurkerEntity.root.visible = false;
+    this.snareEntity.root.visible = false;
+    this.isPlayerSnared = false;
+
     if (this.chapterId === 'chapter2') {
       this.monster = this.crawlerEntity;
-      this.stalkerEntity.root.visible = false;
-      this.scp096Entity.root.visible = false;
       this.crawlerEntity.root.visible = true;
       this.lurkerEntity.root.visible = true;
       this.snareEntity.root.visible = true;
+    } else if (this.chapterId === 'chapter3' && this.geoGoliathEntity) {
+      this.monster = this.geoGoliathEntity;
+      this.geoGoliathEntity.root.visible = true;
     } else {
       if (ch1Skin === 'scp096') {
         this.monster = this.scp096Entity;
-        this.stalkerEntity.root.visible = false;
         this.scp096Entity.root.visible = true;
       } else {
         this.monster = this.stalkerEntity;
         this.stalkerEntity.root.visible = true;
-        this.scp096Entity.root.visible = false;
       }
-      this.crawlerEntity.root.visible = false;
-      this.lurkerEntity.root.visible = false;
-      this.snareEntity.root.visible = false;
-      this.isPlayerSnared = false;
     }
 
     this.rebuildVentNetworkMeshes();
@@ -351,7 +381,7 @@ export class MonsterAI {
   }
 
   setChapter1Skin(skin = 'original') {
-    if (this.chapterId !== 'chapter2') {
+    if (this.chapterId === 'chapter1') {
       if (skin === 'scp096') {
         this.monster = this.scp096Entity;
         this.stalkerEntity.root.visible = false;
@@ -656,16 +686,17 @@ export class MonsterAI {
    * - 조명탄 스턴: 청록 스파크 (0x55ffff)
    */
   setHeartCoreColor(hexColor) {
+    const resolvedHex = (this.chapterId === 'chapter3' && hexColor === 0xdbe8ff) ? 0xff5518 : hexColor;
     if (this.monster.mats && this.monster.mats.heartCoreMat) {
       if (this.monster.mats.heartCoreMat.color) {
-        this.monster.mats.heartCoreMat.color.setHex(hexColor);
+        this.monster.mats.heartCoreMat.color.setHex(resolvedHex);
       }
       if (this.monster.mats.heartCoreMat.emissive) {
-        this.monster.mats.heartCoreMat.emissive.setHex(hexColor);
+        this.monster.mats.heartCoreMat.emissive.setHex(resolvedHex);
       }
     }
     if (this.monster.heartLight) {
-      this.monster.heartLight.color.setHex(hexColor);
+      this.monster.heartLight.color.setHex(resolvedHex);
     }
   }
 
@@ -802,6 +833,9 @@ export class MonsterAI {
         this.bashingDoor = null;
         this.setHeartCoreColor(0x55ffff);
         sound.playMonsterStun(0.48);
+        if (this.callbacks.onFlareRetaliation) {
+          this.callbacks.onFlareRetaliation();
+        }
         if (this.callbacks.onToast) {
           this.callbacks.onToast('[COUNTERMEASURE] 조명탄의 강렬한 섬광이 괴물의 시각 센서를 마비시켰습니다! (4.5초 스턴)', 'success');
         }
@@ -865,6 +899,24 @@ export class MonsterAI {
       }
     }
     return true;
+  }
+
+  findVisibleTarget(targets, isBlackout) {
+    if (!targets || targets.length === 0) return null;
+    let best = null;
+    let bestDist = Infinity;
+    for (let i = 0; i < targets.length; i++) {
+      const t = targets[i];
+      if (!t || !t.pos) continue;
+      if (this.canSeePlayer(t.pos, t.flashlightOn, isBlackout)) {
+        const d = Math.hypot(t.pos.x - this.pos.x, t.pos.z - this.pos.z);
+        if (d < bestDist) {
+          bestDist = d;
+          best = t;
+        }
+      }
+    }
+    return best;
   }
 
   /**
@@ -1285,14 +1337,53 @@ export class MonsterAI {
   /**
    * 매 프레임 괴물 AI 업데이트
    */
-  update(dt, playerPos, playerCamera, flashlightOn, isSprinting, isMoving) {
+  update(dt, playerPos, playerCamera, flashlightOn, isSprinting, isMoving, remotePlayers = null) {
     if (this.interactionSystem && this.interactionSystem.isGameCleared) return;
     if (this.map && this.map.isIntroPlaying) return;
 
     if (this.isRemoteControlled) {
+      if (this.isKillingPlayer) {
+        this.killTimer -= dt;
+        const progress = 1.0 - Math.max(0, this.killTimer / 1.75);
+        if (this.killerType === 'lurker' && this.lurkerEntity) {
+          if (this.lurkerEntity.upperTrapJaw) {
+            this.lurkerEntity.upperTrapJaw.getWorldPosition(this._tmpHeadWorld);
+            this._tmpHeadWorld.y -= 0.08;
+          } else {
+            this.lurkerEntity.root.getWorldPosition(this._tmpHeadWorld);
+            this._tmpHeadWorld.y += 0.82;
+          }
+          const jitter = (1.0 - progress * 0.35) * 0.035;
+          playerCamera.position.set(
+            playerPos.x + (Math.random() - 0.5) * jitter,
+            (this.lurkerPos.y + 1.42) + (Math.random() - 0.5) * jitter,
+            playerPos.z + (Math.random() - 0.5) * jitter
+          );
+          playerCamera.lookAt(this._tmpHeadWorld);
+          this.lurkerEntity.update(dt, 'jumpscare');
+        } else if (this.monster && this.monster.headGroup) {
+          this.monster.headGroup.getWorldPosition(this._tmpHeadWorld);
+          this._tmpHeadWorld.y -= 0.08;
+          const jitter = (1.0 - progress * 0.35) * 0.024;
+          const killCamHeight = this.chapterId === 'chapter2' ? 1.24 : 1.62;
+          playerCamera.position.set(
+            playerPos.x + (Math.random() - 0.5) * jitter,
+            (this.pos.y + killCamHeight) + (Math.random() - 0.5) * jitter,
+            playerPos.z + (Math.random() - 0.5) * jitter
+          );
+          playerCamera.lookAt(this._tmpHeadWorld);
+          this.monster.update(dt, 'jumpscare');
+        }
+        if (this.killTimer <= 0) {
+          this.isKillingPlayer = false;
+          if (this.callbacks.onPlayerCaught) this.callbacks.onPlayerCaught();
+        }
+        return;
+      }
+
       const prevX = this.pos.x;
       const prevZ = this.pos.z;
-      // 비-호스트 멀티플레이 클라이언트: 무거운 AI 길찾기/레이캐스트를 건너뛰고 부드러운 위치/회전 보간만 처리
+      // 비-호스트 멀티플레이 클라이언트: 무거운 AI 길찾기/레이캐스트를 건너뛰고 부드러운 위치/회전 보간 및 로컬 위협/피습 판정 처리
       this.pos.lerp(this.targetSyncPos, Math.min(1, dt * 14));
       let diff = this.targetSyncYaw - this.yaw;
       while (diff > Math.PI) diff -= Math.PI * 2;
@@ -1302,11 +1393,100 @@ export class MonsterAI {
       const actualDist = Math.hypot(this.pos.x - prevX, this.pos.z - prevZ);
       this.monster.root.position.copy(this.pos);
       this.monster.root.rotation.y = this.yaw;
-      this.monster.root.visible = (this.state !== 'VENT_MOVE');
+      this.monster.root.visible = !(this.chapterId === 'chapter1' && this.state === 'VENT_LURK');
       this.monster.update(dt, this.syncAnimMode || 'stalk', actualDist);
+
+      if (this.chapterId === 'chapter2') {
+        this.lurkerPos.lerp(this.targetLurkerPos, Math.min(1, dt * 12));
+        let lDiff = this.targetLurkerYaw - this.lurkerYaw;
+        while (lDiff > Math.PI) lDiff -= Math.PI * 2;
+        while (lDiff < -Math.PI) lDiff += Math.PI * 2;
+        this.lurkerYaw += lDiff * Math.min(1, dt * 12);
+        this.lurkerEntity.root.position.copy(this.lurkerPos);
+        this.lurkerEntity.root.rotation.y = this.lurkerYaw;
+        this.lurkerEntity.update(dt, this.syncLurkerAnimMode || 'idle');
+
+        this.snarePos.lerp(this.targetSnarePos, Math.min(1, dt * 12));
+        let sDiff = this.targetSnareYaw - this.snareYaw;
+        while (sDiff > Math.PI) sDiff -= Math.PI * 2;
+        while (sDiff < -Math.PI) sDiff += Math.PI * 2;
+        this.snareYaw += sDiff * Math.min(1, dt * 12);
+        this.snareEntity.root.position.copy(this.snarePos);
+        this.snareEntity.root.rotation.y = this.snareYaw;
+        this.snareEntity.update(dt, this.syncSnareAnimMode || 'stalk');
+      }
+
+      const distToPlayer = Math.hypot(playerPos.x - this.pos.x, playerPos.z - this.pos.z);
+      const maxHearDist = 26.0;
+      const spatialVol = Math.max(0, Math.pow(1 - Math.min(distToPlayer, maxHearDist) / maxHearDist, 1.6)) * 0.48;
+      this.monster.soundVolume = (this.state === 'VENT_LURK') ? 0 : spatialVol;
+
+      if (this.vignetteEl) {
+        if (this.state !== 'VENT_LURK' && distToPlayer < 14.0) {
+          const threat = Math.pow(1 - distToPlayer / 14.0, 1.5);
+          const redAlpha = (this.state === 'CHASE' ? 0.42 : 0.22) * threat;
+          this.vignetteEl.style.boxShadow = `inset 0 0 ${90 + threat * 50}px rgba(${Math.floor(180 * threat)}, 0, 0, ${0.92 + redAlpha * 0.08})`;
+        } else {
+          this.vignetteEl.style.boxShadow = 'inset 0 0 90px rgba(0, 0, 0, 0.95)';
+        }
+      }
+
+      // 비-호스트 로컬 피습 판정 (동기화된 CHASE 괴물 또는 매복자 악어와 실제 접촉 시)
+      const playerFootY = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(playerPos.x, playerPos.z) : 0;
+      if (this.state === 'CHASE' && this.monster.root.visible) {
+        const isCh2 = this.chapterId === 'chapter2';
+        const catchRadius = isCh2 ? 1.55 : 1.65;
+        const elevDiff = Math.abs(this.pos.y - playerFootY);
+        const canCatchElev = isCh2 ? (elevDiff < 1.65) : (elevDiff < 0.95);
+        if (distToPlayer < catchRadius && canCatchElev) {
+          this.triggerPlayerKill(playerPos, playerCamera);
+          return;
+        }
+      }
+      if (this.chapterId === 'chapter2' && this.lurkerState !== 'LURK_RELOCATE' && playerFootY < 1.45) {
+        const dLurk = Math.hypot(playerPos.x - this.lurkerPos.x, playerPos.z - this.lurkerPos.z);
+        if (dLurk < 2.25) {
+          this.triggerPlayerKill(playerPos, playerCamera, 'lurker');
+          return;
+        }
+      }
+
       this.updateBioSignHUD();
       return;
     }
+
+    // 멀티플레이 호스트용 생존 대원 타깃 풀 갱신 (호스트 본인 + 생존한 원격 대원들)
+    const targets = this._aliveTargets;
+    targets.length = 0;
+    targets.push({ pos: playerPos, flashlightOn, isSprinting, isMoving, isLocal: true });
+    if (remotePlayers && remotePlayers.size > 0) {
+      for (const [, rp] of remotePlayers) {
+        if (rp.isDead || !rp.entity?.root?.position) continue;
+        targets.push({
+          pos: rp.entity.root.position,
+          flashlightOn: Boolean(rp.flashlightOn),
+          isSprinting: Boolean(rp.isSprinting),
+          isMoving: Boolean(rp.isMoving),
+          isLocal: false
+        });
+      }
+    }
+
+    // 가장 가까운 생존 대원을 기본 추격/감시 타깃으로 삼음
+    let activeTarget = targets[0];
+    let bestTargetDist = Math.hypot(playerPos.x - this.pos.x, playerPos.z - this.pos.z);
+    for (let i = 1; i < targets.length; i++) {
+      const t = targets[i];
+      const d = Math.hypot(t.pos.x - this.pos.x, t.pos.z - this.pos.z);
+      if (d < bestTargetDist) {
+        bestTargetDist = d;
+        activeTarget = t;
+      }
+    }
+    const targetPlayerPos = activeTarget.pos;
+    const targetFlashlightOn = activeTarget.flashlightOn;
+    const targetIsSprinting = activeTarget.isSprinting;
+    const targetIsMoving = activeTarget.isMoving;
 
     const frameStartX = this.pos.x;
     const frameStartZ = this.pos.z;
@@ -1385,12 +1565,14 @@ export class MonsterAI {
       return;
     }
 
-    // 2. 플레이어 이동 소음 자동 감지 (달리기: 난이도별 반경, 걷기: 3.6m)
-    if (isMoving) {
-      if (isSprinting) {
-        this.notifyPlayerSound(playerPos.x, playerPos.z, this.hearingSprintRadius || 21.0, '전력 질주 발소리');
+    // 2. 플레이어 이동 소음 자동 감지 (로컬 및 생존한 원격 대원 모두 감지)
+    for (let i = 0; i < targets.length; i++) {
+      const t = targets[i];
+      if (!t.isMoving) continue;
+      if (t.isSprinting) {
+        this.notifyPlayerSound(t.pos.x, t.pos.z, this.hearingSprintRadius || 21.0, '전력 질주 발소리');
       } else {
-        this.notifyPlayerSound(playerPos.x, playerPos.z, 3.6, '발소리');
+        this.notifyPlayerSound(t.pos.x, t.pos.z, 3.6, '발소리');
       }
     }
 
@@ -1497,7 +1679,7 @@ export class MonsterAI {
 
               const d = Math.hypot(playerPos.x - landX, playerPos.z - landZ);
               if (d < 35.0) {
-                sound.playMonsterSpotted(0.65);
+                sound.playMonsterScreech(0.65);
                 sound.playVentGrate(0.65);
               }
               if (this.callbacks.onToast) {
@@ -1702,12 +1884,14 @@ export class MonsterAI {
         this.pos.y = isCh2 ? 0.0 : (this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0);
         this.patrolDuration -= dt;
 
-        // 시야 내 플레이어 발각 검사
-        if (this.canSeePlayer(playerPos, flashlightOn, isBlackout)) {
-          if (distToPlayer <= 4.8 || isCh2) {
-            this.startChase(playerPos);
+        // 시야 내 플레이어 발각 검사 (로컬 및 원격 대원 통합)
+        const seenPatrol = this.findVisibleTarget(targets, isBlackout);
+        if (seenPatrol) {
+          const dSeen = Math.hypot(seenPatrol.pos.x - this.pos.x, seenPatrol.pos.z - this.pos.z);
+          if (dSeen <= 4.8 || isCh2) {
+            this.startChase(seenPatrol.pos);
           } else {
-            this.startStalkPeek(playerPos);
+            this.startStalkPeek(seenPatrol.pos);
           }
           break;
         }
@@ -1755,11 +1939,13 @@ export class MonsterAI {
         const speedMult = isCh2 ? 0.98 : 1.0;
         this.pos.y = isCh2 ? 0.0 : (this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0);
 
-        if (this.canSeePlayer(playerPos, flashlightOn, isBlackout)) {
-          if (distToPlayer <= 4.8 || isCh2) {
-            this.startChase(playerPos);
+        const seenInv = this.findVisibleTarget(targets, isBlackout);
+        if (seenInv) {
+          const dSeen = Math.hypot(seenInv.pos.x - this.pos.x, seenInv.pos.z - this.pos.z);
+          if (dSeen <= 4.8 || isCh2) {
+            this.startChase(seenInv.pos);
           } else {
-            this.startStalkPeek(playerPos);
+            this.startStalkPeek(seenInv.pos);
           }
           break;
         }
@@ -1788,12 +1974,12 @@ export class MonsterAI {
         animMode = 'idle';
         const isCh2 = this.chapterId === 'chapter2';
         this.pos.y = isCh2 ? 0.0 : (this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0);
-        this.targetYaw = Math.atan2(playerPos.x - this.pos.x, playerPos.z - this.pos.z);
+        this.targetYaw = Math.atan2(targetPlayerPos.x - this.pos.x, targetPlayerPos.z - this.pos.z);
         this.stalkPeekTimer -= dt;
 
         // 플레이어가 손전등을 켜고 있거나, 움직이거나(걷기/달리기), 너무 근접(<= 4.5m)하면 즉시 추격 돌입!
-        if (flashlightOn || isMoving || isSprinting || distToPlayer <= 4.5) {
-          this.startChase(playerPos);
+        if (targetFlashlightOn || targetIsMoving || targetIsSprinting || bestTargetDist <= 4.5) {
+          this.startChase(targetPlayerPos);
           break;
         }
 
@@ -1810,13 +1996,17 @@ export class MonsterAI {
 
       case 'CHASE': {
         const isCh2 = this.chapterId === 'chapter2';
+        const seenChase = this.findVisibleTarget(targets, isBlackout);
+        const chaseTarget = seenChase || activeTarget;
+        const chasePos = chaseTarget.pos;
+        const distToChase = Math.hypot(chasePos.x - this.pos.x, chasePos.z - this.pos.z);
 
         // 챕터 2: 플레이어 발각 직후 0.65초 동안 제자리에서 상체를 쳐들고 아가리를 벌려 포효하며 돌진 전조(Telegraph) 모션
         // 플레이어에게 괴물이 다가오는 것을 시각/청각으로 인지하고 도망칠 수 있는 골든 타임 부여
         if (isCh2 && this.chaseWindupTimer && this.chaseWindupTimer > 0) {
           this.chaseWindupTimer -= dt;
           animMode = 'attack';
-          this.targetYaw = Math.atan2(playerPos.x - this.pos.x, playerPos.z - this.pos.z);
+          this.targetYaw = Math.atan2(chasePos.x - this.pos.x, chasePos.z - this.pos.z);
           this.yaw = THREE.MathUtils.lerp(this.yaw, this.targetYaw, dt * 10);
           this.monster.root.rotation.y = this.yaw;
           this.pos.y = 0.0;
@@ -1830,14 +2020,12 @@ export class MonsterAI {
         const chaseSpeedActual = isCh2 ? 5.6 : (this.chaseSpeed || 10.2);
         this.pos.y = isCh2 ? 0.0 : (this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(this.pos.x, this.pos.z) : 0);
 
-        const playerFootY = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(playerPos.x, playerPos.z) : 0;
+        const localFootY = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(playerPos.x, playerPos.z) : 0;
+        const chaseFootY = this.map && this.map.getFloorHeightAt ? this.map.getFloorHeightAt(chasePos.x, chasePos.z) : 0;
 
-        // 플레이어 포획 판정:
-        // 챕터 1: 반경 1.65m 이내
-        // 챕터 2 수로 크롤러: 거대한 악어 주둥이가 플레이어 바로 앞(1.55m)까지 실제로 닿아야 점프스케어 발동 (원거리 억까 방지)
+        // 로컬 플레이어 포획 판정:
         const catchRadius = isCh2 ? 1.55 : 1.65;
-        const elevDiff = Math.abs(this.pos.y - playerFootY);
-        // 플레이어가 수로에 있든, 경사로나 물가 턱에 걸쳐 있든 크롤러 사정거리 이내면 덮쳐서 처형!
+        const elevDiff = Math.abs(this.pos.y - localFootY);
         const canCatchElevation = isCh2 ? (elevDiff < 1.65) : (elevDiff < 0.95);
 
         if (distToPlayer < catchRadius && canCatchElevation) {
@@ -1845,13 +2033,13 @@ export class MonsterAI {
           return;
         }
 
-        // 챕터 2 전용: 플레이어가 고지대 깊숙이(거리 3.2m 이상, 고도 1.20m 이상) 도망쳤을 때만 물가에서 위협 후 순찰 복귀
-        if (isCh2 && playerFootY >= 1.20 && distToPlayer > 3.2) {
+        // 챕터 2 전용: 추적 대상이 고지대 깊숙이(거리 3.2m 이상, 고도 1.20m 이상) 도망쳤을 때만 물가에서 위협 후 순찰 복귀
+        if (isCh2 && chaseFootY >= 1.20 && distToChase > 3.2) {
           const arrivedEdge = this.moveAlongPath(dt, chaseSpeedActual, false);
           this.pos.y = 0.0;
-          if (arrivedEdge || distToPlayer < 4.8) {
+          if (arrivedEdge || distToChase < 4.8) {
             animMode = 'attack'; // 물가 경계에서 고지대를 향해 악어 턱을 딱딱거리며 위협
-            this.targetYaw = Math.atan2(playerPos.x - this.pos.x, playerPos.z - this.pos.z);
+            this.targetYaw = Math.atan2(chasePos.x - this.pos.x, chasePos.z - this.pos.z);
             this.waterEdgeFrustrationTimer = (this.waterEdgeFrustrationTimer || 0) + dt;
             if (this.waterEdgeFrustrationTimer >= 2.5) {
               this.waterEdgeFrustrationTimer = 0;
@@ -1869,13 +2057,12 @@ export class MonsterAI {
         }
 
         this.waterEdgeFrustrationTimer = 0;
-        const seesPlayer = this.canSeePlayer(playerPos, flashlightOn, isBlackout);
-        if (seesPlayer) {
-          this.lastSeenPlayerPos.copy(playerPos);
+        if (seenChase) {
+          this.lastSeenPlayerPos.copy(chasePos);
           this.loseSightTimer = 0;
         } else {
           // 챕터 1: 손전등을 끄고 코너를 돌면 시야 상실 보너스, 챕터 2: 손전등과 무관
-          this.loseSightTimer += dt * (isCh2 ? 1.0 : (flashlightOn ? 1.0 : 1.55));
+          this.loseSightTimer += dt * (isCh2 ? 1.0 : (chaseTarget.flashlightOn ? 1.0 : 1.55));
         }
 
         // 주기적으로 플레이어의 마지막 목격 위치로 경로 갱신
@@ -1927,7 +2114,11 @@ export class MonsterAI {
         if (this.stateTimer <= 0) {
           // 3.5초 동안 문을 두드린 후 강제로 방호문을 열어젖힘!
           if (this.bashingDoor && !this.bashingDoor.isOpen) {
-            this.map.toggleDoor(this.bashingDoor.id);
+            const bashedDoorId = this.bashingDoor.id;
+            const opened = this.map.toggleDoor(bashedDoorId);
+            if (this.callbacks.onDoorBashed) {
+              this.callbacks.onDoorBashed(bashedDoorId, opened);
+            }
             if (sound && typeof sound.playDoorMalfunction === 'function') {
               sound.playDoorMalfunction();
             } else if (sound && typeof sound.playDoorSound === 'function') {
@@ -1972,6 +2163,7 @@ export class MonsterAI {
     this.yaw += angleDiff * Math.min(1, dt * 10);
 
     const actualDist = Math.hypot(this.pos.x - frameStartX, this.pos.z - frameStartZ);
+    this.lastAnimMode = animMode;
     this.monster.root.position.copy(this.pos);
     this.monster.root.rotation.y = this.yaw;
     if (this.state !== 'VENT_EMERGE' && this.state !== 'VENT_ENTER') {
@@ -2033,6 +2225,9 @@ export class MonsterAI {
       sound.playLurkerSubmerge();
       this.lurkerState = 'LURK_RELOCATE';
       this.lurkerTimer = 1.2;
+      if (this.callbacks.onFlareRetaliation) {
+        this.callbacks.onFlareRetaliation();
+      }
     } else if (dLurk < 2.35 && playerFootY < 1.45 && !this.isKillingPlayer && !this.isPlayerSnared) {
       // [점프스케어] 조명탄/소나 없이 매복자 2.35m 이내에 접근 시 수면을 박차고 솟구쳐 즉시 1인칭 안면 곰덫 처형!
       this.triggerPlayerKill(playerPos, playerCamera, 'lurker');
@@ -2045,8 +2240,8 @@ export class MonsterAI {
       // 주기적 물살 소리 (플레이어가 18m 이내에 있을 때 입체 음향)
       if (this.lurkerWaterSplashTimer <= 0) {
         this.lurkerWaterSplashTimer = 3.2 + Math.random() * 1.5;
-        if (dLurk < 18.0 && sound.playFootstepWater) {
-          sound.playFootstepWater(0.24);
+        if (dLurk < 18.0 && sound.playWaterFootstep) {
+          sound.playWaterFootstep(false);
         }
       }
 
@@ -2096,6 +2291,7 @@ export class MonsterAI {
 
       this.lurkerEntity.root.position.copy(this.lurkerPos);
       this.lurkerEntity.root.rotation.y = this.lurkerYaw;
+      this.lurkerAnimMode = 'stalk';
       this.lurkerEntity.update(dt, 'stalk');
     } else if (this.lurkerState === 'LURK_WAIT') {
       // 경사로/사다리 밑 수면 아래 잠복
@@ -2110,11 +2306,13 @@ export class MonsterAI {
 
       this.lurkerEntity.root.position.copy(this.lurkerPos);
       this.lurkerEntity.root.rotation.y = this.lurkerYaw;
+      this.lurkerAnimMode = 'idle';
       this.lurkerEntity.update(dt, 'idle');
     } else if (this.lurkerState === 'LURK_ATTACK') {
       this.lurkerTimer -= dt;
       this.lurkerEntity.root.position.copy(this.lurkerPos);
       this.lurkerEntity.root.rotation.y = this.lurkerYaw;
+      this.lurkerAnimMode = 'attack';
       this.lurkerEntity.update(dt, 'attack');
       if (this.lurkerTimer <= 0) {
         this.lurkerState = 'LURK_RELOCATE';
@@ -2124,6 +2322,7 @@ export class MonsterAI {
       this.lurkerTimer -= dt;
       this.lurkerPos.y -= dt * 0.95;
       this.lurkerEntity.root.position.copy(this.lurkerPos);
+      this.lurkerAnimMode = 'idle';
       this.lurkerEntity.update(dt, 'idle');
       if (this.lurkerTimer <= 0) {
         this.relocateLurker(playerPos, true);
@@ -2226,6 +2425,7 @@ export class MonsterAI {
 
       this.snareEntity.root.position.copy(this.snarePos);
       this.snareEntity.root.rotation.y = this.snareYaw;
+      this.snareAnimMode = 'chase';
       this.snareEntity.update(dt, 'chase');
     } else if (this.snareState === 'SNARE_CEILING') {
       // 천장에서 멈춰서 정전기 잡음을 내며 주변 탐색
@@ -2238,6 +2438,7 @@ export class MonsterAI {
 
       this.snareEntity.root.position.copy(this.snarePos);
       this.snareEntity.root.rotation.y = this.snareYaw;
+      this.snareAnimMode = 'stalk';
       this.snareEntity.update(dt, 'stalk');
     } else if (this.snareState === 'SNARE_HOLD') {
       // 플레이어가 결박 도중 물 밖으로 벗어난 경우 즉시 결박 해제
@@ -2262,6 +2463,7 @@ export class MonsterAI {
 
       this.snareEntity.root.position.copy(this.snarePos);
       this.snareEntity.root.rotation.y = this.snareYaw;
+      this.snareAnimMode = 'attack';
       this.snareEntity.update(dt, 'attack');
 
       // 결박 중 0.9초마다 라디오 괴성
@@ -2301,6 +2503,7 @@ export class MonsterAI {
       this.snareTimer -= dt;
       this.snarePos.y += dt * 2.6;
       this.snareEntity.root.position.copy(this.snarePos);
+      this.snareAnimMode = 'idle';
       this.snareEntity.update(dt, 'idle');
       if (this.snareTimer <= 0) {
         this.relocateSnare(playerPos, true);

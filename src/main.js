@@ -167,6 +167,8 @@ class MonochromeBunker3D {
     this.droppedFlashlightTarget = null;
     this.deathTypeInterval = null;
     this.missionStartTime = performance.now();
+    this.silentStrideTimer = 0;
+    this.unlockedAchievements = this.loadAchievements();
 
     // 신규 모달 및 HUD DOM 요소
     this.deathSurveillanceHudEl = document.getElementById('death-surveillance-hud');
@@ -286,29 +288,37 @@ class MonochromeBunker3D {
         const d = this.map.doors.find(x => x.id === doorId);
         if (d && d.isOpen !== isOpen) {
           d.isOpen = isOpen;
+          const ledMat = d.isOpen ? this.map.materials.ledGreen : this.map.materials.ledRed;
+          if (d.ledFront) d.ledFront.material = ledMat;
+          if (d.ledBack) d.ledBack.material = ledMat;
           sound.playDoorSound(isOpen);
           if (this.cctv) this.cctv.updateDoorButtons(this.map.doors);
+          if (this.networkManager?.isHost && this.monsterAI) {
+            this.monsterAI.notifyPlayerSound(d.x, d.z, 18.0, '원격 방호문 개폐음');
+          }
         }
       },
       onItemPickupSync: (itemId) => {
         if (this.interactionSystem) {
-          const idx = this.interactionSystem.worldItems.findIndex(w => w.id === itemId);
-          if (idx !== -1) {
-            const item = this.interactionSystem.worldItems[idx];
-            this.interactionSystem.group.remove(item.mesh);
-            this.interactionSystem.worldItems.splice(idx, 1);
-          }
+          this.interactionSystem.applyRemoteItemPickup(itemId);
         }
       },
       onLockerOpenSync: (lockerId) => {
         if (this.interactionSystem) {
           this.interactionSystem.applyRemoteLockerOpen(lockerId);
+          if (this.networkManager?.isHost && this.monsterAI) {
+            const lk = this.interactionSystem.lockers.find(l => l.id === lockerId);
+            if (lk) this.monsterAI.notifyPlayerSound(lk.x, lk.z, 16.0, '원격 캐비닛 개방음');
+          }
         }
       },
-      onItemDropSync: (item, x, z) => {
+      onItemDropSync: (item, x, z, ignited = false) => {
         if (this.interactionSystem) {
           const typeStr = typeof item === 'object' && item ? (item.type || item.id) : item;
-          if (typeStr) {
+          if (typeStr === 'flare' && ignited) {
+            this.interactionSystem.spawnIgnitedFlare(x, z);
+            sound.playFlareIgnite();
+          } else if (typeStr) {
             const inCh2Water = this.interactionSystem.map && this.interactionSystem.map.chapterId === 'chapter2' && this.interactionSystem.map.isWaterAt && this.interactionSystem.map.isWaterAt(x, z);
             const dropY = inCh2Water ? 0.62 : 0.22;
             this.interactionSystem.spawnWorldItem(typeStr, x, dropY, z, '동료 대원이 내려놓음');
@@ -318,7 +328,35 @@ class MonochromeBunker3D {
       onCoreInsertSync: (partType, total) => {
         if (this.interactionSystem) {
           this.interactionSystem.applyRemoteCoreInsert(partType, total);
+          if (this.networkManager?.isHost && this.monsterAI && this.interactionSystem.corePos) {
+            this.monsterAI.notifyPlayerSound(
+              this.interactionSystem.corePos.x,
+              this.interactionSystem.corePos.z,
+              16.0,
+              '원격 코어 결합음'
+            );
+          }
         }
+      },
+      onGondolaSync: (progress, isEscapeOpen) => {
+        if (this.interactionSystem) {
+          this.interactionSystem.applyRemoteGondolaSync(progress, isEscapeOpen);
+        }
+      },
+      onRemoteEscape: (callsign) => {
+        this.showGameToast(`[EVACUATED] 대원 [${callsign || '동료'}]이(가) 탈출을 완료하여 전 대원이 비상 탈출합니다!`, 'success');
+        this.handleEscapeSuccess(true);
+      },
+      onMatchRestarted: (msg) => {
+        if (msg.matchSeed) this.matchSeed = msg.matchSeed;
+        if (msg.mapId) {
+          this.selectedChapterId = msg.mapId;
+          this.selectedCoopMapId = msg.mapId;
+        }
+        this.restartNewRandomMatch(true);
+      },
+      onRadioChat: (sender, text) => {
+        this.appendRadioChat(sender, text);
       },
       onBlackoutSync: (isBlackout, reason) => {
         if (this.interactionSystem) {
@@ -339,6 +377,14 @@ class MonochromeBunker3D {
           this.monsterAI.isRemoteControlled = false;
         }
       },
+      onHostChanged: (hostId) => {
+        if (this.currentRoomPlayers) {
+          for (const p of this.currentRoomPlayers) {
+            p.isHost = (p.id === hostId);
+          }
+          this.updateRoomRoster();
+        }
+      },
       onRoomJoined: (info) => {
         if (this.monsterAI) {
           this.monsterAI.isRemoteControlled = !info.isHost;
@@ -349,11 +395,44 @@ class MonochromeBunker3D {
         if (this.networkManager) {
           this.networkManager.mapId = targetMap;
         }
+        if (info.matchSeed) {
+          this.matchSeed = info.matchSeed;
+        }
         if (targetMap !== this.activeChapterId) {
           this.loadChapter(targetMap);
         }
-        if (info.matchSeed) {
-          this.matchSeed = info.matchSeed;
+        if (Array.isArray(info.doors) && this.map && this.map.doors) {
+          for (const [doorId, isOpen] of info.doors) {
+            const d = this.map.doors.find(x => x.id === doorId);
+            if (d) {
+              d.isOpen = Boolean(isOpen);
+              const ledMat = d.isOpen ? this.map.materials.ledGreen : this.map.materials.ledRed;
+              if (d.ledFront) d.ledFront.material = ledMat;
+              if (d.ledBack) d.ledBack.material = ledMat;
+            }
+          }
+          if (this.cctv) this.cctv.updateDoorButtons(this.map.doors);
+        }
+        if (Array.isArray(info.openedLockers) && this.interactionSystem) {
+          for (const lockerId of info.openedLockers) {
+            this.interactionSystem.applyRemoteLockerOpen(lockerId);
+          }
+        }
+        if (Array.isArray(info.pickedItems) && this.interactionSystem) {
+          for (const itemId of info.pickedItems) {
+            this.interactionSystem.applyRemoteItemPickup(itemId);
+          }
+        }
+        if (Array.isArray(info.installedCoreParts) && this.interactionSystem) {
+          for (let i = 0; i < info.installedCoreParts.length; i++) {
+            this.interactionSystem.applyRemoteCoreInsert(info.installedCoreParts[i], i + 1);
+          }
+        }
+        if (typeof info.gondolaProgress === 'number' && info.gondolaProgress > 0 && this.interactionSystem) {
+          this.interactionSystem.applyRemoteGondolaSync(info.gondolaProgress, info.gondolaProgress >= 100);
+        }
+        if (info.isBlackout && this.interactionSystem && !this.interactionSystem.isBlackout) {
+          this.interactionSystem.triggerBlackout('기존 작전 구역 정전 상태 동기화');
         }
         this.currentRoomPlayers = (info.players && info.players.length > 0)
           ? [...info.players]
@@ -366,11 +445,16 @@ class MonochromeBunker3D {
         if (this.roomCodeDisplay) this.roomCodeDisplay.textContent = info.roomId;
 
         this.updateRoomRoster();
+        this.appendRadioChat('SYSTEM', `무전 채널 [${info.roomId}] 연결 완료.`);
 
         if (this.setupStatusMsg) {
           this.setupStatusMsg.textContent = `작전 세션 [${info.roomId}] 접속 완료 (${info.isHost ? '지휘관' : '대원'}).`;
         }
         this.showGameToast(`[NET] 작전 세션 [${info.roomId}]에 성공적으로 연결되었습니다.`, 'success');
+
+        if (info.isStarted && !this.isDeployed) {
+          this.deployMission(targetMap);
+        }
       },
       onPlayerJoined: (player) => {
         // 호스트 화면에 새 참가자 즉시 추가 및 실시간 갱신!
@@ -416,9 +500,12 @@ class MonochromeBunker3D {
     this.interactionSystem = new InteractionAndEscapeSystem(this.map, this.viewModel, {
       onToast: (msg, level) => this.showGameToast(msg, level),
       onEscapeSuccess: () => this.handleEscapeSuccess(),
-      onBlackoutChange: (isBlackout) => {
+      onBlackoutChange: (isBlackout, durationSec = null) => {
         if (isBlackout && this.cctv && this.cctv.isOpen) {
           this.cctv.close();
+        }
+        if (!isBlackout && typeof durationSec === 'number' && durationSec <= 40) {
+          this.unlockAchievement('arc_restorer');
         }
         if (this.cctv) {
           this.cctv.updateDoorButtons(this.map.doors);
@@ -437,14 +524,19 @@ class MonochromeBunker3D {
           this.networkManager.sendLockerOpen(lockerId);
         }
       },
-      onItemDrop: (item, x, z) => {
+      onItemDrop: (item, x, z, ignited = false) => {
         if (this.networkManager && this.networkManager.roomId) {
-          this.networkManager.sendItemDrop(item, x, z);
+          this.networkManager.sendItemDrop(item, x, z, ignited);
         }
       },
       onCoreInsert: (partType, total) => {
         if (this.networkManager && this.networkManager.roomId) {
           this.networkManager.sendCoreInsert(partType, total);
+        }
+      },
+      onGondolaProgress: (progress, isEscapeOpen) => {
+        if (this.networkManager && this.networkManager.roomId && this.networkManager.isHost) {
+          this.networkManager.sendGondolaSync(progress, isEscapeOpen);
         }
       }
     });
@@ -529,6 +621,17 @@ class MonochromeBunker3D {
       onScreenShake: (intensity, duration = 0.45) => {
         this.screenShakeIntensity = Math.max(this.screenShakeIntensity || 0, intensity);
         this.screenShakeTimer = Math.max(this.screenShakeTimer || 0, duration);
+      },
+      onDoorBashed: (doorId, isOpen) => {
+        if (this.networkManager && this.networkManager.roomId) {
+          this.networkManager.sendDoorToggle(doorId, isOpen);
+        }
+        if (this.cctv) {
+          this.cctv.updateDoorButtons(this.map.doors);
+        }
+      },
+      onFlareRetaliation: () => {
+        this.unlockAchievement('flare_retaliation');
       }
     });
     this.cctv.monsterAI = this.monsterAI;
@@ -537,13 +640,62 @@ class MonochromeBunker3D {
     this.lastTime = performance.now();
     this.footstepTimer = 0;
 
-    // 접속 초기 상태: 작전 설정 모달이 열려 있으므로 포인터 락 비활성화
+    // 접속 초기 상태: 작전 설정 모달이 열려 있으므로 포인터 락 비활성화 및 인게임 HUD 숨김
     this.controls.setDisabled(true);
+    this.setGameplayHUDVisible(false);
 
     this.applyQualityPreset(this.qualityPreset);
     this.syncDeviceModeUI();
     this.initEvents();
+    this.syncAchievementsUI();
     requestAnimationFrame((t) => this.loop(t));
+  }
+
+  loadAchievements() {
+    try {
+      const raw = localStorage.getItem('monochrome_achievements_v1');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return new Set(parsed);
+      }
+    } catch (_) {}
+    return new Set();
+  }
+
+  unlockAchievement(achId) {
+    if (!achId || !this.unlockedAchievements) return;
+    if (this.unlockedAchievements.has(achId)) return;
+    this.unlockedAchievements.add(achId);
+    try {
+      localStorage.setItem('monochrome_achievements_v1', JSON.stringify([...this.unlockedAchievements]));
+    } catch (_) {}
+    this.syncAchievementsUI();
+    const titles = {
+      survivor: '생환자 // SURVIVOR',
+      aqua_lurker: '침수 수로의 지배자 // AQUA LURKER',
+      silent_stride: '침묵의 보폭 // SILENT STRIDE',
+      arc_restorer: '전기 충격 // ARC RESTORER',
+      flare_retaliation: '섬광의 사투 // FLARE RETALIATION'
+    };
+    const label = titles[achId] || achId;
+    if (sound && typeof sound.playPowerRestore === 'function') {
+      sound.playPowerRestore();
+    }
+    this.showGameToast(`[ACHIEVEMENT] 업적 달성: ${label}`, 'success');
+  }
+
+  syncAchievementsUI() {
+    if (!this.unlockedAchievements) return;
+    document.querySelectorAll('.achievement-item[data-ach-id]').forEach((item) => {
+      const id = item.dataset.achId;
+      const unlocked = this.unlockedAchievements.has(id);
+      item.classList.toggle('unlocked', unlocked);
+      const statusEl = item.querySelector('.ach-status');
+      if (statusEl) {
+        statusEl.textContent = unlocked ? '달성' : '미달성';
+        statusEl.classList.toggle('locked', !unlocked);
+      }
+    });
   }
 
   /**
@@ -628,7 +780,40 @@ class MonochromeBunker3D {
   /**
    * 새로운 무작위 작전 배치로 재투입 (Redeploy)
    */
-  restartNewRandomMatch() {
+  restartNewRandomMatch(fromNetwork = false) {
+    if (!fromNetwork && this.networkManager && this.networkManager.roomId) {
+      if (this.networkManager.isHost) {
+        this.networkManager.sendRestartMatch();
+        return;
+      }
+      // 비-호스트가 사망 모달에서 재투입을 누르면 현재 세션 상태를 유지한 채 스폰 지점으로 개인 재투입
+      if (this.tacticalDeathModalEl) this.tacticalDeathModalEl.classList.add('hidden');
+      if (this.deathSurveillanceHudEl) this.deathSurveillanceHudEl.classList.add('hidden');
+      if (this.jumpscareOverlayEl) this.jumpscareOverlayEl.classList.add('hidden');
+      if (this.deathTypeInterval) {
+        clearTimeout(this.deathTypeInterval);
+        this.deathTypeInterval = null;
+      }
+      this.isPlayerDead = false;
+      this.isDeathCamActive = false;
+      this.isDeployed = true;
+      this.showGameplayUI();
+      if (this.fallenOperative) this.fallenOperative.root.visible = false;
+      if (this.droppedFlashlight) this.droppedFlashlight.visible = false;
+      if (this.deathCamLight) this.deathCamLight.visible = false;
+      if (this.viewModel) this.viewModel.root.visible = true;
+      this.playerFootY = this.map.getFloorHeightAt(this.map.spawnPos.x, this.map.spawnPos.z);
+      this.playerPos.set(this.map.spawnPos.x, this.playerFootY + this.playerEyeHeight, this.map.spawnPos.z);
+      this.playerCamera.position.copy(this.playerPos);
+      this.playerCamera.rotation.z = 0;
+      this.stamina = this.maxStamina;
+      this.staminaExhausted = false;
+      this.controls.setDisabled(false);
+      this.controls.requestPointerLock();
+      this.showGameToast('[REDEPLOY] 기존 작전 세션으로 개인 재투입되었습니다.', 'info');
+      return;
+    }
+
     if (this.tacticalDeathModalEl) this.tacticalDeathModalEl.classList.add('hidden');
     if (this.deathSurveillanceHudEl) this.deathSurveillanceHudEl.classList.add('hidden');
     if (this.escapeModalEl) this.escapeModalEl.classList.add('hidden');
@@ -643,6 +828,7 @@ class MonochromeBunker3D {
 
     this.isPlayerDead = false;
     this.isDeathCamActive = false;
+    this.isGameCleared = false;
     this.isDeployed = true;
     this.showGameplayUI();
 
@@ -674,9 +860,10 @@ class MonochromeBunker3D {
     this.stamina = this.maxStamina;
     this.staminaExhausted = false;
     this.sonarPulseCooldown = 0;
+    this.silentStrideTimer = 0;
 
     if (this.interactionSystem) {
-      this.interactionSystem.setupNewMatch();
+      this.interactionSystem.setupNewMatch(this.currentChapterConfig || null, this.matchSeed || null);
     }
     if (this.monsterAI) {
       this.monsterAI.resetForNewMatch();
@@ -717,8 +904,9 @@ class MonochromeBunker3D {
 
     this.isPlayerDead = false;
     this.isDeathCamActive = false;
+    this.isGameCleared = false;
     this.isDeployed = false;
-    this.showGameplayUI();
+    this.setGameplayHUDVisible(false);
 
     if (this.fallenOperative) {
       this.fallenOperative.root.visible = false;
@@ -746,9 +934,10 @@ class MonochromeBunker3D {
     this.stamina = this.maxStamina;
     this.staminaExhausted = false;
     this.sonarPulseCooldown = 0;
+    this.silentStrideTimer = 0;
 
     if (this.interactionSystem) {
-      this.interactionSystem.setupNewMatch();
+      this.interactionSystem.setupNewMatch(this.currentChapterConfig || null, this.matchSeed || null);
     }
     if (this.monsterAI) {
       this.monsterAI.resetForNewMatch();
@@ -976,7 +1165,8 @@ class MonochromeBunker3D {
       timeEl.textContent = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
     }
     if (coresEl && this.interactionSystem) {
-      coresEl.textContent = `${this.interactionSystem.restoredCores || 0} / 3 개`;
+      const installed = this.interactionSystem.coreState ? this.interactionSystem.coreState.totalInstalled : 0;
+      coresEl.textContent = `${installed} / 4 개`;
     }
     if (blackoutsEl && this.interactionSystem) {
       blackoutsEl.textContent = `${this.interactionSystem.blackoutCount || 0} 회`;
@@ -1013,43 +1203,44 @@ class MonochromeBunker3D {
     }
   }
 
-  hideGameplayUI() {
-    document.body.classList.add('in-death-sequence');
+  setGameplayHUDVisible(visible) {
     const hud = document.getElementById('game-hud');
-    if (hud) hud.classList.add('hidden');
+    if (hud) hud.classList.toggle('hidden', !visible);
     const obj = document.getElementById('objective-panel');
-    if (obj) obj.classList.add('hidden');
+    if (obj) obj.classList.toggle('hidden', !visible);
     const crosshair = document.getElementById('crosshair');
-    if (crosshair) crosshair.classList.add('hidden');
-    const touch = document.getElementById('touch-controls');
-    if (touch) touch.classList.add('hidden');
-    const prompt = document.getElementById('interact-prompt');
-    if (prompt) prompt.classList.add('hidden');
-    const toast = document.getElementById('game-toast');
-    if (toast) toast.classList.add('hidden');
+    if (crosshair) crosshair.classList.toggle('hidden', !visible);
+    const radioBox = document.getElementById('radio-chat-box');
+    if (radioBox) {
+      const showRadio = visible && Boolean(this.networkManager && this.networkManager.roomId);
+      radioBox.classList.toggle('hidden', !showRadio);
+    }
     const bottomHud = document.getElementById('bottom-center-hud');
     if (bottomHud) {
-      bottomHud.classList.add('hidden');
-      bottomHud.classList.add('ui-hidden');
-      bottomHud.style.display = 'none';
+      bottomHud.classList.toggle('hidden', !visible);
+      bottomHud.classList.toggle('ui-hidden', !visible);
+      bottomHud.style.display = visible ? 'flex' : 'none';
     }
+    if (!visible) {
+      const touch = document.getElementById('touch-controls');
+      if (touch) touch.classList.add('hidden');
+      const prompt = document.getElementById('interact-prompt');
+      if (prompt) prompt.classList.add('hidden');
+    } else {
+      this.syncDeviceModeUI();
+    }
+  }
+
+  hideGameplayUI() {
+    document.body.classList.add('in-death-sequence');
+    this.setGameplayHUDVisible(false);
+    const toast = document.getElementById('game-toast');
+    if (toast) toast.classList.add('hidden');
   }
 
   showGameplayUI() {
     document.body.classList.remove('in-death-sequence');
-    const hud = document.getElementById('game-hud');
-    if (hud) hud.classList.remove('hidden');
-    const obj = document.getElementById('objective-panel');
-    if (obj) obj.classList.remove('hidden');
-    const crosshair = document.getElementById('crosshair');
-    if (crosshair) crosshair.classList.remove('hidden');
-    const bottomHud = document.getElementById('bottom-center-hud');
-    if (bottomHud) {
-      bottomHud.classList.remove('hidden');
-      bottomHud.classList.remove('ui-hidden');
-      bottomHud.style.display = 'flex';
-    }
-    this.syncDeviceModeUI();
+    this.setGameplayHUDVisible(true);
   }
 
   syncDeviceModeUI() {
@@ -1186,6 +1377,10 @@ class MonochromeBunker3D {
     const menuCategoryDesc = document.getElementById('menu-current-desc');
 
     const switchMenuTab = (target) => {
+      if (target === 'showcase') {
+        this.openModelViewer();
+        return;
+      }
       menuNavItems.forEach(item => {
         item.classList.toggle('active', item.dataset.target === target);
       });
@@ -1227,8 +1422,6 @@ class MonochromeBunker3D {
         if (menuCategoryDesc) {
           menuCategoryDesc.textContent = '대원 호출 부호, 방호복 도장, 마우스 시점 감도, 터치 컨트롤러 및 오디오 환경을 조정합니다.';
         }
-      } else if (target === 'showcase') {
-        this.openModelViewer();
       } else if (target === 'cinematics') {
         const c = document.getElementById('card-cinematics');
         if (c) c.classList.remove('hidden');
@@ -1601,10 +1794,18 @@ class MonochromeBunker3D {
     // 화면 직접 드래그 HUD 재배치 모드 진입
     if (this.btnTriggerHudEdit) {
       this.btnTriggerHudEdit.addEventListener('click', () => {
+        const wasSetupOpen = Boolean(this.gameSetupModalEl && !this.gameSetupModalEl.classList.contains('hidden'));
         if (this.gameSetupModalEl) {
           this.gameSetupModalEl.classList.add('hidden');
         }
-        this.controls.openHudEditor();
+        this.controls.openHudEditor(() => {
+          if (wasSetupOpen && !this.isDeployed && this.gameSetupModalEl) {
+            this.gameSetupModalEl.classList.remove('hidden');
+          } else if (this.isDeployed) {
+            this.controls.setDisabled(false);
+            this.controls.requestPointerLock();
+          }
+        });
         this.showGameToast('[HUD EDIT] 조이스틱과 각 버튼을 손가락이나 마우스로 드래그하여 편한 위치로 이동하십시오.', 'info');
       });
     }
@@ -1658,6 +1859,89 @@ class MonochromeBunker3D {
     };
     window.addEventListener('pointerdown', unlockAudio);
     window.addEventListener('keydown', unlockAudio);
+
+    this.initRadioChatUI();
+  }
+
+  initRadioChatUI() {
+    this.radioChatBoxEl = document.getElementById('radio-chat-box');
+    this.radioChatLogEl = document.getElementById('radio-chat-log');
+    this.radioChatInputRowEl = document.getElementById('radio-chat-input-row');
+    this.radioChatInputEl = document.getElementById('radio-chat-input');
+    this.btnRadioSendEl = document.getElementById('btn-radio-send');
+
+    const closeRadioInput = () => {
+      if (this.radioChatInputRowEl) this.radioChatInputRowEl.classList.add('hidden');
+      if (this.radioChatInputEl) this.radioChatInputEl.blur();
+      if (this.isDeployed && !this.isPlayerDead) {
+        this.controls.setDisabled(false);
+        this.controls.requestPointerLock();
+      }
+    };
+
+    const submitRadio = () => {
+      const text = (this.radioChatInputEl?.value || '').trim();
+      if (text && this.networkManager && this.networkManager.roomId) {
+        this.networkManager.sendRadioChat(text, this.callsign);
+      }
+      if (this.radioChatInputEl) this.radioChatInputEl.value = '';
+      closeRadioInput();
+    };
+
+    if (this.btnRadioSendEl) {
+      this.btnRadioSendEl.addEventListener('pointerdown', (e) => e.stopPropagation());
+      this.btnRadioSendEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        submitRadio();
+      });
+    }
+
+    if (this.radioChatInputEl) {
+      this.radioChatInputEl.addEventListener('keydown', (e) => {
+        e.stopPropagation();
+        if (e.code === 'Enter') {
+          e.preventDefault();
+          submitRadio();
+        } else if (e.code === 'Escape') {
+          e.preventDefault();
+          closeRadioInput();
+        }
+      });
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (!this.isDeployed || this.isPlayerDead || this.isDeathCamActive) return;
+      if (!this.networkManager || !this.networkManager.roomId) return;
+      if (this.cctv?.isOpen || this.modelViewer?.isOpen || this.isTacticalMapOpen || this.isIntroSequenceActive) return;
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+
+      if (e.code === 'KeyT' || e.code === 'Enter') {
+        e.preventDefault();
+        if (this.radioChatBoxEl) this.radioChatBoxEl.classList.remove('hidden');
+        if (this.radioChatInputRowEl) this.radioChatInputRowEl.classList.remove('hidden');
+        this.controls.setDisabled(true);
+        this.controls.unlock();
+        if (this.radioChatInputEl) this.radioChatInputEl.focus();
+      }
+    });
+  }
+
+  appendRadioChat(sender, text) {
+    if (!this.radioChatLogEl) this.radioChatLogEl = document.getElementById('radio-chat-log');
+    if (!this.radioChatLogEl || !text) return;
+    const row = document.createElement('div');
+    row.className = 'radio-msg-line';
+    const senderSpan = document.createElement('span');
+    senderSpan.className = 'radio-msg-sender';
+    senderSpan.textContent = `[${sender}]`;
+    const bodyText = document.createTextNode(text);
+    row.appendChild(senderSpan);
+    row.appendChild(bodyText);
+    this.radioChatLogEl.appendChild(row);
+    while (this.radioChatLogEl.children.length > 30) {
+      this.radioChatLogEl.removeChild(this.radioChatLogEl.firstChild);
+    }
+    this.radioChatLogEl.scrollTop = this.radioChatLogEl.scrollHeight;
   }
 
   updateRoomRoster() {
@@ -1694,6 +1978,7 @@ class MonochromeBunker3D {
   deployMission(forcedChapterId = null) {
     if (this.isDeploying) return;
     this.isDeploying = true;
+    this.silentStrideTimer = 0;
 
     if (this.gameSetupModalEl) {
       this.gameSetupModalEl.classList.add('hidden');
@@ -1769,18 +2054,20 @@ class MonochromeBunker3D {
         setTimeout(() => {
           this.isDeployed = true;
           this.isDeploying = false;
+          this.isGameCleared = false;
           this.loadChapter(targetChapter);
           this.showGameplayUI();
           this.missionStartTime = performance.now();
           if (this.monsterAI) {
             this.monsterAI.setDifficulty(this.difficulty);
           }
-          this.controls.setDisabled(false);
-          this.controls.requestPointerLock();
-          sound.playDoorSound(true);
           if (targetChapter === 'chapter3') {
-            this.showGameToast(`[DEPLOYED] 대원 [${this.callsign}] 제3장 심연 갱도 투입 완료. 곤돌라 재가동을 방어하십시오.`, 'warn');
+            this.isCinematicPreview = false;
+            this.startChapter3IntroSequence();
           } else {
+            this.controls.setDisabled(false);
+            this.controls.requestPointerLock();
+            sound.playDoorSound(true);
             this.showGameToast(`[DEPLOYED] 대원 [${this.callsign}] 작전 투입 완료.`, 'success');
           }
 
@@ -1841,13 +2128,12 @@ class MonochromeBunker3D {
       // 챕터 3에서는 모니터가 E키 상호작용 CCTV가 아니라 상시 100% 게이지 전광판이므로 터치 CCTV 버튼 숨김
       if (this.btnTouchCCTV) this.btnTouchCCTV.style.display = 'none';
       if (this.btnTouchFlashlight) {
-        const lbl = this.btnTouchFlashlight.querySelector('.btn-label');
-        if (lbl) lbl.textContent = 'LIGHT';
-        const sub = this.btnTouchFlashlight.querySelector('.btn-sub');
-        if (sub) sub.textContent = '[ F ]';
+        this.btnTouchFlashlight.classList.remove('mode-pulse');
         this.btnTouchFlashlight.classList.toggle('active', this.flashlightOn);
         this.btnTouchFlashlight.style.opacity = '1.0';
         this.btnTouchFlashlight.title = '광산 전술 라이트 온/오프';
+        const badge = this.btnTouchFlashlight.querySelector('.touch-cooldown-badge');
+        if (badge) badge.classList.add('hidden');
       }
       const fogColor = isBlackout ? 0x0a0302 : 0x160604;
       this.scene.background.setHex(fogColor);
@@ -1868,13 +2154,12 @@ class MonochromeBunker3D {
       if (this.playerFillLight) this.playerFillLight.intensity = isBlackout ? 0 : 0.35;
 
       if (this.btnTouchFlashlight) {
-        const lbl = this.btnTouchFlashlight.querySelector('.btn-label');
-        if (lbl) lbl.textContent = 'PULSE';
-        const sub = this.btnTouchFlashlight.querySelector('.btn-sub');
-        if (sub) sub.textContent = '[ F ]';
+        this.btnTouchFlashlight.classList.add('mode-pulse');
         this.btnTouchFlashlight.classList.add('active');
         this.btnTouchFlashlight.style.opacity = '1.0';
         this.btnTouchFlashlight.title = '소나 펄스 충격파 발사 (F키 / 매복자 퇴치 & 추격자 악어 유인)';
+        const badge = this.btnTouchFlashlight.querySelector('.touch-cooldown-badge');
+        if (badge) badge.classList.add('hidden');
       }
 
       // 챕터 2에서는 CCTV가 없으므로 터치 CCTV 버튼 숨김
@@ -1904,13 +2189,12 @@ class MonochromeBunker3D {
       if (this.playerFillLight) this.playerFillLight.intensity = isBlackout ? 0.22 : 1.45;
       if (this.btnTouchCCTV) this.btnTouchCCTV.style.display = '';
       if (this.btnTouchFlashlight) {
-        const lbl = this.btnTouchFlashlight.querySelector('.btn-label');
-        if (lbl) lbl.textContent = 'LIGHT';
-        const sub = this.btnTouchFlashlight.querySelector('.btn-sub');
-        if (sub) sub.textContent = '[ F ]';
+        this.btnTouchFlashlight.classList.remove('mode-pulse');
         this.btnTouchFlashlight.classList.toggle('active', this.flashlightOn);
         this.btnTouchFlashlight.style.opacity = '1.0';
         this.btnTouchFlashlight.title = '전술 손전등 온/오프';
+        const badge = this.btnTouchFlashlight.querySelector('.touch-cooldown-badge');
+        if (badge) badge.classList.add('hidden');
       }
       this.scene.background.setHex(0x040405);
       this.scene.fog = new THREE.FogExp2(0x040405, 0.052);
@@ -2340,7 +2624,15 @@ class MonochromeBunker3D {
     }
 
     if (this.isPlayerDead) return;
-    if (this.interactionSystem && this.interactionSystem.isGameCleared) return;
+    if (this.interactionSystem && this.interactionSystem.isGameCleared) {
+      if (this.activeChapterId === 'chapter3' && this.map && this.map.gondolaCage && this.map.gondolaCage.isAscending) {
+        this.map.update(dt, this.playerPos, null);
+        const targetEyeH = this.map.gondolaCage.group.position.y + this.playerEyeHeight;
+        this.playerPos.y = targetEyeH;
+        this.playerCamera.position.y = targetEyeH;
+      }
+      return;
+    }
 
     // 0-1. 챕터 3 엘리베이터 추락 및 곤돌라 브리핑 시작 연출 업데이트 (언제든 스킵 가능)
     if (this.isIntroSequenceActive) {
@@ -2383,17 +2675,18 @@ class MonochromeBunker3D {
     if (this.sonarPulseCooldown > 0) {
       this.sonarPulseCooldown = Math.max(0, this.sonarPulseCooldown - dt);
       if (this.activeChapterId === 'chapter2' && this.btnTouchFlashlight) {
-        const lbl = this.btnTouchFlashlight.querySelector('.btn-label');
-        if (lbl) {
-          if (this.sonarPulseCooldown > 0) {
-            lbl.textContent = `${this.sonarPulseCooldown.toFixed(1)}s`;
-            this.btnTouchFlashlight.classList.remove('active');
-            this.btnTouchFlashlight.style.opacity = '0.45';
-          } else {
-            lbl.textContent = 'PULSE';
-            this.btnTouchFlashlight.classList.add('active');
-            this.btnTouchFlashlight.style.opacity = '1.0';
+        const badge = this.btnTouchFlashlight.querySelector('.touch-cooldown-badge');
+        if (this.sonarPulseCooldown > 0) {
+          if (badge) {
+            badge.textContent = `${this.sonarPulseCooldown.toFixed(1)}`;
+            badge.classList.remove('hidden');
           }
+          this.btnTouchFlashlight.classList.remove('active');
+          this.btnTouchFlashlight.style.opacity = '0.52';
+        } else {
+          if (badge) badge.classList.add('hidden');
+          this.btnTouchFlashlight.classList.add('active');
+          this.btnTouchFlashlight.style.opacity = '1.0';
         }
       }
     }
@@ -2642,8 +2935,19 @@ class MonochromeBunker3D {
         this.playerCamera,
         this.flashlightOn,
         isActivelySprinting,
-        isMoving
+        isMoving,
+        this.networkManager ? this.networkManager.remotePlayers : null
       );
+
+      // 업적 03: 침묵의 보폭 (손전등 소등 & 비질주 & 미발각 상태 120초 생존)
+      if (!this.flashlightOn && !isActivelySprinting && this.monsterAI.state !== 'CHASE') {
+        this.silentStrideTimer = (this.silentStrideTimer || 0) + dt;
+        if (this.silentStrideTimer >= 120) {
+          this.unlockAchievement('silent_stride');
+        }
+      } else {
+        this.silentStrideTimer = 0;
+      }
 
       // 6-2. 괴물 거리 비례 서스펜스 텐션(심장 박동음) & 전등/손전등 지지직 점멸 전조 연출
       const distToMonster = Math.hypot(
@@ -2743,13 +3047,28 @@ class MonochromeBunker3D {
         Boolean(this.isPlayerDead)
       );
       if (this.networkManager.isHost && this.monsterAI) {
+        const trioData = this.activeChapterId === 'chapter2' ? {
+          lurker: {
+            pos: this.monsterAI.lurkerPos,
+            yaw: this.monsterAI.lurkerYaw,
+            state: this.monsterAI.lurkerState,
+            animMode: this.monsterAI.lurkerAnimMode || 'idle'
+          },
+          snare: {
+            pos: this.monsterAI.snarePos,
+            yaw: this.monsterAI.snareYaw,
+            state: this.monsterAI.snareState,
+            animMode: this.monsterAI.snareAnimMode || 'stalk'
+          }
+        } : null;
         this.networkManager.sendMonsterSync(
           this.monsterAI.state,
           this.monsterAI.pos,
           this.monsterAI.yaw,
-          this.monsterAI.monster.animMode,
+          this.monsterAI.lastAnimMode || this.monsterAI.monster.animMode,
           this.monsterAI.targetVentIdx,
-          this.monsterAI.currentVentIdx
+          this.monsterAI.currentVentIdx,
+          trioData
         );
       }
     }
@@ -2760,19 +3079,16 @@ class MonochromeBunker3D {
       this.fallenOperative.update(dt, 'die');
     }
 
-    // 모바일 터치 DROP 버튼 상태 및 라벨 동적 갱신
+    // 모바일 터치 DROP 버튼 상태 및 SVG 모드 동적 갱신
     if (this.btnTouchDrop && this.interactionSystem) {
       const held = this.interactionSystem.getHeldItemType();
+      this.btnTouchDrop.classList.toggle('mode-flare', held === 'flare');
       if (held) {
         this.btnTouchDrop.style.opacity = '1';
-        this.btnTouchDrop.style.borderColor = (held === 'flare') ? '#ffaa33' : '#55ccee';
-        const label = this.btnTouchDrop.querySelector('.btn-label');
-        if (label) label.textContent = (held === 'flare') ? 'IGNITE' : 'DROP';
+        this.btnTouchDrop.style.borderColor = (held === 'flare') ? '' : '#55ccee';
       } else {
         this.btnTouchDrop.style.opacity = '0.45';
-        this.btnTouchDrop.style.borderColor = 'rgba(255, 255, 255, 0.25)';
-        const label = this.btnTouchDrop.querySelector('.btn-label');
-        if (label) label.textContent = 'DROP';
+        this.btnTouchDrop.style.borderColor = '';
       }
     }
   }
@@ -2993,9 +3309,21 @@ class MonochromeBunker3D {
     }, 2900);
   }
 
-  handleEscapeSuccess() {
+  handleEscapeSuccess(isRemote = false) {
+    if (this.isGameCleared) return;
     this.controls.setDisabled(true);
     this.isGameCleared = true;
+    if (this.interactionSystem) {
+      this.interactionSystem.isGameCleared = true;
+    }
+    if (!isRemote && this.networkManager && this.networkManager.roomId) {
+      this.networkManager.sendEscapeSuccess(this.callsign);
+    }
+    if (this.activeChapterId === 'chapter2') {
+      this.unlockAchievement('aqua_lurker');
+    } else {
+      this.unlockAchievement('survivor');
+    }
 
     if (this.activeChapterId === 'chapter3') {
       if (this.map && this.map.gondolaCage) {
@@ -3005,7 +3333,7 @@ class MonochromeBunker3D {
         this.playerCamera.position.copy(this.playerPos);
       }
       sound.playDoorSound(false);
-      if (sound && typeof sound.playPowerRestored === 'function') sound.playPowerRestored();
+      if (sound && typeof sound.playPowerRestore === 'function') sound.playPowerRestore();
       this.showGameToast('[EVACUATING] 곤돌라 탑승 완료! 심연 갱도를 탈출하여 지상으로 급상승합니다...', 'success');
       setTimeout(() => {
         if (this.escapeModalEl) {
@@ -3068,14 +3396,22 @@ class MonochromeBunker3D {
     const titleEl = document.getElementById('tactical-map-title');
     const subEl = document.getElementById('tactical-map-subtitle');
     if (titleEl && this.map) {
-      titleEl.textContent = this.map.chapterId === 'chapter2'
-        ? 'CHAPTER 2 // SECTOR-02 FLOODED CISTERN'
-        : 'CHAPTER 1 // SECTOR-01 SKELD BUNKER';
+      if (this.map.chapterId === 'chapter3') {
+        titleEl.textContent = 'CHAPTER 3 // SECTOR-03 ABYSS SHAFT';
+      } else if (this.map.chapterId === 'chapter2') {
+        titleEl.textContent = 'CHAPTER 2 // SECTOR-02 FLOODED CISTERN';
+      } else {
+        titleEl.textContent = 'CHAPTER 1 // SECTOR-01 SKELD BUNKER';
+      }
     }
     if (subEl && this.map) {
-      subEl.textContent = this.map.chapterId === 'chapter2'
-        ? '심도 140m 침수 저류조 및 대구경 수로망 작전 전술 지도'
-        : '심도 140m 벙커 통제 시설 및 격벽 방호망 작전 전술 지도';
+      if (this.map.chapterId === 'chapter3') {
+        subEl.textContent = '수직 도넛 심연 갱도 (25F-21F) 및 비상 곤돌라 승강장 전술 지도';
+      } else if (this.map.chapterId === 'chapter2') {
+        subEl.textContent = '심도 140m 침수 저류조 및 대구경 수로망 작전 전술 지도';
+      } else {
+        subEl.textContent = '심도 140m 벙커 통제 시설 및 격벽 방호망 작전 전술 지도';
+      }
     }
     this.renderTacticalMapModal();
     if (typeof sound.playClick === 'function') {

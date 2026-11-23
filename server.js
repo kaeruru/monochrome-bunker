@@ -65,13 +65,25 @@ const server = http.createServer((req, res) => {
 
   // dist 디렉토리가 빌드되어 있는 경우 정적 파일 서빙 (Render/Railway 원클릭 배포 지원)
   if (fs.existsSync(DIST_DIR)) {
+    const resolvedDist = path.resolve(DIST_DIR);
     let cleanUrl = reqUrl.split('?')[0];
     try {
       cleanUrl = decodeURIComponent(cleanUrl);
-    } catch (_) {}
+    } catch (_) {
+      res.writeHead(400, { 'Content-Type': 'text/plain' });
+      res.end('Bad Request');
+      return;
+    }
 
-    let filePath = path.join(DIST_DIR, cleanUrl === '/' ? 'index.html' : cleanUrl);
-    if (!fs.existsSync(filePath)) {
+    const relPath = cleanUrl === '/' ? 'index.html' : cleanUrl.replace(/^[/\\]+/, '');
+    let filePath = path.resolve(resolvedDist, relPath);
+    if (filePath !== resolvedDist && !filePath.startsWith(resolvedDist + path.sep)) {
+      res.writeHead(403, { 'Content-Type': 'text/plain' });
+      res.end('Forbidden');
+      return;
+    }
+
+    if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
       // 정적 에셋(.fbx, .glb, .png, .js, .css 등) 요청 부재 시 index.html 폴백 대신 명확한 404 반환
       const reqExt = path.extname(cleanUrl).toLowerCase();
       if (reqExt && reqExt !== '.html') {
@@ -79,7 +91,7 @@ const server = http.createServer((req, res) => {
         res.end('Not Found: ' + cleanUrl);
         return;
       }
-      filePath = path.join(DIST_DIR, 'index.html');
+      filePath = path.join(resolvedDist, 'index.html');
     }
 
     try {
@@ -206,8 +218,14 @@ function handleMessage(ws, msg) {
         matchSeed,
         players: new Map([[ws, playerInfo]]),
         doors: new Map(),
+        pickedItems: new Set(),
+        openedLockers: new Set(),
+        installedCoreParts: [],
         coreProgress: 0,
-        isBlackout: false
+        gondolaProgress: 0,
+        isBlackout: false,
+        isStarted: false,
+        isEscaped: false
       };
 
       rooms.set(roomId, room);
@@ -278,6 +296,13 @@ function handleMessage(ws, msg) {
         isHost: false,
         mapId: room.mapId || 'chapter1',
         matchSeed: room.matchSeed,
+        isBlackout: Boolean(room.isBlackout),
+        isStarted: Boolean(room.isStarted),
+        isEscaped: Boolean(room.isEscaped),
+        gondolaProgress: room.gondolaProgress || 0,
+        pickedItems: Array.from(room.pickedItems || []),
+        openedLockers: Array.from(room.openedLockers || []),
+        installedCoreParts: room.installedCoreParts || [],
         players: playerList,
         doors: Array.from(room.doors.entries())
       }));
@@ -361,6 +386,13 @@ function handleMessage(ws, msg) {
       const room = rooms.get(ws.currentRoomId);
       if (!room) return;
 
+      if (msg.itemId && room.pickedItems.has(msg.itemId)) {
+        return;
+      }
+      if (msg.itemId) {
+        room.pickedItems.add(msg.itemId);
+      }
+
       broadcastToRoom(room, {
         type: 'item_pickup',
         itemId: msg.itemId,
@@ -380,6 +412,7 @@ function handleMessage(ws, msg) {
         item: msg.item,
         x: msg.x,
         z: msg.z,
+        ignited: Boolean(msg.ignited),
         playerId: ws.playerId
       }, ws);
       break;
@@ -389,6 +422,10 @@ function handleMessage(ws, msg) {
       if (!ws.currentRoomId) return;
       const room = rooms.get(ws.currentRoomId);
       if (!room) return;
+
+      if (msg.lockerId) {
+        room.openedLockers.add(msg.lockerId);
+      }
 
       broadcastToRoom(room, {
         type: 'locker_open',
@@ -403,12 +440,71 @@ function handleMessage(ws, msg) {
       const room = rooms.get(ws.currentRoomId);
       if (!room) return;
 
+      if (msg.partType) {
+        room.installedCoreParts.push(msg.partType);
+        room.coreProgress = Math.max(room.coreProgress, Number(msg.totalInserted) || room.installedCoreParts.length);
+      }
+
       broadcastToRoom(room, {
         type: 'core_insert',
         partType: msg.partType,
-        totalInserted: msg.totalInserted,
+        totalInserted: room.coreProgress,
         playerId: ws.playerId
       }, ws);
+      break;
+    }
+
+    case 'gondola_sync': {
+      if (!ws.currentRoomId) return;
+      const room = rooms.get(ws.currentRoomId);
+      if (!room || room.hostId !== ws.playerId) return;
+
+      room.gondolaProgress = Math.max(0, Math.min(100, Number(msg.progress) || 0));
+      broadcastToRoom(room, {
+        type: 'gondola_sync',
+        progress: room.gondolaProgress,
+        isEscapeOpen: Boolean(msg.isEscapeOpen)
+      }, ws);
+      break;
+    }
+
+    case 'escape_success': {
+      if (!ws.currentRoomId) return;
+      const room = rooms.get(ws.currentRoomId);
+      if (!room || room.isEscaped) return;
+
+      room.isEscaped = true;
+      broadcastToRoom(room, {
+        type: 'escape_success',
+        playerId: ws.playerId,
+        callsign: msg.callsign || '대원'
+      }, ws);
+      break;
+    }
+
+    case 'restart_match': {
+      if (!ws.currentRoomId) return;
+      const room = rooms.get(ws.currentRoomId);
+      if (!room || room.hostId !== ws.playerId) return;
+
+      room.doors.clear();
+      room.pickedItems.clear();
+      room.openedLockers.clear();
+      room.installedCoreParts = [];
+      room.coreProgress = 0;
+      room.gondolaProgress = 0;
+      room.isBlackout = false;
+      room.isEscaped = false;
+      room.matchSeed = Math.floor(Math.random() * 2147483647);
+      for (const [, p] of room.players) {
+        p.isDead = false;
+      }
+
+      broadcastToRoom(room, {
+        type: 'match_restarted',
+        mapId: room.mapId,
+        matchSeed: room.matchSeed
+      });
       break;
     }
 
@@ -439,7 +535,9 @@ function handleMessage(ws, msg) {
         yaw: msg.yaw,
         animMode: msg.animMode,
         targetVent: msg.targetVent,
-        currentVent: msg.currentVent
+        currentVent: msg.currentVent,
+        lurker: msg.lurker || null,
+        snare: msg.snare || null
       }, ws);
       break;
     }
@@ -522,16 +620,18 @@ function handleMessage(ws, msg) {
 }
 
 function handleDisconnect(ws) {
-  if (!ws.currentRoomId) return;
-  const room = rooms.get(ws.currentRoomId);
+  const roomId = ws.currentRoomId;
+  ws.currentRoomId = null;
+  if (!roomId) return;
+  const room = rooms.get(roomId);
   if (!room) return;
 
   const playerInfo = room.players.get(ws);
   room.players.delete(ws);
 
   if (room.players.size === 0) {
-    rooms.delete(ws.currentRoomId);
-    console.log(`[ROOM CLOSED] ${ws.currentRoomId} (all players left)`);
+    rooms.delete(roomId);
+    console.log(`[ROOM CLOSED] ${roomId} (all players left)`);
   } else {
     // 퇴장 대원 브로드캐스트
     broadcastToRoom(room, {
@@ -549,6 +649,10 @@ function handleDisconnect(ws) {
         type: 'host_promoted',
         hostId: nextPlayer.id
       }));
+      broadcastToRoom(room, {
+        type: 'host_changed',
+        hostId: nextPlayer.id
+      }, nextWs);
       console.log(`[HOST PROMOTED] ${nextPlayer.callsign} is now host of ${room.id}`);
     }
   }

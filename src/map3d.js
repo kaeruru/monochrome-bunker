@@ -1016,9 +1016,12 @@ export class Map3D {
 
     ctx.font = '14px monospace';
     ctx.fillStyle = '#8ca2b8';
-    const subTitle = isCh2
-      ? 'SECTOR-02: SUB-SURFACE FLOODED CISTERN & CONDUIT NETWORK'
-      : 'SECTOR-01: SKELD SUB-SURFACE BUNKER & SERVICE CORRIDORS';
+    const isCh3 = this.chapterId === 'chapter3';
+    const subTitle = isCh3
+      ? 'SECTOR-03: VERTICAL DONUT ABYSS SHAFT (25F - 21F)'
+      : (isCh2
+        ? 'SECTOR-02: SUB-SURFACE FLOODED CISTERN & CONDUIT NETWORK'
+        : 'SECTOR-01: SKELD SUB-SURFACE BUNKER & SERVICE CORRIDORS');
     ctx.fillText(subTitle, 28, 62);
 
     // 3. 맵 타일 그리드 축척 투영
@@ -1167,14 +1170,14 @@ export class Map3D {
     const gridH = h - 140;
     const cellW = gridW / mapCols;
     const cellH = gridH / mapRows;
-    const halfMapX = (mapCols * 2.0) / 2;
-    const halfMapZ = (mapRows * 2.0) / 2;
+    const halfMapX = (mapCols * TILE_SIZE) / 2;
+    const halfMapZ = (mapRows * TILE_SIZE) / 2;
 
     // 1. 방호문/수문 동적 상태 표시 (doors)
     const doorList = doors || this.doors || [];
     for (const d of doorList) {
-      const c = (d.x + halfMapX) / 2.0;
-      const r = (d.z + halfMapZ) / 2.0;
+      const c = (d.x + halfMapX) / TILE_SIZE;
+      const r = (d.z + halfMapZ) / TILE_SIZE;
       const px = gridOffsetX + c * cellW;
       const py = gridOffsetY + r * cellH;
       ctx.fillStyle = d.isOpen ? '#00e676' : '#ff1744';
@@ -1183,8 +1186,8 @@ export class Map3D {
 
     // 2. 플레이어 및 동료 대원 위치 마커
     if (playerX !== undefined && playerZ !== undefined) {
-      const pCol = (playerX + halfMapX) / 2.0;
-      const pRow = (playerZ + halfMapZ) / 2.0;
+      const pCol = (playerX + halfMapX) / TILE_SIZE;
+      const pRow = (playerZ + halfMapZ) / TILE_SIZE;
       const spX = gridOffsetX + pCol * cellW;
       const spY = gridOffsetY + pRow * cellH;
 
@@ -1242,22 +1245,24 @@ export class Map3D {
 
     // 3. 멀티플레이어 동료 대원들 마커
     if (remotePlayers && remotePlayers.size > 0) {
-      for (const [id, rp] of remotePlayers) {
-        if (!rp.position) continue;
-        const rCol = (rp.position.x + halfMapX) / 2.0;
-        const rRow = (rp.position.z + halfMapZ) / 2.0;
+      for (const [, rp] of remotePlayers) {
+        const rpPos = rp.entity?.root?.position || rp.targetPos || rp.position;
+        if (!rpPos) continue;
+        const rCol = (rpPos.x + halfMapX) / TILE_SIZE;
+        const rRow = (rpPos.z + halfMapZ) / TILE_SIZE;
         const rx = gridOffsetX + rCol * cellW;
         const ry = gridOffsetY + rRow * cellH;
 
-        ctx.fillStyle = '#00e5ff';
+        ctx.fillStyle = rp.isDead ? '#ff5252' : '#00e5ff';
         ctx.beginPath();
         ctx.arc(rx, ry, 5, 0, Math.PI * 2);
         ctx.fill();
 
         ctx.font = 'bold 11px monospace';
-        ctx.fillStyle = '#00e5ff';
+        ctx.fillStyle = rp.isDead ? '#ff8a80' : '#00e5ff';
         ctx.textAlign = 'left';
-        ctx.fillText(rp.name || '동료 대원', rx + 8, ry + 4);
+        const rpName = rp.nameplateData?.callsign || rp.name || '동료 대원';
+        ctx.fillText(rp.isDead ? `${rpName} [M.I.A]` : rpName, rx + 8, ry + 4);
       }
     }
   }

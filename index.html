@@ -6,8 +6,12 @@
   <title>MONOCHROME // BUNKER</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Cinzel:wght@600;700;800;900&family=Noto+Sans+KR:wght@300;400;500;700;900&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
-  <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Cinzel:wght@600;700;800;900&family=Noto+Sans+KR:wght@300;400;500;700;900&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+  <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" media="print" onload="this.media='all'">
+  <noscript>
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Cinzel:wght@600;700;800;900&family=Noto+Sans+KR:wght@300;400;500;700;900&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
+  </noscript>
   <link rel="stylesheet" href="./src/style.css">
 </head>
 <body>
@@ -34,10 +38,22 @@
           <span class="ping-dot dot-good" id="hud-ping-dot"></span>
           <span id="hud-ping-val">PING: --ms</span>
         </div>
-        <button id="btn-open-tactical-map" class="hud-btn" title="전술 작전 지도 [M]">지도 [M]</button>
-        <button id="btn-open-showcase" class="hud-btn showcase" title="3D 모델 쇼케이스">쇼케이스</button>
-        <button id="btn-open-settings" class="hud-btn" title="설정">설정 [ESC]</button>
-        <button id="btn-fullscreen" class="hud-btn" title="전체화면">전체화면</button>
+        <button id="btn-open-tactical-map" class="hud-btn" title="전술 작전 지도 [M]" aria-label="전술 작전 지도">
+          <svg class="hud-btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polygon points="1 6 8 3 16 6 23 3 23 18 16 21 8 18 1 21"/><line x1="8" y1="3" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="21"/></svg>
+          <span class="hud-btn-text">지도 [M]</span>
+        </button>
+        <button id="btn-open-showcase" class="hud-btn showcase" title="3D 모델 쇼케이스" aria-label="3D 모델 쇼케이스">
+          <svg class="hud-btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+          <span class="hud-btn-text">쇼케이스</span>
+        </button>
+        <button id="btn-open-settings" class="hud-btn" title="설정 [ESC]" aria-label="설정">
+          <svg class="hud-btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span class="hud-btn-text">설정 [ESC]</span>
+        </button>
+        <button id="btn-fullscreen" class="hud-btn" title="전체화면" aria-label="전체화면">
+          <svg class="hud-btn-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+          <span class="hud-btn-text">전체화면</span>
+        </button>
       </div>
     </header>
 
@@ -53,51 +69,103 @@
     <!-- 인게임 이벤트/상호작용 알림 토스트 배너 -->
     <div id="game-toast" class="hidden"></div>
 
+    <!-- 협동 무전 채팅 패널 (멀티플레이 세션 입장 시 활성화) -->
+    <aside id="radio-chat-box" class="hidden">
+      <div class="radio-chat-header">
+        <span class="radio-badge">[SQUAD RADIO]</span>
+        <span class="radio-hint">[T / ENTER] 송신</span>
+      </div>
+      <div id="radio-chat-log" class="radio-chat-log"></div>
+      <div id="radio-chat-input-row" class="radio-chat-input-row hidden">
+        <input type="text" id="radio-chat-input" placeholder="무전 메시지 입력 (Enter 전송 / Esc 취소)" maxlength="80">
+        <button type="button" id="btn-radio-send" class="btn-micro">송신</button>
+      </div>
+    </aside>
+
     <!-- 상호작용 알림 팝업 -->
     <div id="interact-prompt" class="hidden">
       <span class="prompt-key">[ E / USE ]</span>
       <span id="prompt-desc">CCTV 콘솔 접속</span>
     </div>
 
-    <!-- 모바일/태블릿 가상 터치 컨트롤러 UI (터치 디바이스 자동 감지 또는 설정 강제 활성) -->
+    <!-- 모바일/태블릿 가상 터치 컨트롤러 UI (로비 모던 글래스 스타일 + 직관적 SVG 아이콘) -->
     <div id="touch-controls" class="hidden">
       <!-- 가상 조이스틱 영역 -->
       <div id="joystick-zone" class="hud-touch-item" data-hud-id="joystick">
         <div id="joystick-base">
+          <svg class="joystick-ticks" viewBox="0 0 100 100" aria-hidden="true">
+            <polyline points="45,14 50,9 55,14" />
+            <polyline points="45,86 50,91 55,86" />
+            <polyline points="14,45 9,50 14,55" />
+            <polyline points="86,45 91,50 86,55" />
+          </svg>
           <div id="joystick-thumb"></div>
         </div>
-        <div class="joystick-caption">MOVE</div>
       </div>
 
-      <!-- 터치 액션 버튼들 (인체공학적 부채꼴 배치 및 자유 드래그 재배치 지원) -->
-      <button id="btn-touch-interact" class="touch-btn hud-touch-item primary-touch" data-hud-id="interact" title="상호작용 / 물품 습득">
-        <span class="btn-sub">[ E ]</span>
-        <span class="btn-label">USE</span>
+      <!-- 터치 액션 버튼들 (모던 글래스 SVG 아이콘 클러스터) -->
+      <button id="btn-touch-interact" class="touch-btn hud-touch-item primary-touch" data-hud-id="interact" title="상호작용 / 물품 습득" aria-label="상호작용">
+        <svg class="touch-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v0"/>
+          <path d="M14 10V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v2"/>
+          <path d="M10 10.5V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v8"/>
+          <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/>
+        </svg>
       </button>
 
-      <button id="btn-touch-sprint" class="touch-btn hud-touch-item" data-hud-id="sprint" title="달리기 토글">
-        <span class="btn-sub">[ SHIFT ]</span>
-        <span class="btn-label">RUN</span>
+      <button id="btn-touch-sprint" class="touch-btn hud-touch-item" data-hud-id="sprint" title="달리기 토글" aria-label="달리기">
+        <svg class="touch-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="15.5" cy="4.5" r="2"/>
+          <path d="M7 10.5l3.5-2 3.5 1.5 3.5-1.5"/>
+          <path d="M11.5 10l-2 5.5-4.5 3"/>
+          <path d="M12.5 14.5l3.5 2 1.5 4.5"/>
+          <path d="M3 7h4"/>
+          <path d="M2 12h3"/>
+        </svg>
       </button>
 
-      <button id="btn-touch-flashlight" class="touch-btn hud-touch-item active" data-hud-id="flashlight" title="손전등 온/오프">
-        <span class="btn-sub">[ F ]</span>
-        <span class="btn-label">LIGHT</span>
+      <button id="btn-touch-flashlight" class="touch-btn hud-touch-item active" data-hud-id="flashlight" title="손전등 / 소나 펄스" aria-label="손전등 또는 소나 펄스">
+        <svg class="touch-svg icon-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M18 6c0 2-2 2-2 4v10a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V10c0-2-2-2-2-4V2h12z"/>
+          <line x1="6" y1="6" x2="18" y2="6"/>
+          <line x1="12" y1="12" x2="12" y2="12.01"/>
+        </svg>
+        <svg class="touch-svg icon-pulse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="2.2" fill="currentColor"/>
+          <path d="M16.24 7.76a6 6 0 0 1 0 8.48"/>
+          <path d="M7.76 16.24a6 6 0 0 1 0-8.48"/>
+          <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
+          <path d="M4.93 19.07a10 10 0 0 1 0-14.14"/>
+        </svg>
+        <span class="touch-cooldown-badge hidden"></span>
       </button>
 
-      <button id="btn-touch-drop" class="touch-btn hud-touch-item" data-hud-id="drop" title="조명탄 점화 투척 및 아이템 버리기">
-        <span class="btn-sub">[ Q ]</span>
-        <span class="btn-label">DROP</span>
+      <button id="btn-touch-drop" class="touch-btn hud-touch-item" data-hud-id="drop" title="조명탄 점화 / 아이템 버리기" aria-label="아이템 버리기 또는 조명탄 점화">
+        <svg class="touch-svg icon-drop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        <svg class="touch-svg icon-flare" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>
+        </svg>
       </button>
 
-      <button id="btn-touch-map" class="touch-btn hud-touch-item" data-hud-id="map" title="전술 작전 지도">
-        <span class="btn-sub">[ M ]</span>
-        <span class="btn-label">MAP</span>
+      <button id="btn-touch-map" class="touch-btn hud-touch-item" data-hud-id="map" title="전술 작전 지도" aria-label="전술 작전 지도">
+        <svg class="touch-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polygon points="1 6 8 3 16 6 23 3 23 18 16 21 8 18 1 21"/>
+          <line x1="8" y1="3" x2="8" y2="18"/>
+          <line x1="16" y1="6" x2="16" y2="21"/>
+        </svg>
       </button>
 
-      <button id="btn-touch-cctv" class="touch-btn hud-touch-item" data-hud-id="cctv" title="보안 콘솔 CCTV">
-        <span class="btn-sub">[ CAM ]</span>
-        <span class="btn-label">CCTV</span>
+      <button id="btn-touch-cctv" class="touch-btn hud-touch-item" data-hud-id="cctv" title="보안 콘솔 CCTV" aria-label="CCTV 모니터">
+        <svg class="touch-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M16.75 12h3.632a1 1 0 0 1 .894 1.447l-2.034 4.069a1 1 0 0 1-.894.553H5.652a1 1 0 0 1-.894-.553L2.724 13.447A1 1 0 0 1 3.618 12h3.632"/>
+          <path d="M14 12V8a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v4"/>
+          <circle cx="10" cy="9" r="0.8" fill="currentColor"/>
+          <path d="M2 12h20"/>
+        </svg>
       </button>
     </div>
 
@@ -232,7 +300,7 @@
           </div>
           <div class="stat-cell">
             <span class="stat-label">복구한 코어 부품</span>
-            <span class="stat-value" id="death-stat-cores">0 / 3 개</span>
+            <span class="stat-value" id="death-stat-cores">0 / 4 개</span>
           </div>
           <div class="stat-cell">
             <span class="stat-label">정전 복구 횟수</span>
@@ -456,15 +524,15 @@
           <div class="menu-card hidden" id="card-achievements">
             <div class="card-title">업적 (ACHIEVEMENTS)</div>
             <div class="achievements-scroll-list">
-              <div class="achievement-item unlocked">
+              <div class="achievement-item" data-ach-id="survivor">
                 <div class="ach-icon">01</div>
                 <div class="ach-content">
                   <div class="ach-title">생환자 // SURVIVOR</div>
-                  <div class="ach-desc">주 전력 코어 부품 4개를 모두 장착하고 비상 탈출 게이트를 통해 벙커에서 생환</div>
+                  <div class="ach-desc">제1장 또는 제3장 작전 구역에서 탈출 게이트/곤돌라를 통해 생환</div>
                 </div>
-                <div class="ach-status">달성</div>
+                <div class="ach-status locked">미달성</div>
               </div>
-              <div class="achievement-item">
+              <div class="achievement-item" data-ach-id="aqua_lurker">
                 <div class="ach-icon">02</div>
                 <div class="ach-content">
                   <div class="ach-title">침수 수로의 지배자 // AQUA LURKER</div>
@@ -472,7 +540,7 @@
                 </div>
                 <div class="ach-status locked">미달성</div>
               </div>
-              <div class="achievement-item">
+              <div class="achievement-item" data-ach-id="silent_stride">
                 <div class="ach-icon">03</div>
                 <div class="ach-content">
                   <div class="ach-title">침묵의 보폭 // SILENT STRIDE</div>
@@ -480,7 +548,7 @@
                 </div>
                 <div class="ach-status locked">미달성</div>
               </div>
-              <div class="achievement-item">
+              <div class="achievement-item" data-ach-id="arc_restorer">
                 <div class="ach-icon">04</div>
                 <div class="ach-content">
                   <div class="ach-title">전기 충격 // ARC RESTORER</div>
@@ -488,11 +556,11 @@
                 </div>
                 <div class="ach-status locked">미달성</div>
               </div>
-              <div class="achievement-item">
+              <div class="achievement-item" data-ach-id="flare_retaliation">
                 <div class="ach-icon">05</div>
                 <div class="ach-content">
                   <div class="ach-title">섬광의 사투 // FLARE RETALIATION</div>
-                  <div class="ach-desc">환기구에서 기어나오는 괴물의 면전에 조명탄[Q]을 점화 투하하여 후퇴 유도</div>
+                  <div class="ach-desc">괴물 또는 수로 매복자 인근에 조명탄[Q]을 점화 투하하여 스턴/후퇴 유도</div>
                 </div>
                 <div class="ach-status locked">미달성</div>
               </div>
@@ -582,6 +650,13 @@
                     <span id="setup-btn-size-val">60px</span>
                   </div>
                   <input type="range" id="setup-btn-size" min="45" max="90" step="2" value="60">
+                </div>
+                <div class="minimal-field">
+                  <label>터치 패드 좌우 배치</label>
+                  <div class="suit-preset-grid">
+                    <button type="button" class="preset-btn swap-btn active" data-swap="false">기본 (좌:이동 / 우:액션)</button>
+                    <button type="button" class="preset-btn swap-btn" data-swap="true">반전 (좌:액션 / 우:이동)</button>
+                  </div>
                 </div>
                 <div class="minimal-btn-row">
                   <button type="button" id="btn-trigger-hud-edit" class="btn-micro">패드 위치 편집</button>

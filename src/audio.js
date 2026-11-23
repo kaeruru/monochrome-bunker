@@ -13,8 +13,8 @@ export const SOUND_ASSET_MANIFEST = {
   // 2. 플레이어 이동 & 장비 사운드
   footstep_walk:        { url: './sounds/footstep_walk.mp3', desc: '대원 일반 걸음 발소리' },
   footstep_sprint:      { url: './sounds/footstep_sprint.mp3', desc: '대원 전술 달리기 발소리' },
-  water_splash_walk:    { url: './sounds/water_splash_walk.mp3', desc: '침수 수로 보행 물살 첨벙거림' },
-  water_splash_sprint:  { url: './sounds/water_splash_sprint.mp3', desc: '침수 수로 전력 질주 물살 소리' },
+  water_splash_walk:    { url: null, desc: '침수 수로 보행 물살 첨벙거림 (옵션: ./sounds/water_splash_walk.mp3)' },
+  water_splash_sprint:  { url: null, desc: '침수 수로 전력 질주 물살 소리 (옵션: ./sounds/water_splash_sprint.mp3)' },
   flashlight_on:        { url: './sounds/flashlight_on.mp3', desc: '손전등 딸깍 켜짐' },
   flashlight_off:       { url: './sounds/flashlight_off.mp3', desc: '손전등 딸깍 꺼짐' },
 
@@ -51,28 +51,28 @@ export const SOUND_ASSET_MANIFEST = {
   monster_attack_kill:  { url: null, desc: '괴물에게 붙잡혔을 때의 처형 사운드' },
   monster_jumpscare:    { url: null, desc: '괴물 처형 점프스케어 - 고주파 메탈릭 비명 + 디스토션 서브 베이스 충격음' },
 
-  // 7. 제2장 수로 삼두 괴수(The Water Trio) 전용 사운드
+  // 7. 제2장 수로 삼두 괴수(The Water Trio) 전용 사운드 (외부 에셋 추가 시 url 지정)
   // [A] #1 스토커 악어 (The Ripper)
-  ch2_crawler_footstep:   { url: './sounds/ch2/ch2_crawler_footstep.mp3', desc: '크롤러 악어 수로 보행/유영 물살 첨벙거림' },
-  ch2_crawler_growl:      { url: './sounds/ch2/ch2_crawler_growl.mp3', desc: '크롤러 악어 잠복/배회 시 초저주파 그르렁거림' },
-  ch2_crawler_chase:      { url: './sounds/ch2/ch2_crawler_chase.mp3', desc: '크롤러 악어 폭주 추격 시 수중 돌진 포효' },
-  ch2_crawler_screech:    { url: './sounds/ch2/ch2_crawler_screech.mp3', desc: '크롤러 악어 공격/발각 시 파충류 악어 괴성' },
-  ch2_crawler_jumpscare:  { url: './sounds/ch2/ch2_crawler_jumpscare.mp3', desc: '크롤러 악어 안면 덮침 점프스케어 턱 파쇄음' },
-  ch2_crawler_submerge:   { url: './sounds/ch2/ch2_crawler_submerge.mp3', desc: '크롤러 악어 수면 아래 급잠수 입수음' },
+  ch2_crawler_footstep:   { url: null, desc: '크롤러 악어 수로 보행/유영 물살 첨벙거림' },
+  ch2_crawler_growl:      { url: null, desc: '크롤러 악어 잠복/배회 시 초저주파 그르렁거림' },
+  ch2_crawler_chase:      { url: null, desc: '크롤러 악어 폭주 추격 시 수중 돌진 포효' },
+  ch2_crawler_screech:    { url: null, desc: '크롤러 악어 공격/발각 시 파충류 악어 괴성' },
+  ch2_crawler_jumpscare:  { url: null, desc: '크롤러 악어 안면 덮침 점프스케어 턱 파쇄음' },
+  ch2_crawler_submerge:   { url: null, desc: '크롤러 악어 수면 아래 급잠수 입수음' },
 
   // [B] #2 매복자 악어 (The Lurker)
-  ch2_lurker_idle:        { url: './sounds/ch2/ch2_lurker_idle.mp3', desc: '매복자 악어 경사로/사다리 수면 밑 잠복 숨소리' },
-  ch2_lurker_bite:        { url: './sounds/ch2/ch2_lurker_bite.mp3', desc: '매복자 악어 곰덫 아가리 기습 덥석 깨무는 소리' },
-  ch2_lurker_submerge:    { url: './sounds/ch2/ch2_lurker_submerge.mp3', desc: '매복자 악어 소나펄스/불빛 피격 시 물속 도주 입수음' },
+  ch2_lurker_idle:        { url: null, desc: '매복자 악어 경사로/사다리 수면 밑 잠복 숨소리' },
+  ch2_lurker_bite:        { url: null, desc: '매복자 악어 곰덫 아가리 기습 덥석 깨무는 소리' },
+  ch2_lurker_submerge:    { url: null, desc: '매복자 악어 소나펄스/불빛 피격 시 물속 도주 입수음' },
 
   // [C] #3 맹글 악어 (The Snare Mangle)
-  ch2_mangle_static:      { url: './sounds/ch2/ch2_mangle_static.mp3', desc: '맹글 악어 천장 매달림 시 FNaF 라디오 정전기 잡음' },
-  ch2_mangle_grab:        { url: './sounds/ch2/ch2_mangle_grab.mp3', desc: '맹글 악어 천장 급강하 사슬 결박 + 호출 사이렌' },
-  ch2_mangle_struggle:    { url: './sounds/ch2/ch2_mangle_struggle.mp3', desc: '맹글 악어 와이어 결박 탈출/발버둥 금속음' },
+  ch2_mangle_static:      { url: null, desc: '맹글 악어 천장 매달림 시 FNaF 라디오 정전기 잡음' },
+  ch2_mangle_grab:        { url: null, desc: '맹글 악어 천장 급강하 사슬 결박 + 호출 사이렌' },
+  ch2_mangle_struggle:    { url: null, desc: '맹글 악어 와이어 결박 탈출/발버둥 금속음' },
 
   // 8. 제2장 음파 탐지기(Sonar Radar) & 소나 펄스 사운드
-  ch2_sonar_ping:         { url: './sounds/ch2/ch2_sonar_ping.mp3', desc: '음파 감지기 근접 타깃 레이더 비프 핑' },
-  ch2_sonar_pulse:        { url: './sounds/ch2/ch2_sonar_pulse.mp3', desc: 'F키/터치버튼 전방 강력 소나 펄스 충격파 방출음' }
+  ch2_sonar_ping:         { url: null, desc: '음파 감지기 근접 타깃 레이더 비프 핑' },
+  ch2_sonar_pulse:        { url: null, desc: 'F키/터치버튼 전방 강력 소나 펄스 충격파 방출음' }
 };
 
 class AudioManager {
@@ -391,7 +391,7 @@ class AudioManager {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.045);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.masterGain || this.ctx.destination);
     this._autoDisconnect(osc, gain);
 
     osc.start(t);
@@ -422,7 +422,7 @@ class AudioManager {
     humGain.gain.exponentialRampToValueAtTime(0.001, t + dur);
 
     hum.connect(humGain);
-    humGain.connect(this.ctx.destination);
+    humGain.connect(this.masterGain || this.ctx.destination);
     hum.start(t);
     hum.stop(t + dur);
 
@@ -442,7 +442,7 @@ class AudioManager {
 
       noise.connect(filter);
       filter.connect(nGain);
-      nGain.connect(this.ctx.destination);
+      nGain.connect(this.masterGain || this.ctx.destination);
 
       noise.start(t, Math.random() * 0.5, dur);
     }
@@ -470,7 +470,7 @@ class AudioManager {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.6);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.masterGain || this.ctx.destination);
     this._autoDisconnect(osc, gain);
 
     osc.start(t);
@@ -500,7 +500,7 @@ class AudioManager {
     gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.masterGain || this.ctx.destination);
     osc.start(t);
     osc.stop(t + dur);
 
@@ -534,7 +534,7 @@ class AudioManager {
 
     noise.connect(filter);
     filter.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.masterGain || this.ctx.destination);
 
     noise.start(t);
     noise.stop(t + dur);
@@ -621,7 +621,7 @@ class AudioManager {
     gain1.gain.setValueAtTime(0.18, t);
     gain1.gain.exponentialRampToValueAtTime(0.001, t + 0.095);
     osc1.connect(gain1);
-    gain1.connect(this.ctx.destination);
+    gain1.connect(this.masterGain || this.ctx.destination);
     osc1.start(t);
     osc1.stop(t + 0.095);
 
@@ -636,7 +636,7 @@ class AudioManager {
     gain2.gain.setValueAtTime(0.14, t + 0.06);
     gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.21);
     osc2.connect(gain2);
-    gain2.connect(this.ctx.destination);
+    gain2.connect(this.masterGain || this.ctx.destination);
     osc2.start(t + 0.06);
     osc2.stop(t + 0.21);
   }
@@ -658,7 +658,7 @@ class AudioManager {
     gain.gain.setValueAtTime(0.1, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.065);
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.masterGain || this.ctx.destination);
     osc.start(t);
     osc.stop(t + 0.065);
   }
@@ -680,7 +680,7 @@ class AudioManager {
     gain.gain.setValueAtTime(0.18, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.masterGain || this.ctx.destination);
     osc.start(t);
     osc.stop(t + 0.15);
   }
@@ -711,7 +711,7 @@ class AudioManager {
 
       noise.connect(filter);
       filter.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this.masterGain || this.ctx.destination);
       noise.start(t);
       noise.stop(t + dur);
     }
@@ -737,7 +737,7 @@ class AudioManager {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.34);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.masterGain || this.ctx.destination);
     osc.start(t);
     osc.stop(t + 0.34);
   }
@@ -760,7 +760,7 @@ class AudioManager {
       gain.gain.setValueAtTime(0.07, t + i * 0.055);
       gain.gain.exponentialRampToValueAtTime(0.001, t + i * 0.055 + 0.05);
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this.masterGain || this.ctx.destination);
       osc.start(t + i * 0.055);
       osc.stop(t + i * 0.055 + 0.055);
     });
@@ -791,7 +791,7 @@ class AudioManager {
     gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.masterGain || this.ctx.destination);
     osc.start(t);
     osc.stop(t + dur);
   }
@@ -817,7 +817,7 @@ class AudioManager {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.masterGain || this.ctx.destination);
     osc.start(t);
     osc.stop(t + 0.14);
 
@@ -846,7 +846,7 @@ class AudioManager {
     gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.masterGain || this.ctx.destination);
     osc.start(t);
     osc.stop(t + dur);
   }
@@ -872,7 +872,7 @@ class AudioManager {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.masterGain || this.ctx.destination);
     osc.start(t);
     osc.stop(t + 0.45);
   }
@@ -899,7 +899,7 @@ class AudioManager {
       gain.gain.exponentialRampToValueAtTime(0.001, start + 0.74);
 
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this.masterGain || this.ctx.destination);
       osc.start(start);
       osc.stop(start + 0.74);
     }
@@ -926,7 +926,7 @@ class AudioManager {
     subGain.gain.exponentialRampToValueAtTime(0.001, t + 0.19);
 
     subOsc.connect(subGain);
-    subGain.connect(this.ctx.destination);
+    subGain.connect(this.masterGain || this.ctx.destination);
     subOsc.start(t);
     subOsc.stop(t + 0.19);
 
@@ -948,7 +948,7 @@ class AudioManager {
 
     metalOsc.connect(metalFilter);
     metalFilter.connect(metalGain);
-    metalGain.connect(this.ctx.destination);
+    metalGain.connect(this.masterGain || this.ctx.destination);
     metalOsc.start(t);
     metalOsc.stop(t + 0.095);
   }
@@ -1156,7 +1156,7 @@ class AudioManager {
     mod.connect(modGain);
     modGain.connect(carrier.frequency);
     carrier.connect(mainGain);
-    mainGain.connect(this.ctx.destination);
+    mainGain.connect(this.masterGain || this.ctx.destination);
 
     carrier.start(t);
     mod.start(t);
@@ -1180,7 +1180,7 @@ class AudioManager {
 
       noise.connect(filter);
       filter.connect(nGain);
-      nGain.connect(this.ctx.destination);
+      nGain.connect(this.masterGain || this.ctx.destination);
 
       noise.start(t);
       noise.stop(t + dur);
@@ -1204,7 +1204,7 @@ class AudioManager {
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.masterGain || this.ctx.destination);
 
     osc.start(t);
     osc.stop(t + 0.06);
@@ -1228,7 +1228,7 @@ class AudioManager {
     thudGain.gain.setValueAtTime(volume * 0.85, t);
     thudGain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
     thud.connect(thudGain);
-    thudGain.connect(this.ctx.destination);
+    thudGain.connect(this.masterGain || this.ctx.destination);
     thud.start(t);
     thud.stop(t + 0.25);
 
@@ -1246,7 +1246,7 @@ class AudioManager {
     sGain.gain.exponentialRampToValueAtTime(0.001, t + 0.23);
     scrape.connect(filter);
     filter.connect(sGain);
-    sGain.connect(this.ctx.destination);
+    sGain.connect(this.masterGain || this.ctx.destination);
     scrape.start(t + 0.04);
     scrape.stop(t + 0.23);
   }
@@ -1270,7 +1270,7 @@ class AudioManager {
     gain.gain.setValueAtTime(volume * 0.7, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.masterGain || this.ctx.destination);
     osc.start(t);
     osc.stop(t + 0.4);
   }
@@ -1293,7 +1293,7 @@ class AudioManager {
     subGain.gain.setValueAtTime(volume, t);
     subGain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
     sub.connect(subGain);
-    subGain.connect(this.ctx.destination);
+    subGain.connect(this.masterGain || this.ctx.destination);
     sub.start(t);
     sub.stop(t + 0.35);
 
@@ -1309,7 +1309,7 @@ class AudioManager {
       nGain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
       noise.connect(filter);
       filter.connect(nGain);
-      nGain.connect(this.ctx.destination);
+      nGain.connect(this.masterGain || this.ctx.destination);
       noise.start(t, 0, 0.29);
     }
   }
@@ -1369,7 +1369,7 @@ class AudioManager {
     subGain.gain.setValueAtTime(volume * 0.98, t);
     subGain.gain.exponentialRampToValueAtTime(0.001, t + 0.48);
     sub.connect(subGain);
-    subGain.connect(this.ctx.destination);
+    subGain.connect(this.masterGain || this.ctx.destination);
     sub.start(t);
     sub.stop(t + 0.5);
 
@@ -1385,7 +1385,7 @@ class AudioManager {
       g.gain.setValueAtTime(volume * 0.28, t);
       g.gain.exponentialRampToValueAtTime(0.001, t + 0.72);
       osc.connect(g);
-      g.connect(this.ctx.destination);
+      g.connect(this.masterGain || this.ctx.destination);
       osc.start(t);
       osc.stop(t + 0.75);
     }
@@ -1406,11 +1406,12 @@ class AudioManager {
     modGain.gain.setValueAtTime(650, t);
     modGain.gain.exponentialRampToValueAtTime(40, t + 0.8);
 
-    mod.connect(carrier.frequency);
+    mod.connect(modGain);
+    modGain.connect(carrier.frequency);
     carrier.connect(carrierGain);
     carrierGain.gain.setValueAtTime(volume * 0.42, t);
     carrierGain.gain.exponentialRampToValueAtTime(0.001, t + 0.85);
-    carrierGain.connect(this.ctx.destination);
+    carrierGain.connect(this.masterGain || this.ctx.destination);
 
     mod.start(t);
     carrier.start(t);
@@ -1430,7 +1431,7 @@ class AudioManager {
       nGain.gain.exponentialRampToValueAtTime(0.001, t + 0.65);
       noise.connect(filter);
       filter.connect(nGain);
-      nGain.connect(this.ctx.destination);
+      nGain.connect(this.masterGain || this.ctx.destination);
       noise.start(t, 0, 0.68);
     }
 
@@ -1444,7 +1445,7 @@ class AudioManager {
     biteGain.gain.setValueAtTime(volume * 0.85, t2);
     biteGain.gain.exponentialRampToValueAtTime(0.001, t2 + 0.25);
     bite.connect(biteGain);
-    biteGain.connect(this.ctx.destination);
+    biteGain.connect(this.masterGain || this.ctx.destination);
     bite.start(t2);
     bite.stop(t2 + 0.26);
   }
@@ -1463,7 +1464,7 @@ class AudioManager {
     gain.gain.setValueAtTime(volume, t);
     gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.032);
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this.masterGain || this.ctx.destination);
     osc.start(t);
     osc.stop(t + 0.035);
   }
@@ -1486,14 +1487,9 @@ class AudioManager {
     const t = this.ctx.currentTime;
     this.playElectricArc(volume * 0.35);
 
-    const bufferSize = Math.floor(this.ctx.sampleRate * 0.09);
-    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.35));
-    }
+    if (!this.noiseBuffer) return;
     const noise = this.ctx.createBufferSource();
-    noise.buffer = buffer;
+    noise.buffer = this.noiseBuffer;
 
     const filter = this.ctx.createBiquadFilter();
     filter.type = 'bandpass';
@@ -1506,8 +1502,9 @@ class AudioManager {
 
     noise.connect(filter);
     filter.connect(gain);
-    gain.connect(this.ctx.destination);
-    noise.start(t);
+    gain.connect(this.masterGain || this.ctx.destination);
+    this._autoDisconnect(noise, filter, gain);
+    noise.start(t, 0, 0.09);
   }
 
   /**
@@ -1528,7 +1525,7 @@ class AudioManager {
       gain.gain.setValueAtTime(volume * 0.35, t + dt);
       gain.gain.exponentialRampToValueAtTime(0.001, t + dt + 0.12);
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this.masterGain || this.ctx.destination);
       osc.start(t + dt);
       osc.stop(t + dt + 0.13);
     });
@@ -1543,7 +1540,7 @@ class AudioManager {
     flatGain.gain.exponentialRampToValueAtTime(0.0001, t + 3.2);
 
     flatOsc.connect(flatGain);
-    flatGain.connect(this.ctx.destination);
+    flatGain.connect(this.masterGain || this.ctx.destination);
     flatOsc.start(t + 0.95);
     flatOsc.stop(t + 3.25);
   }
@@ -1753,7 +1750,8 @@ class AudioManager {
     lfo.frequency.setValueAtTime(14, t);
     lfoGain.gain.setValueAtTime(18, t);
 
-    lfo.connect(osc.frequency);
+    lfo.connect(lfoGain);
+    lfoGain.connect(osc.frequency);
 
     const lp = this.ctx.createBiquadFilter();
     lp.type = 'lowpass';
@@ -1898,7 +1896,8 @@ class AudioManager {
     mod.frequency.setValueAtTime(240, t);
     modGain.gain.setValueAtTime(580, t);
     modGain.gain.exponentialRampToValueAtTime(30, t + 0.8);
-    mod.connect(carrier.frequency);
+    mod.connect(modGain);
+    modGain.connect(carrier.frequency);
     carrier.connect(carrierGain);
     carrierGain.gain.setValueAtTime(0.48, t);
     carrierGain.gain.exponentialRampToValueAtTime(0.001, t + 0.85);
