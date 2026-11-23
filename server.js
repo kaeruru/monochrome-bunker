@@ -682,11 +682,12 @@ server.on('connection', (socket) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
+  const boundPort = server.address()?.port || PORT;
   const localIp = getLocalIpAddress();
   console.log(`=======================================================`);
-  console.log(`[MONOCHROME BUNKER] Tactical Co-op Server online on port ${PORT}`);
-  console.log(`- Local Host:       http://localhost:${PORT} / ws://localhost:${PORT}`);
-  console.log(`- LAN (Same Wi-Fi): http://${localIp}:${PORT} / ws://${localIp}:${PORT}`);
+  console.log(`[MONOCHROME BUNKER] Tactical Co-op Server online on port ${boundPort}`);
+  console.log(`- Local Host:       http://localhost:${boundPort} / ws://localhost:${boundPort}`);
+  console.log(`- LAN (Same Wi-Fi): http://${localIp}:${boundPort} / ws://${localIp}:${boundPort}`);
   console.log(`  (동일 Wi-Fi 공간에서 친구나 태블릿으로 접속 시 1~3ms 초저지연)`);
   console.log(`=======================================================`);
 });

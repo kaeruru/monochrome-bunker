@@ -9,6 +9,9 @@
     "preview": "vite preview",
     "start": "node server.js",
     "server": "node server.js",
+    "check": "node scripts/check-syntax.mjs",
+    "test": "node --test tests/*.test.js",
+    "verify": "npm run check && npm run build && npm test",
     "render-build": "npm run build",
     "postinstall": "npm run build"
   },
