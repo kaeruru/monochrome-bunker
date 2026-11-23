@@ -9,6 +9,7 @@ import {
   Scp096Entity
 } from './models.js';
 import { createIndustrialEnvMap } from './textures.js';
+import { disposeObject3D } from './disposeUtils.js';
 
 /**
  * 3D 괴물 & 캐릭터 모델링 쇼케이스 뷰어 (360도 회전 / 줌 / 애니메이션 테스트 스튜디오)
@@ -571,6 +572,23 @@ export class ModelShowcaseViewer {
     this.camera.lookAt(0, this.orbitCenterY, 0);
 
     this.renderer.render(this.scene, this.camera);
+  }
+
+  dispose() {
+    this.close();
+    if (this.scene) {
+      disposeObject3D(this.scene);
+      if (this.scene.environment && typeof this.scene.environment.dispose === 'function') {
+        try { this.scene.environment.dispose(); } catch (_) {}
+      }
+    }
+    if (this.renderer) {
+      try { this.renderer.dispose(); } catch (_) {}
+      this.renderer = null;
+    }
+    if (this.modalEl && this.modalEl.parentElement) {
+      this.modalEl.parentElement.removeChild(this.modalEl);
+    }
   }
 }
 

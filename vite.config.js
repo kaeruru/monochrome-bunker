@@ -7,6 +7,21 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export default defineConfig({
+  build: {
+    chunkSizeWarningLimit: 700,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/three/examples/')) {
+            return 'three-addons';
+          }
+          if (id.includes('node_modules/three/')) {
+            return 'three-core';
+          }
+        }
+      }
+    }
+  },
   server: {
     host: true,
     port: 5173,

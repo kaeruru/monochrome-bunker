@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { tileToWorld } from './tilemapData.js';
 import { buildItemMesh3D } from './viewModel.js';
 import { sound } from './audio.js';
+import { disposeObject3D } from './disposeUtils.js';
 
 export const ITEM_METADATA = {
   energy_cell: {
@@ -212,17 +213,7 @@ export class InteractionAndEscapeSystem {
 
     while (this.group.children.length > 0) {
       const childObj = this.group.children[0];
-      childObj.traverse((c) => {
-        if (c.geometry) {
-          try { c.geometry.dispose(); } catch (_) {}
-        }
-        if (c.material) {
-          const mats = Array.isArray(c.material) ? c.material : [c.material];
-          for (const m of mats) {
-            try { m.dispose(); } catch (_) {}
-          }
-        }
-      });
+      disposeObject3D(childObj);
       this.group.remove(childObj);
     }
 
@@ -1430,17 +1421,7 @@ export class InteractionAndEscapeSystem {
       f.life -= dt;
       if (f.life <= 0) {
         this.group.remove(f.mesh);
-        f.mesh.traverse((c) => {
-          if (c.geometry) {
-            try { c.geometry.dispose(); } catch (_) {}
-          }
-          if (c.material) {
-            const mats = Array.isArray(c.material) ? c.material : [c.material];
-            for (const m of mats) {
-              try { m.dispose(); } catch (_) {}
-            }
-          }
-        });
+        disposeObject3D(f.mesh);
         this.activeFlares.splice(i, 1);
       } else {
         const fade = Math.min(1.0, f.life / 5.0);

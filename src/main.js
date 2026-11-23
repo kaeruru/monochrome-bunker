@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { Map3D } from './map3d.js';
 import { FPSControls } from './controls.js';
 import { CCTVSystem3D } from './cctv3d.js';
-import { ModelShowcaseViewer } from './modelViewer.js';
 import { FirstPersonViewModel } from './viewModel.js';
 import { InteractionAndEscapeSystem } from './interactionSystem.js';
 import { MonsterAI } from './monsterAI.js';
@@ -120,17 +119,9 @@ class MonochromeBunker3D {
       this.cctv.updateDoorButtons(this.map.doors);
     }
 
-    // 10. 3D 괴물 & 캐릭터 모델링 쇼케이스 뷰어 초기화
-    this.modelViewer = new ModelShowcaseViewer(
-      (isOpen) => {
-        this.controls.setDisabled(isOpen);
-      },
-      (skin) => {
-        if (this.monsterAI) {
-          this.monsterAI.setChapter1Skin(skin);
-        }
-      }
-    );
+    // 10. 3D 괴물 & 캐릭터 모델링 쇼케이스 뷰어 (첫 열람 시 동적 import 지연 초기화)
+    this.modelViewer = null;
+    this._modelViewerLoading = null;
 
     // 11. UI 엘리먼트 참조
     this.promptEl = document.getElementById('interact-prompt');
@@ -3371,11 +3362,36 @@ class MonochromeBunker3D {
     }
   }
 
-  openModelViewer() {
-    if (!this.modelViewer) return;
+  async openModelViewer() {
     if (this.cctv && this.cctv.isOpen) this.cctv.close();
     if (this.isTacticalMapOpen) this.closeTacticalMapModal();
-    this.modelViewer.open();
+    if (!this.modelViewer) {
+      if (this._modelViewerLoading) return;
+      this._modelViewerLoading = import('./modelViewer.js')
+        .then(({ ModelShowcaseViewer }) => {
+          this.modelViewer = new ModelShowcaseViewer(
+            (isOpen) => {
+              this.controls.setDisabled(isOpen);
+            },
+            (skin) => {
+              if (this.monsterAI) {
+                this.monsterAI.setChapter1Skin(skin);
+              }
+            }
+          );
+        })
+        .catch((err) => {
+          console.error('[SHOWCASE] Failed to load ModelShowcaseViewer:', err);
+          this.showGameToast('[ERROR] 3D 쇼케이스 모듈을 불러오지 못했습니다.', 'danger');
+        })
+        .finally(() => {
+          this._modelViewerLoading = null;
+        });
+      await this._modelViewerLoading;
+    }
+    if (this.modelViewer) {
+      this.modelViewer.open();
+    }
   }
 
   toggleTacticalMapModal() {

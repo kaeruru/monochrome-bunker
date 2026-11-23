@@ -212,6 +212,9 @@ let sharedMaterials = null;
 function getMaterials() {
   if (!sharedMaterials) {
     sharedMaterials = createBiomechanicalMaterials();
+    for (const mat of Object.values(sharedMaterials)) {
+      if (mat) mat.userData = { ...(mat.userData || {}), shared: true };
+    }
   }
   return sharedMaterials;
 }
@@ -2804,6 +2807,7 @@ export function getTintedSoldierTexture(suitColorKey = 'steel') {
   ctx.fillRect(0, 0, 4, 4);
 
   const canvasTex = new THREE.CanvasTexture(canvas);
+  canvasTex.userData = { shared: true };
   canvasTex.colorSpace = THREE.SRGBColorSpace;
   canvasTex.magFilter = THREE.NearestFilter;
   canvasTex.minFilter = THREE.NearestMipmapLinearFilter;
@@ -3075,6 +3079,7 @@ function getVolumetricBeamTexture() {
   ctx.fillRect(0, 0, 128, 256);
 
   cachedBeamTex = new THREE.CanvasTexture(canvas);
+  cachedBeamTex.userData = { shared: true };
   cachedBeamTex.wrapS = THREE.ClampToEdgeWrapping;
   cachedBeamTex.wrapT = THREE.ClampToEdgeWrapping;
   return cachedBeamTex;
@@ -3101,6 +3106,7 @@ function getLensGlowTexture() {
   ctx.fillRect(0, 0, 64, 64);
 
   cachedGlowTex = new THREE.CanvasTexture(canvas);
+  cachedGlowTex.userData = { shared: true };
   return cachedGlowTex;
 }
 

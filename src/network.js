@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { PlayerCharacterEntity, SUIT_COLORS } from './models.js';
+import { disposeObject3D } from './disposeUtils.js';
 
 export class NetworkManager {
   constructor(scene, callbacks = {}) {
@@ -535,26 +536,6 @@ export class NetworkManager {
     );
   }
 
-  disposeObject3D(root) {
-    if (!root) return;
-    root.traverse((obj) => {
-      if (obj.geometry && typeof obj.geometry.dispose === 'function') {
-        try { obj.geometry.dispose(); } catch (_) {}
-      }
-      if (obj.material) {
-        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-        for (const m of mats) {
-          if (m.map && typeof m.map.dispose === 'function') {
-            try { m.map.dispose(); } catch (_) {}
-          }
-          if (typeof m.dispose === 'function') {
-            try { m.dispose(); } catch (_) {}
-          }
-        }
-      }
-    });
-  }
-
   removeRemotePlayer(playerId) {
     const rp = this.remotePlayers.get(playerId);
     if (rp) {
@@ -562,7 +543,7 @@ export class NetworkManager {
         try { rp.nameplateData.texture.dispose(); } catch (_) {}
       }
       this.scene.remove(rp.entity.root);
-      this.disposeObject3D(rp.entity.root);
+      disposeObject3D(rp.entity.root);
       this.remotePlayers.delete(playerId);
     }
   }
@@ -573,7 +554,7 @@ export class NetworkManager {
         try { rp.nameplateData.texture.dispose(); } catch (_) {}
       }
       this.scene.remove(rp.entity.root);
-      this.disposeObject3D(rp.entity.root);
+      disposeObject3D(rp.entity.root);
     }
     this.remotePlayers.clear();
   }

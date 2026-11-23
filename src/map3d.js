@@ -14,6 +14,7 @@ import {
 import { createIndustrialMaterials } from './textures.js';
 import { MonsterEntity, PlayerCharacterEntity } from './models.js';
 import { sound } from './audio.js';
+import { disposeObject3D } from './disposeUtils.js';
 
 export const CH2_HIGH_Y = 1.40;
 export const CH2_WATER_Y = 0.56;
@@ -73,24 +74,10 @@ export class Map3D {
 
   clearMap() {
     const persistentMaterials = this.materials ? Object.values(this.materials) : [];
+    const persistentTextures = this.materials?.wall?.map ? [this.materials.wall.map] : null;
     while (this.mapGroup.children.length > 0) {
       const obj = this.mapGroup.children[0];
-      obj.traverse((child) => {
-        if (child.geometry) {
-          try { child.geometry.dispose(); } catch (_) {}
-        }
-        if (child.material) {
-          const mats = Array.isArray(child.material) ? child.material : [child.material];
-          for (const m of mats) {
-            if (!persistentMaterials.includes(m)) {
-              if (m.map && m.map.dispose && m.map !== this.materials?.wall?.map) {
-                try { m.map.dispose(); } catch (_) {}
-              }
-              try { m.dispose(); } catch (_) {}
-            }
-          }
-        }
-      });
+      disposeObject3D(obj, persistentMaterials, persistentTextures);
       this.mapGroup.remove(obj);
     }
     if (this.tacticalMapBoard && this.tacticalMapBoard.screenTex) {

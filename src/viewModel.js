@@ -6,24 +6,37 @@ import { SUIT_COLORS, getTintedSoldierTexture } from './models.js';
  * @param {'energy_cell'|'security_keycard'|'coolant_valve'|'flare'} itemType
  * @returns {{ group: THREE.Group, updateItemAnim: (t: number) => void }}
  */
+let sharedItemMaterials = null;
+function getSharedItemMaterials() {
+  if (!sharedItemMaterials) {
+    const markShared = (m) => {
+      m.userData = { shared: true };
+      return m;
+    };
+    sharedItemMaterials = {
+      darkSteelMat: markShared(new THREE.MeshStandardMaterial({
+        color: 0x24282c,
+        roughness: 0.42,
+        metalness: 0.82
+      })),
+      brushedMetalMat: markShared(new THREE.MeshStandardMaterial({
+        color: 0x687078,
+        roughness: 0.35,
+        metalness: 0.88
+      })),
+      gripRubberMat: markShared(new THREE.MeshStandardMaterial({
+        color: 0x151719,
+        roughness: 0.82,
+        metalness: 0.15
+      }))
+    };
+  }
+  return sharedItemMaterials;
+}
+
 export function buildItemMesh3D(itemType) {
   const group = new THREE.Group();
-
-  const darkSteelMat = new THREE.MeshStandardMaterial({
-    color: 0x24282c,
-    roughness: 0.42,
-    metalness: 0.82
-  });
-  const brushedMetalMat = new THREE.MeshStandardMaterial({
-    color: 0x687078,
-    roughness: 0.35,
-    metalness: 0.88
-  });
-  const gripRubberMat = new THREE.MeshStandardMaterial({
-    color: 0x151719,
-    roughness: 0.82,
-    metalness: 0.15
-  });
+  const { darkSteelMat, brushedMetalMat, gripRubberMat } = getSharedItemMaterials();
 
   let updateItemAnim = () => {};
 
